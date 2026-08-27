@@ -1,0 +1,176 @@
+"""Tool interface.
+
+A tool declares four things the rest of the system relies on: what it is
+called, what arguments it accepts, what class of consequence running it
+carries, and how long it may take.
+
+The argument schema is derived from a pydantic model, so the schema a tool
+*advertises* to the model and the schema it *validates against* are the same
+object. They cannot drift.
+"""
+
+from __future__ import annotations
+
+import os
+from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, ClassVar
+
+from pydantic import BaseModel, ValidationError
+
+from personal_ai_os.core.errors import (
+    PathNotAllowedError,
+    ToolExecutionError,
+    ToolInputError,
+    ToolTimeoutError,
+)
+from personal_ai_os.core.types import ToolSchema
+from personal_ai_os.permissions.types import PermissionLevel
+
+
+@dataclass
+class ToolContext:
+    """Ambient facts a tool may need, passed explicitly rather than imported.
+
+    Tools receive their world instead of reaching for it, which is what makes
+    them testable without a configured process.
+    """
+
+    allowed_roots: list[Path] = field(default_factory=list)
+    workspace_root: Path = field(default_factory=Path.cwd)
+    agent: str = ""
+    run_id: str = ""
+    extras: dict[str, Any] = field(default_factory=dict)
+
+
+# --- Filesystem jail -------------------------------------------------------
+
+
+def _is_within(child: Path, parent: Path) -> bool:
+    """Containment test that survives Windows path semantics.
+
+    ``normcase`` folds case and unifies separators, which matters here: on
+    Windows ``C:\\Paul\\x`` and ``c:\\paul\\x`` are the same file, and a naive
+    string comparison would let one of them out of the jail.
+    """
+    c = os.path.normcase(str(child))
+    p = os.path.normcase(str(parent))
+    return c == p or c.startswith(p.rstrip(os.sep) + os.sep)
+
+
+def resolve_within_roots(candidate: str | Path, roots: list[Path]) -> Path:
+    """Resolve a path and prove it lands inside an allowed root.
+
+    This runs *before* the tool does, and it is orthogonal to permissions: the
+    permission policy decides whether an action is allowed at all, while this
+    decides which paths are even nameable. A read granted by policy still
+    cannot reach outside the workspace.
+
+    ``Path.resolve`` collapses ``..`` and follows symlinks first, so neither
+    traversal (``../../Windows``) nor a symlink pointing outside can smuggle a
+    path past the containment check.
+    """
+    if not roots:
+        raise PathNotAllowedError(
+            "no allowed filesystem roots are configured; refusing all paths"
+        )
+
+    raw = Path(candidate).expanduser()
+    if not raw.is_absolute():
+        raw = roots[0] / raw
+
+    resolved = raw.resolve()
+    for root in roots:
+        if _is_within(resolved, root.resolve()):
+            return resolved
+
+    allowed = ", ".join(str(r) for r in roots)
+    raise PathNotAllowedError(
+        f"path {resolved} is outside every allowed root ({allowed})"
+    )
+
+
+# --- Tool ------------------------------------------------------------------
+
+
+class Tool(ABC):
+    """Base class for every tool."""
+
+    name: ClassVar[str]
+    description: ClassVar[str]
+    Input: ClassVar[type[BaseModel]]
+    Output: ClassVar[type[BaseModel]]
+    permission: ClassVar[PermissionLevel] = PermissionLevel.READ
+    timeout_s: ClassVar[float] = 30.0
+    #: Force a human prompt even where policy would auto-approve the level.
+    requires_human_approval: ClassVar[bool] = False
+
+    def schema(self) -> ToolSchema:
+        """What this tool looks like to a model."""
+        params = self.Input.model_json_schema()
+        # Inlined $defs keep the payload readable for smaller models, which
+        # handle a flat schema noticeably better than a $ref-laden one.
+        params.pop("$defs", None)
+        params.pop("title", None)
+        return ToolSchema(
+            name=self.name, description=self.description, parameters=params
+        )
+
+    def validate_input(self, raw: dict[str, Any]) -> BaseModel:
+        """Coerce raw model-supplied arguments into the typed input model.
+
+        Raises :class:`ToolInputError`, which the agent loop treats as
+        *recoverable*: the message is handed back to the model so it can fix
+        its own call rather than the run dying.
+        """
+        try:
+            return self.Input.model_validate(raw)
+        except ValidationError as exc:
+            problems = "; ".join(
+                f"{'.'.join(str(p) for p in e['loc']) or '<root>'}: {e['msg']}"
+                for e in exc.errors()
+            )
+            raise ToolInputError(
+                f"invalid arguments for {self.name}: {problems}"
+            ) from exc
+
+    def describe_resource(self, args: BaseModel) -> str:
+        """What this call will act on, shown in approval prompts and traces."""
+        for field_name in ("path", "url", "target", "recipient", "query"):
+            value = getattr(args, field_name, None)
+            if value:
+                return str(value)
+        return ""
+
+    def execute(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        """Run with a timeout guard.
+
+        Honest caveat: this bounds how long the *caller* waits, not how long
+        the tool runs. Python cannot kill a thread, so a runaway tool keeps
+        going in the background until the process exits. Bounding the wait is
+        still worth having -- it stops one stuck tool from hanging a whole
+        agent run -- but it is not a hard kill, and tools that touch slow
+        resources should carry their own internal timeouts too.
+        """
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"tool-{self.name}") as pool:
+            future = pool.submit(self.run, args, ctx)
+            try:
+                return future.result(timeout=self.timeout_s)
+            except FutureTimeout as exc:
+                raise ToolTimeoutError(
+                    f"{self.name} exceeded its {self.timeout_s}s timeout"
+                ) from exc
+            except (ToolExecutionError, ToolInputError, PathNotAllowedError):
+                raise
+            except Exception as exc:
+                raise ToolExecutionError(f"{self.name} failed: {exc}") from exc
+
+    @abstractmethod
+    def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        """Do the work. Implementations receive validated, typed arguments."""
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return f"<Tool {self.name} permission={self.permission.value}>"

@@ -1,0 +1,34 @@
+# The vertical-slice agent: proves the whole local path works end to end.
+#
+# `permissions` is not decoration. The registry checks it against the tools
+# listed below and refuses to load this manifest if a tool needs a permission
+# level that is not declared here -- so this list is a real statement of the
+# agent's blast radius, checked at startup.
+
+name: ping
+description: >
+  Verifies that local tool calling works end to end. Reads and lists files
+  inside the workspace to answer simple questions about it.
+
+version: 0.1.0
+
+# Omit `entrypoint` entirely to get the generic BaseAgent loop -- a useful
+# agent can be pure configuration. This one subclasses it only to inject the
+# workspace root into its prompt.
+entrypoint: personal_ai_os.agents.builtin.ping:PingAgent
+
+model:
+  # Ask for a role, not a model. Re-pointing every reasoning agent at a better
+  # model then becomes a one-line edit in config/default.yaml.
+  role: reason
+
+tools:
+  - read_file
+  - list_dir
+
+permissions:
+  - read
+
+max_iterations: 6
+timeout_s: 180
+requires_human_approval: false

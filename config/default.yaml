@@ -1,0 +1,101 @@
+# Personal AI OS -- baseline configuration.
+#
+# This file is committed and shared. Machine-specific overrides belong in
+# config/local.yaml (gitignored); per-invocation overrides use PAIOS_* env
+# vars, e.g. PAIOS_MODELS__OLLAMA__BASE_URL=http://otherbox:11434
+#
+# `workspace_root` is NOT configurable: it is derived from wherever this file
+# was found.
+
+models:
+  provider: ollama
+
+  ollama:
+    base_url: "http://localhost:11434"
+    request_timeout_s: 120
+    # How long Ollama keeps a model resident after a request. With 8 GB of
+    # VRAM, keeping one model warm is worth far more than caching several.
+    keep_alive: "5m"
+
+  # The local model ladder.
+  #
+  # Sized for an RTX 3050 (8 GB VRAM) + 16 GB RAM:
+  #   small  ~2.2 GB  fits GPU with room to spare, fast
+  #   medium ~4.7 GB  fits GPU, reliable tool calling -- the workhorse
+  #   large           UNMAPPED. A 14B at Q4 is ~9 GB, exceeds VRAM, and spills
+  #                   to CPU at roughly 5-10 tok/s. Declared so the router has
+  #                   a rung to degrade from; map it only if that trade is
+  #                   ever worth making. See docs/model-routing.md.
+  tiers:
+    small:
+      model: "qwen2.5:3b-instruct"
+      temperature: 0.2
+      num_ctx: 8192
+    medium:
+      model: "qwen2.5:7b-instruct"
+      temperature: 0.3
+      num_ctx: 8192
+    large:
+      model: null
+      temperature: 0.3
+      num_ctx: 8192
+
+  # Named workloads mapped onto tiers. Agents ask for a role, not a model,
+  # so re-pointing every classifier at a better model is a one-line edit.
+  roles:
+    classify: small
+    extract: small
+    plan: medium
+    reason: medium
+    code: medium
+
+  default_tier: small
+
+permissions:
+  # When false, every 'ask' is auto-denied instead of prompting. Set this in
+  # local.yaml for unattended runs so nothing can block on stdin forever.
+  interactive: true
+
+  # What happens when an action at each level is requested.
+  #   auto - proceed and record the decision
+  #   ask  - prompt the human
+  #   deny - refuse outright
+  #
+  # Note that the filesystem jail (paths.allowed_roots) is an *orthogonal*
+  # control: it bounds which paths a tool may name at all, regardless of what
+  # this policy grants.
+  policy:
+    read: auto
+    write: ask
+    external_action: ask
+    send_message: ask
+    spend_money: ask
+    delete: ask
+    destructive: deny
+
+paths:
+  # Filesystem roots tools may touch. Anything resolving outside every root
+  # is refused before the tool runs. Relative entries are resolved against
+  # the workspace root.
+  allowed_roots:
+    - "."
+  agents_dir: "agents"
+  runs_dir: "runs"
+
+observability:
+  log_level: INFO
+  trace_enabled: true
+  # Any dict key containing one of these substrings has its value replaced
+  # with "***" before being written to a trace file.
+  redact_keys:
+    - password
+    - secret
+    - token
+    - api_key
+    - apikey
+    - credential
+    - authorization
+
+agent_defaults:
+  max_iterations: 6
+  timeout_s: 300
