@@ -20,6 +20,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 from personal_ai_os.evaluation.checks import CheckOutcome
+from personal_ai_os.evaluation.taxonomy import Failure, by_severity
 
 RESULT_VERSION = 1
 PREVIEW_CHARS = 200
@@ -63,6 +64,11 @@ class CaseResult(BaseModel):
     case: str
     description: str = ""
     agent: str = ""
+    #: What competence this case measures, e.g. "grounding", "routing".
+    category: str = ""
+    #: train | validation | holdout -- recorded so a result can never be
+    #: mistaken for a holdout measurement when it was not one.
+    split: str = "train"
     runs: list[RunRecord] = Field(default_factory=list)
 
     @property
@@ -115,6 +121,9 @@ class SuiteResult(BaseModel):
     model: str
     started_at: str
     finished_at: str = ""
+    #: Which split was run. A result that does not say this cannot be trusted
+    #: as a holdout measurement later.
+    split: str = "train+validation"
     cases: list[CaseResult] = Field(default_factory=list)
 
     @property
@@ -132,11 +141,44 @@ class SuiteResult(BaseModel):
     def case(self, name: str) -> CaseResult | None:
         return next((c for c in self.cases if c.case == name), None)
 
+    # --- diagnosis ---------------------------------------------------------
+
+    def failures(self) -> dict[Failure, int]:
+        """How many times each *kind* of failure occurred.
+
+        This is the number that says what to fix. A pass rate says how often
+        something went wrong; this says what went wrong, and those need
+        different responses.
+        """
+        counts: dict[Failure, int] = {}
+        for case in self.cases:
+            for run in case.runs:
+                for outcome in run.failed_checks():
+                    if outcome.failure is not None:
+                        counts[outcome.failure] = counts.get(outcome.failure, 0) + 1
+        return counts
+
+    def critical_failures(self) -> dict[Failure, int]:
+        """Failures that are defects rather than scores. Must be empty."""
+        return {f: n for f, n in self.failures().items() if f.severity == "critical"}
+
+    def by_category(self) -> dict[str, tuple[int, int]]:
+        """category -> (passed, total), so weakness is locatable."""
+        totals: dict[str, tuple[int, int]] = {}
+        for case in self.cases:
+            key = case.category or "uncategorised"
+            passed, total = totals.get(key, (0, 0))
+            totals[key] = (passed + case.passed, total + case.total)
+        return dict(sorted(totals.items()))
+
     # --- storage -----------------------------------------------------------
 
     def filename(self) -> str:
         stamp = self.started_at.replace(":", "").replace("-", "").split(".")[0]
-        return f"{self.suite}__{model_slug(self.model)}__{stamp}.json"
+        # The split is in the filename as well as the body: a holdout result
+        # must be recognisable without opening it.
+        tag = "__holdout" if self.split == "holdout" else ""
+        return f"{self.suite}{tag}__{model_slug(self.model)}__{stamp}.json"
 
     def save(self, results_dir: Path) -> Path:
         results_dir.mkdir(parents=True, exist_ok=True)
@@ -170,28 +212,53 @@ def render(result: SuiteResult) -> str:
     lines = [
         f"suite  : {result.suite}",
         f"model  : {result.model}",
+        f"split  : {result.split}",
         f"run at : {result.started_at}",
         "",
-        f"  {'CASE':<28} {'PASS':<9} {'RATE':<12} ITER  TOK/S",
+        f"  {'CASE':<32} {'PASS':<9} {'RATE':<12} ITER  TOK/S",
     ]
     for case in result.cases:
         mean_iter = case.metric("iterations")
         mean_tps = case.metric("tokens_per_second")
         lines.append(
-            f"  {case.case:<28} {case.passed}/{case.total:<7} "
+            f"  {case.case:<32} {case.passed}/{case.total:<7} "
             f"{_bar(case.pass_rate)} {case.pass_rate:>5.0%}  "
             f"{(mean_iter[0] if mean_iter else 0):>4.1f}  "
             f"{(mean_tps[0] if mean_tps else 0):>5.1f}"
         )
         for name, rate in case.check_rates().items():
             if rate < 1.0:
-                lines.append(f"      {name:<26} {rate:>5.0%}")
+                lines.append(f"      {name:<30} {rate:>5.0%}")
+
+    categories = result.by_category()
+    if len(categories) > 1:
+        lines.append("")
+        lines.append("  by category:")
+        for name, (passed, total) in categories.items():
+            rate = passed / total if total else 0.0
+            lines.append(f"    {name:<28} {passed}/{total:<5} {rate:>5.0%}")
+
+    failures = result.failures()
+    if failures:
+        lines.append("")
+        lines.append("  failures by kind (most serious first):")
+        for failure, count in by_severity(failures):
+            marker = "  <-- defect" if failure.severity == "critical" else ""
+            lines.append(
+                f"    {failure.value}  {failure.label:<26} {count:>3}"
+                f"  [{failure.severity}]{marker}"
+            )
 
     lines += [
         "",
         f"  overall: {result.passed_runs}/{result.total_runs} runs passed "
         f"({result.pass_rate:.0%})",
     ]
+    if result.pass_rate == 1.0 and result.total_runs:
+        lines.append(
+            "  note: 100% means this suite has stopped measuring anything. "
+            "Write harder cases."
+        )
     return "\n".join(lines)
 
 

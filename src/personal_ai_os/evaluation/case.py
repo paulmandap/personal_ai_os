@@ -12,7 +12,7 @@ assertion that makes a suite look greener than it is.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -119,6 +119,13 @@ class Setup(BaseModel):
     goals: list[GoalSeed] = Field(default_factory=list)
 
 
+Split = Literal["train", "validation", "holdout"]
+
+#: What a plain `paios eval run` executes. Holdout is reachable only by asking
+#: for it explicitly.
+DEFAULT_SPLITS: tuple[Split, ...] = ("train", "validation")
+
+
 class EvalCase(BaseModel):
     """One objective and what must be true afterwards."""
 
@@ -129,6 +136,12 @@ class EvalCase(BaseModel):
     agent: str = ""
     objective: str
     repeat: int = Field(default=DEFAULT_REPEAT, ge=1, le=50)
+    #: What competence this measures, e.g. "grounding", "routing", "recovery".
+    #: Lets a report say *where* an agent is weak, not just how often.
+    category: str = ""
+    #: Holdout cases are excluded from ordinary runs so they stay uncontaminated
+    #: by the tuning they are meant to judge (ADR-027).
+    split: Split = "train"
     setup: Setup = Field(default_factory=Setup)
     checks: list[CheckSpec] = Field(default_factory=list)
 
@@ -183,6 +196,20 @@ class EvalSuite(BaseModel):
 
     def total_runs(self) -> int:
         return sum(c.repeat for c in self.cases)
+
+    def select(self, splits: tuple[Split, ...] = DEFAULT_SPLITS) -> list[EvalCase]:
+        """Cases in the requested splits.
+
+        Holdout is absent from the default, which is the whole mechanism: it
+        takes a deliberate act to measure against it (ADR-027).
+        """
+        return [c for c in self.cases if c.split in splits]
+
+    def split_counts(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for case in self.cases:
+            counts[case.split] = counts.get(case.split, 0) + 1
+        return counts
 
 
 def load_suite(path: Path) -> EvalSuite:

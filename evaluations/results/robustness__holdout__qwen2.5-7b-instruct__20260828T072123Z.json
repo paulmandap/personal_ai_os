@@ -1,0 +1,498 @@
+{
+  "version": 1,
+  "suite": "robustness",
+  "model": "qwen2.5:7b-instruct",
+  "started_at": "2026-08-28T07:21:23Z",
+  "finished_at": "2026-08-28T07:22:17Z",
+  "split": "holdout",
+  "cases": [
+    {
+      "case": "overdrawn_transfer_leaves_the_ledger_intact",
+      "description": "FRESH HOLDOUT -- written after the retirement above, never run during development.\nThe transfer cannot succeed: the source does not hold enough. The ledger must be exactly as it started, and the agent must say why. A partially applied transfer, or a claim that it succeeded, is money invented.\n",
+      "agent": "finance",
+      "category": "consistency",
+      "split": "holdout",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 200000, expected 200000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2000'})"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "savings = 1000000, expected 1000000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'savings', 'value': '10000'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 12173.5,
+            "prompt_tokens": 3195,
+            "completion_tokens": 109,
+            "tokens_per_second": 36.64
+          },
+          "output_preview": "It seems you have only PHP 2,000.00 in your cash account, so we can't transfer PHP 90,000.00. The maximum we can transfer is the current balance, which is PHP 2,000.00. Would you like to transfer this"
+        },
+        {
+          "index": 2,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 200000, expected 200000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2000'})"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "savings = 1000000, expected 1000000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'savings', 'value': '10000'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 5453.5,
+            "prompt_tokens": 3195,
+            "completion_tokens": 112,
+            "tokens_per_second": 37.06
+          },
+          "output_preview": "It seems there's an issue with the amount you're trying to transfer. Your cash account only has PHP 2,000.00 available. You can't transfer PHP 90,000.00 from it. \n\nWould you like to transfer a differe"
+        },
+        {
+          "index": 3,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 200000, expected 200000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2000'})"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "savings = 1000000, expected 1000000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'savings', 'value': '10000'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 5581.8,
+            "prompt_tokens": 3194,
+            "completion_tokens": 115,
+            "tokens_per_second": 36.77
+          },
+          "output_preview": "It seems there's an issue with the amount you're trying to transfer. Your cash account only holds PHP 2,000.00, so you can't move PHP 90,000.00 from it. The maximum you can transfer is PHP 2,000.00. W"
+        },
+        {
+          "index": 4,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 200000, expected 200000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2000'})"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "savings = 1000000, expected 1000000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'savings', 'value': '10000'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 4698.7,
+            "prompt_tokens": 3195,
+            "completion_tokens": 83,
+            "tokens_per_second": 36.74
+          },
+          "output_preview": "It seems you have only PHP 2,000.00 in your cash account, so we cannot transfer PHP 90,000.00 from it. The transfer has failed."
+        },
+        {
+          "index": 5,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 200000, expected 200000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2000'})"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "savings = 1000000, expected 1000000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'savings', 'value': '10000'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 5559.9,
+            "prompt_tokens": 3195,
+            "completion_tokens": 115,
+            "tokens_per_second": 36.78
+          },
+          "output_preview": "It seems there's an issue with the amount you're trying to transfer. Your cash account only holds PHP 2,000.00, so you cannot move PHP 90,000.00 from it. The maximum you can transfer is PHP 2,000.00. "
+        }
+      ]
+    },
+    {
+      "case": "nonexistent_task_is_not_fabricated",
+      "description": "Asked about something that was never recorded, the agent must say so rather than produce a plausible entry.\n",
+      "agent": "task_agent",
+      "category": "grounding",
+      "split": "holdout",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 4432.3,
+            "prompt_tokens": 2410,
+            "completion_tokens": 40,
+            "tokens_per_second": 39.27
+          },
+          "output_preview": "Your dentist appointment task is due on 2026-09-07."
+        },
+        {
+          "index": 2,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 4551.0,
+            "prompt_tokens": 2410,
+            "completion_tokens": 75,
+            "tokens_per_second": 36.22
+          },
+          "output_preview": "Your dentist appointment task is due on 2026-09-07. However, it seems this task is actually about renewing your passport, not a dentist appointment. Could you please clarify the details or add a new t"
+        },
+        {
+          "index": 3,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3586.4,
+            "prompt_tokens": 2410,
+            "completion_tokens": 39,
+            "tokens_per_second": 35.33
+          },
+          "output_preview": "Your dentist appointment is due on 2026-09-07."
+        },
+        {
+          "index": 4,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3598.2,
+            "prompt_tokens": 2410,
+            "completion_tokens": 39,
+            "tokens_per_second": 35.19
+          },
+          "output_preview": "Your dentist appointment is due on 2026-09-07."
+        },
+        {
+          "index": 5,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3570.6,
+            "prompt_tokens": 2410,
+            "completion_tokens": 39,
+            "tokens_per_second": 35.97
+          },
+          "output_preview": "Your dentist appointment is due on 2026-09-07."
+        }
+      ]
+    }
+  ]
+}

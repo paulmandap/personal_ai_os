@@ -325,7 +325,7 @@ def _eval_dirs(workspace: Path | None) -> tuple[Path, Path, Path]:
 
 
 def cmd_eval(args: argparse.Namespace) -> int:
-    from personal_ai_os.evaluation.case import load_suites
+    from personal_ai_os.evaluation.case import DEFAULT_SPLITS, load_suites
     from personal_ai_os.evaluation.report import SuiteResult, compare, render
     from personal_ai_os.evaluation.runner import EvalRunner
 
@@ -350,13 +350,15 @@ def cmd_eval(args: argparse.Namespace) -> int:
 
     if args.eval_command == "list":
         for suite in suites:
-            print(f"\n  {suite.suite}  ({len(suite.cases)} cases, "
-                  f"{suite.total_runs()} runs)")
+            counts = suite.split_counts()
+            split_note = "  ".join(f"{k}={v}" for k, v in sorted(counts.items()))
+            print(f"\n  {suite.suite}  ({len(suite.cases)} cases, {split_note})")
             if suite.description:
                 print(f"    {suite.description.strip()}")
             for case in suite.cases:
                 checks = ", ".join(c.describe() for c in case.checks)
-                print(f"      {case.name:<28} x{case.repeat}  [{checks}]")
+                tag = "" if case.split == "train" else f" [{case.split}]"
+                print(f"      {case.name:<32} x{case.repeat}{tag}  [{checks}]")
         print()
         return 0
 
@@ -367,17 +369,28 @@ def cmd_eval(args: argparse.Namespace) -> int:
         print(f"no suite named {args.suite!r}. Available: {known}", file=sys.stderr)
         return 1
 
+    splits: tuple[str, ...] = (
+        ("holdout",) if args.split == "holdout" else DEFAULT_SPLITS
+    )
     runner = EvalRunner(repo_root=root, model=args.model, repeat=args.repeat)
     failures = 0
 
     for suite in selected:
-        total = sum(args.repeat or c.repeat for c in suite.cases)
-        print(f"\nrunning {suite.suite}: {len(suite.cases)} cases, {total} runs")
+        cases = suite.select(splits)  # type: ignore[arg-type]
+        if not cases:
+            print(f"\n{suite.suite}: no cases in split {'+'.join(splits)}")
+            continue
+        total = sum(args.repeat or c.repeat for c in cases)
+        print(f"\nrunning {suite.suite}: {len(cases)} cases, {total} runs")
         if args.model:
             print(f"pinned model: {args.model}")
+        if args.split == "holdout":
+            # Deliberately noisy. Every holdout run is a measurement that
+            # should not be repeated casually (ADR-027).
+            print("*** HOLDOUT SPLIT -- do not tune against these results ***")
         print("this calls a local model repeatedly and will take a while.\n")
 
-        result = runner.run_suite(suite)
+        result = runner.run_suite(suite, splits=splits)  # type: ignore[arg-type]
         print(render(result))
 
         if not args.no_save:
@@ -496,6 +509,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     eval_run.add_argument(
         "--repeat", type=int, default=None, help="override each case's repeat count"
+    )
+    eval_run.add_argument(
+        "--split",
+        choices=["default", "holdout"],
+        default="default",
+        help="'default' runs train+validation; 'holdout' runs ONLY the holdout cases",
     )
     eval_run.add_argument("--no-save", action="store_true", help="do not write a result file")
     eval_run.set_defaults(func=cmd_eval, eval_command="run")

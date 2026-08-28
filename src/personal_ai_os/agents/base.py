@@ -61,6 +61,8 @@ class StopReason(str, Enum):
     MAX_ITERATIONS = "max_iterations"
     MODEL_ERROR = "model_error"
     AGENT_ERROR = "agent_error"
+    #: The model returned neither content nor a tool call. Not an answer.
+    EMPTY_RESPONSE = "empty_response"
 
 
 class AgentResult(BaseModel):
@@ -183,6 +185,28 @@ class BaseAgent:
             messages.append(response.message)
 
             if not response.message.tool_calls:
+                # No tool calls and nothing said is not an answer. Reporting it
+                # as success would be dishonest, and it hides a real failure:
+                # observed on qwen2.5:3b driving the Master, which returned an
+                # empty turn rather than delegating. The evaluation harness
+                # scored those runs as "answered" until this was fixed.
+                if not response.message.content.strip():
+                    log.warning(
+                        "%s returned an empty response on iteration %d",
+                        self.spec.name,
+                        iteration,
+                    )
+                    return self._result(
+                        ok=False,
+                        stop_reason=StopReason.EMPTY_RESPONSE,
+                        error=(
+                            "the model returned no content and requested no "
+                            "tools -- nothing was produced"
+                        ),
+                        iterations=iteration,
+                        tool_calls=tool_call_count,
+                        transcript=messages,
+                    )
                 return self._result(
                     ok=True,
                     stop_reason=StopReason.ANSWERED,

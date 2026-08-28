@@ -105,10 +105,16 @@ class ListAccountsTool(Tool):
         store = _finance(ctx)
         accounts = store.accounts()
         currency = accounts[0].currency if accounts else "PHP"
+        try:
+            total = format_minor(store.total_balance_minor(), currency)
+        except FinanceError as exc:
+            # Mixed currencies: report the accounts, decline the total. Better
+            # a partial answer than a confidently wrong number.
+            total = f"unavailable - {exc}"
         return AccountsOutput(
             count=len(accounts),
             accounts=accounts,
-            total=format_minor(store.total_balance_minor(), currency),
+            total=total,
             summary="\n".join(a.summary() for a in accounts) or "(no accounts)",
         )
 
@@ -307,6 +313,50 @@ class AddTransactionTool(Tool):
             )
         except FinanceError as exc:
             raise ToolExecutionError(str(exc)) from exc
+
+
+class TransferInput(ToolInput):
+    from_account: str = Field(description="Account the money leaves.")
+    to_account: str = Field(description="Account the money arrives in.")
+    amount: str = Field(description=AMOUNT_HELP + " Always positive.")
+
+    _coerce = _amount_field("amount")
+
+
+class TransferOutput(BaseModel):
+    from_account: Account
+    to_account: Account
+    summary: str
+
+
+class TransferTool(Tool):
+    name = "transfer"
+    description = (
+        "Move money between two of the user's own accounts. Both sides happen "
+        "together or neither does. ALWAYS use this for a transfer -- never "
+        "record two separate transactions, which can leave the ledger wrong if "
+        "one of them fails."
+    )
+    Input = TransferInput
+    Output = TransferOutput
+    permission = PermissionLevel.WRITE
+    timeout_s = 10.0
+
+    def describe_resource(self, args: TransferInput) -> str:  # type: ignore[override]
+        return f"{args.amount} from {args.from_account} to {args.to_account}"
+
+    def run(self, args: TransferInput, ctx: ToolContext) -> TransferOutput:  # type: ignore[override]
+        try:
+            source, target = _finance(ctx).transfer(
+                args.from_account, args.to_account, args.amount
+            )
+        except FinanceError as exc:
+            raise ToolExecutionError(str(exc)) from exc
+        return TransferOutput(
+            from_account=source,
+            to_account=target,
+            summary=f"{source.summary()}   |   {target.summary()}",
+        )
 
 
 class AddCommitmentInput(ToolInput):

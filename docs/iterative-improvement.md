@@ -47,15 +47,27 @@ Phase 4 delivered most of this.
 | Metrics | **Built** — iterations, tool calls, invalid args, tok/s |
 | Baseline reports | **Built** — committed to `evaluations/results/` |
 | Model comparison | **Built** — `paios eval compare` |
-| **Holdout set** | **Missing** — no train/validation/holdout split |
-| **Failure taxonomy** | **Missing** — no F001–F015 classification |
-| **Per-category metrics** | **Partial** — per-case and per-check, not per-category |
-| **`TeacherModel` protocol** | **Missing** |
+| **Holdout set** | **Built** — `split:` + `--split holdout` (ADR-027) |
+| **Failure taxonomy** | **Built** — F001–F015, severity-ranked |
+| **Per-category metrics** | **Built** — `category:` on cases, aggregated |
+| **`TeacherModel` protocol** | **Deferred to Phase 10** — see below |
 
-**Do these four before anything else.** They are cheap, need no new libraries,
-and the holdout split in particular must exist *before* any teacher-generated
-data does — otherwise the benchmark is contaminated from the first round and
-every later measurement is worthless.
+**Phase 9 is now essentially complete.** The holdout was created before any
+teacher-generated data existed, which is the only moment a split is
+trustworthy.
+
+### The one remaining item: `TeacherModel`
+
+Deliberately **not** built in Phase 5. It would have been a Protocol with zero
+implementations and zero callers — the speculative abstraction `CLAUDE.md`
+forbids — and there is no training system yet for it to abstract. An interface
+designed before its first use is usually wrong in ways only that first use
+reveals.
+
+**It is required as the first task of Phase 10**, where teacher critique
+becomes real and something concrete plugs into it. The shape it should take is
+recorded above. This is a deferral with a named trigger, not a decision to skip
+it.
 
 ---
 
@@ -116,53 +128,66 @@ every suite in this repository, at roughly twice the throughput.**
 
 ---
 
-## The question worth asking before any of this
+## Is there a capability gap to close? **Yes — now there is.**
 
-**Is there a capability gap to close?**
+The earlier answer to this was "no". That answer came from four saturated
+suites where both models scored 100%, and it was wrong — or rather, it was an
+artifact of benchmarks that had stopped measuring anything.
 
-Current measured state, both models:
+Harder suites broke the tie immediately:
 
 | Suite | 7B | 3B |
 |---|---|---|
-| `tool_calling` | 100% | 100% |
-| `embellishment` | 100% | 100% |
-| `hallucination` | 100% | 100% |
-| `finance` | 100% | 100% |
+| `tool_calling`, `embellishment`, `hallucination`, `finance` | 100% | 100% |
+| `robustness` | 85% | 90% |
+| `planning` | 93% | **67%** |
+| `delegation` | 100% | **33%** |
 
-Every failure this project has found so far was **architectural, not a model
-limitation**:
+**The models are not interchangeable.** On `delegation` the 3B returned an
+empty response rather than routing a money question — not a wrong answer, no
+answer. On `planning` it loses track across dependent steps.
 
-- `complete_task` demanded an id the user never gave → both models invented one
-  (ADR-022)
-- substring matching failed on a reasonable paraphrase → the agent narrated an
-  action instead of taking it
-- an optional field rejected explicit `null` → every write call failed, and the
-  agent claimed success anyway
+Two consequences:
 
-Each was fixed with structure, in minutes, and each took a suite from failing
-to 100%. **None would have been fixed by training** — and training on top of
-them would have taught the model to work around bugs while hiding them.
+**For routing.** `reason` must not move to `small`. The Master specifically
+needs the 7B. The 3B remains fine for the leaf agents it was measured on, and
+is nearly twice as fast there.
 
-So the honest prerequisite for Phase 12 is not disk space. It is a benchmark
-the local models actually fail, for reasons that are not defects in this
-repository. **The current suites are saturated** — 100% across the board is the
-textbook signal that a benchmark has stopped providing improvement signal, and
-the right response is harder and more adversarial cases, not a training run.
+**For training.** There is now a concrete, measured target: *make a 3B able to
+drive the Master*. That is exactly the kind of narrow, well-specified capability
+gap distillation is suited to — and unlike the earlier suites, there is a
+number to improve and a holdout to verify it on.
+
+### But architecture still comes first
+
+Phase 5's own findings say so. The harder suites found three defects, and all
+three were architectural:
+
+- an empty model turn counted as a successful answer
+- a transfer could half-complete and create money (ADR-029)
+- `update_task` demanded an id, like `complete_task` before it (ADR-022)
+
+Every failure this project has found so far has been a design problem, fixed in
+minutes, and **none would have been fixed by training**. Before spending 25 GB
+and several days on Phase 12, exhaust the cheaper explanation: check whether the
+3B's delegation failure is a prompt or tool-surface problem first. An empty
+response to a single-tool decision smells like one.
 
 ---
 
 ## Recommended order
 
-1. **Harder benchmarks.** Ambiguity, contradiction, multi-step planning,
-   long context, adversarial inputs. Find where the 3B actually breaks.
-2. **Holdout split + failure taxonomy** (the Phase 9 gaps).
-3. **Compare 3B against 7B on the harder suites.** If the 3B still matches,
-   the routing decision is settled and the training question changes shape.
-4. **Only then**, if a real gap exists: Phases 10–11 to build datasets, and
-   free the disk for Phase 12.
+1. ~~Harder benchmarks~~ — **done.** They found the gap.
+2. ~~Holdout split + failure taxonomy~~ — **done.**
+3. **Try structure first on the delegation gap.** A clearer Master prompt, a
+   simpler `delegate` schema, or an explicit routing hint. Measure against
+   `delegation`. This is hours of work against days.
+4. **If structure does not close it**, that is the justified start of
+   Phases 10–11: `TeacherModel`, teacher critique on failing delegation
+   transcripts, curated dataset.
+5. **Then** free the disk for Phase 12, targeting the 3B.
 
-Do not skip step 1. Training against a saturated benchmark optimises for a
-number that has stopped meaning anything.
+The order matters because step 3 is cheap and has worked every previous time.
 
 ---
 

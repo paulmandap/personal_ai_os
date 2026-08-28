@@ -25,20 +25,24 @@ and a CLI.
 
 Four agents: `master` (delegates), `task_agent`, `finance`, and `ping`.
 
-Measured, not assumed — four evaluation suites, five runs each, both models:
+Measured, not assumed — seven evaluation suites, five runs each, both models:
 
 | Suite | 7B | 3B |
 |---|---|---|
-| tool calling | 100% | 100% |
-| embellishment | 100% | 100% |
-| hallucination | 100% | 100% |
-| finance | 100% | 100% |
-| throughput | ≈40 tok/s | **≈70 tok/s** |
+| tool calling · embellishment · hallucination · finance | 100% | 100% |
+| robustness | 85% | 90% |
+| planning | 93% | **67%** |
+| delegation | 100% | **33%** |
+| throughput | ≈40 tok/s | ≈70 tok/s |
 
-The 3B matches the 7B everywhere measured, at nearly twice the speed — the kind
-of claim this project exists to be able to make. (These suites are now
-*saturated*, which means they have stopped measuring anything. Harder ones are
-the next job.)
+**The models are not interchangeable**, and finding that out took harder
+benchmarks. On the first four suites the 3B matched the 7B exactly — which
+turned out to mean those suites had stopped measuring anything, not that the
+models were equivalent. The 3B cannot drive the Master agent: on `delegation`
+it returns an empty response rather than routing.
+
+Writing those harder suites also found three real defects in a day, including a
+transfer that could half-complete and create money that never existed.
 
 ## Requirements
 

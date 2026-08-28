@@ -130,6 +130,78 @@ applied.
 Measuring only the failure you just fixed is how you trade one defect for
 another.
 
+## Splits: train, validation, holdout
+
+```yaml
+cases:
+  - name: overdrawn_transfer_leaves_the_ledger_intact
+    split: holdout
+```
+
+```powershell
+paios eval run robustness                    # train + validation
+paios eval run robustness --split holdout    # only the holdout
+```
+
+Holdout runs print a warning, and the split is recorded in the result body
+*and* the filename, so a holdout measurement can never be mistaken for an
+ordinary one.
+
+**Protection is procedural** (ADR-027). Nothing stops someone reading a holdout
+case and tuning against it; the flag stops them doing it *by accident*, and
+makes every holdout measurement identifiable afterwards.
+
+### A studied case is spent
+
+`impossible_request_is_declined` was a holdout case. It scored 0/5, was
+investigated in detail, and the investigation showed two things: its oracle was
+wrong (recording a transfer between the user's own accounts is bookkeeping, not
+a payment) **and** there was a real defect behind it — a half-completed
+transfer that created ₱5,000 (ADR-029).
+
+Having reasoned about it, it can no longer measure generalisation. It was
+retired into `train`, rewritten to assert the corrected behaviour, and a fresh
+unseen case written to replace it.
+
+The rule: **once you have studied why a holdout case failed, it is a training
+case.** Retiring it costs one case; keeping it would turn the holdout into a
+second training set while still being reported as evidence.
+
+## Failure taxonomy
+
+A pass rate says *how often*. The taxonomy says *what kind*, and those need
+different fixes — a wrong tool is a schema problem, a hallucination is a
+grounding problem, a planning failure is a loop-shape problem.
+
+```
+  failures by kind (most serious first):
+    F012  state-management failure     9  [critical]  <-- defect
+    F005  hallucination                3  [critical]  <-- defect
+    F002  wrong tool                  10  [major]
+    F013  formatting failure           2  [minor]
+```
+
+Critical failures are **defects, not scores**: hallucination, unsupported
+claims, safety violations, and wrong stored state. Any non-zero count there is
+something to fix, not a number to improve. Ordering is by severity first, then
+frequency — one critical failure outranks fifty formatting slips.
+
+Codes are stable identifiers. Never renumber one: results are committed, and a
+code that changes meaning invalidates every stored comparison.
+
+## Categories
+
+Cases declare what competence they measure, so a report can say *where* an
+agent is weak:
+
+```
+  by category:
+    clarification                3/5       60%
+    contradiction                5/5      100%
+    grounding                    5/5      100%
+    safety                       5/5      100%
+```
+
 ## Results
 
 Saved to `evaluations/results/<suite>__<model>__<timestamp>.json` and

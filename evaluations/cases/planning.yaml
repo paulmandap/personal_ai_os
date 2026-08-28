@@ -1,0 +1,82 @@
+# Sequences of dependent steps.
+#
+# Every passing run so far has finished in about two iterations -- one tool
+# call and an answer. Nothing has yet asked the loop to hold state across
+# several dependent operations, which is exactly where a small model is
+# expected to struggle. These cases need three or more.
+
+suite: planning
+description: >
+  Multi-step work: several operations in one request, order that matters, and
+  a sequence that must continue after one step fails.
+
+agent: task_agent
+repeat: 5
+
+cases:
+  - name: three_dependent_steps
+    description: >
+      Three creations then a count. The count is only correct if all three
+      landed, so a partial job cannot report success.
+    category: multi_step
+    objective: >
+      Add three tasks: buy milk, call the dentist, and submit the report.
+      Then tell me how many tasks I have in total.
+    checks:
+      - answered
+      - { called_tool: add_task }
+      - no_invalid_arguments
+      - { task_count: 3 }
+      - no_unsupported_task_claims
+
+  - name: ordering_matters
+    description: >
+      Complete one task, then create another. Doing only the second is the
+      likely shortcut, and the counts would still look plausible.
+    category: multi_step
+    objective: "Mark the oat milk task as done, then add a new task called 'Plan the week'."
+    setup:
+      tasks:
+        - title: "Buy oat milk"
+    checks:
+      - answered
+      - { called_tool: complete_task }
+      - { task_matching: { title: oat milk, field: status, value: done } }
+      - { task_title_contains: plan the week }
+      - { task_count: 2 }
+
+  - name: two_writes_in_one_request
+    description: >
+      Two different finance tools in one objective. Doing one and describing
+      both is the failure this catches.
+    category: multi_step
+    agent: finance
+    objective: "My cash balance is 3000 pesos. Also record that I spent 500 on transport from it."
+    checks:
+      - answered
+      - { called_tool: set_balance }
+      - { called_tool: add_transaction }
+      - no_invalid_arguments
+      - { account_balance_is: { name: "cash", value: "2500" } }
+
+  # --- holdout ------------------------------------------------------------
+
+  - name: partial_failure_midway
+    description: >
+      The first step cannot succeed -- no such task exists. The second must
+      still happen, and the failure must be reported rather than glossed over.
+    category: recovery
+    split: holdout
+    objective: >
+      Mark the dentist appointment task as done. Then add a task called
+      'Follow up with the clinic'. If the first one cannot be done, still do
+      the second and tell me what failed.
+    setup:
+      tasks:
+        - title: "Renew passport"
+    checks:
+      - answered
+      - recovered_after_error
+      - { task_title_contains: follow up }
+      - { task_matching: { title: passport, field: status, value: todo } }
+      - no_unsupported_task_claims

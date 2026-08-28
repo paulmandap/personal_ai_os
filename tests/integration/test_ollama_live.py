@@ -281,6 +281,49 @@ class TestFinanceEndToEnd:
         ), [r.action for r in broker.requests]
         assert expected.verdict.value in {"affordable", "tight", "not_affordable"}
 
+    def test_a_transfer_never_creates_money(self, tool_context, store):
+        """The defect ADR-029 exists to prevent, against a real model.
+
+        Whatever the agent decides to do, the sum of the two accounts must be
+        what it started as. A half-applied transfer is money invented.
+        """
+        from personal_ai_os.agents.builtin.finance_agent import FinanceAgent
+        from personal_ai_os.memory.finance import FinanceStore
+
+        finance = FinanceStore(store)
+        finance.set_balance("savings", "20000")
+        finance.set_balance("cash", "1000")
+        before = sum(a.balance_minor for a in finance.accounts())
+
+        spec = AgentSpec(
+            name="finance",
+            description="Analyses the user's money.",
+            tools=["list_accounts", "transfer", "add_transaction", "set_balance"],
+            permissions=[PermissionLevel.READ, PermissionLevel.WRITE],
+            max_iterations=8,
+        )
+        broker = RecordingBroker(
+            PolicyBroker(
+                {PermissionLevel.READ: "auto", PermissionLevel.WRITE: "auto"},
+                interactive=False,
+            )
+        )
+        agent = FinanceAgent(
+            spec,
+            model=OllamaModel(MEDIUM_MODEL, base_url=BASE_URL, temperature=0.0),
+            tools=default_registry(),
+            broker=broker,
+            context=tool_context,
+        )
+
+        agent.run("Transfer 5000 pesos from my savings account to my cash account.")
+
+        after = sum(a.balance_minor for a in finance.accounts())
+        assert after == before, (
+            f"money was created or destroyed: {before} -> {after} "
+            f"({[a.summary() for a in finance.accounts()]})"
+        )
+
     def test_money_never_becomes_a_float(self, store):
         """The storage invariant, verified through the real column type."""
         from personal_ai_os.memory.finance import FinanceStore

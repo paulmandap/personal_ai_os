@@ -133,7 +133,25 @@ class ListTasksTool(Tool):
 
 
 class UpdateTaskInput(ToolInput):
-    id: int = Field(description="The task's numeric id, from list_tasks.")
+    """Identify the task by `find` or by `id` -- exactly one.
+
+    The selector is called `find`, not `title`, because `title` already means
+    *the new title* on this tool. Naming both the same would make
+    `update_task(title=...)` ambiguous in a way a model would resolve wrongly
+    about half the time.
+    """
+
+    find: str | None = Field(
+        default=None,
+        description=(
+            "Words from the existing task's title, e.g. 'oat milk'. Prefer "
+            "this - use it whenever the user names the task rather than a number."
+        ),
+    )
+    id: int | None = Field(
+        default=None,
+        description="The task's numeric id. Only use an id you saw in list_tasks output.",
+    )
     title: str | None = Field(default=None, description="New title.")
     notes: str | None = Field(default=None, description="New notes.")
     status: TaskStatus | None = Field(
@@ -148,12 +166,22 @@ class UpdateTaskInput(ToolInput):
 
     _check_due = field_validator("due_date")(lambda v: validate_iso_date(v))
 
+    @model_validator(mode="after")
+    def _exactly_one_selector(self) -> UpdateTaskInput:
+        if (self.find is None) == (self.id is None):
+            raise ValueError(
+                "give exactly one of 'find' or 'id' to choose the task -- "
+                "'find' is usually what you want"
+            )
+        return self
+
 
 class UpdateTaskTool(Tool):
     name = "update_task"
     description = (
-        "Change an existing task. Only the fields you provide are modified. "
-        "To mark a task finished, prefer complete_task."
+        "Change an existing task. Identify it with `find` (words from its "
+        "title) unless you already know its id. Only the fields you provide "
+        "are modified. To mark a task finished, prefer complete_task."
     )
     Input = UpdateTaskInput
     Output = Task
@@ -161,12 +189,33 @@ class UpdateTaskTool(Tool):
     timeout_s = 10.0
 
     def describe_resource(self, args: UpdateTaskInput) -> str:  # type: ignore[override]
-        return f"task #{args.id}"
+        return f"task #{args.id}" if args.id is not None else f'"{args.find}"'
 
     def run(self, args: UpdateTaskInput, ctx: ToolContext) -> Task:  # type: ignore[override]
+        tasks = _tasks(ctx)
+        task_id = args.id
+
+        if task_id is None:
+            # Same resolution as complete_task: requiring an id the user never
+            # gave is what pushes a model into inventing one (ADR-022).
+            matches = tasks.find_by_title(str(args.find))
+            if not matches:
+                open_titles = [t.title for t in tasks.list(limit=20)]
+                raise ToolExecutionError(
+                    f"no open task matches {args.find!r}. Open tasks: "
+                    f"{open_titles or 'none'}"
+                )
+            if len(matches) > 1:
+                raise ToolExecutionError(
+                    f"{len(matches)} open tasks match {args.find!r}: "
+                    f"{[t.title for t in matches]}. Use a more specific phrase, "
+                    f"or an id from list_tasks."
+                )
+            task_id = matches[0].id
+
         try:
-            return _tasks(ctx).update(
-                args.id,
+            return tasks.update(
+                int(task_id),
                 title=args.title,
                 notes=args.notes,
                 status=args.status,
@@ -174,7 +223,10 @@ class UpdateTaskTool(Tool):
                 due_date=args.due_date,
             )
         except TaskNotFoundError as exc:
-            raise ToolExecutionError(f"{exc}. Use list_tasks to see valid ids.") from exc
+            raise ToolExecutionError(
+                f"{exc}. Use `find` with words from the title instead, or "
+                f"list_tasks to see valid ids."
+            ) from exc
 
 
 # --- complete --------------------------------------------------------------

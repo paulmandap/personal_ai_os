@@ -172,6 +172,68 @@ class TestCompleteByTitle:
             call(UpdateTaskTool(), {"id": 999, "title": "x"}, tool_context)
 
 
+class TestUpdateByFind:
+    """`update_task` carried the same flaw ADR-022 fixed in complete_task.
+
+    The selector is `find`, not `title`, because `title` already means the
+    *new* title on this tool -- naming both the same would make
+    `update_task(title=...)` ambiguous.
+    """
+
+    def test_updates_the_task_named(self, tool_context, tasks: TaskStore):
+        tasks.add("Renew passport")
+        tasks.add("Buy oat milk")
+        result = call(
+            UpdateTaskTool(), {"find": "oat milk", "priority": "high"}, tool_context
+        )
+        assert result.title == "Buy oat milk"
+        assert result.priority is TaskPriority.HIGH
+
+    def test_find_and_title_are_different_things(self, tool_context, tasks: TaskStore):
+        """Select by `find`, rename via `title`."""
+        tasks.add("Buy oat milk")
+        result = call(
+            UpdateTaskTool(),
+            {"find": "oat milk", "title": "Buy almond milk"},
+            tool_context,
+        )
+        assert result.title == "Buy almond milk"
+
+    def test_a_paraphrase_resolves(self, tool_context, tasks: TaskStore):
+        tasks.add("Renew passport")
+        result = call(
+            UpdateTaskTool(), {"find": "renewing my passport", "notes": "urgent"},
+            tool_context,
+        )
+        assert result.title == "Renew passport"
+
+    def test_ambiguity_is_refused(self, tool_context, tasks: TaskStore):
+        tasks.add("Buy oat milk")
+        tasks.add("Buy oat milk again")
+        with pytest.raises(ToolExecutionError, match="2 open tasks match"):
+            call(UpdateTaskTool(), {"find": "oat milk", "notes": "x"}, tool_context)
+
+    def test_no_match_lists_the_open_tasks(self, tool_context, tasks: TaskStore):
+        tasks.add("Renew passport")
+        with pytest.raises(ToolExecutionError, match="Renew passport"):
+            call(UpdateTaskTool(), {"find": "dentist", "notes": "x"}, tool_context)
+
+    def test_an_id_still_works(self, tool_context, tasks: TaskStore):
+        task = tasks.add("Renew passport")
+        result = call(
+            UpdateTaskTool(), {"id": task.id, "notes": "by id"}, tool_context
+        )
+        assert result.notes == "by id"
+
+    def test_neither_selector_is_a_validation_error(self, tool_context):
+        with pytest.raises(ToolInputError, match="exactly one"):
+            UpdateTaskTool().validate_input({"notes": "x"})
+
+    def test_both_selectors_is_a_validation_error(self, tool_context):
+        with pytest.raises(ToolInputError, match="exactly one"):
+            UpdateTaskTool().validate_input({"id": 1, "find": "x", "notes": "y"})
+
+
 class TestMissingStore:
     def test_tools_report_clearly_when_no_database_was_provided(self, settings):
         """A tool handed no capability explains itself instead of crashing."""

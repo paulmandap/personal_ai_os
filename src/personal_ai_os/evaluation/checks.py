@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 from personal_ai_os.agents.base import AgentResult, StopReason
 from personal_ai_os.core.types import Role
+from personal_ai_os.evaluation.taxonomy import Failure
 from personal_ai_os.memory.store import Store
 from personal_ai_os.memory.tasks import TaskStore, significant_words
 from personal_ai_os.observability.trace import Events, TraceEvent
@@ -75,6 +76,9 @@ class CheckOutcome(BaseModel):
     name: str
     passed: bool
     detail: str = ""
+    #: What kind of failure this would be. Set from the registry, so a report
+    #: can say "31 missing-tool, 18 hallucination" rather than only "55%".
+    failure: Failure | None = None
     #: Name plus parameters, e.g. ``task_matching({'title': 'oat milk', ...})``.
     #: Set by the runner. A case can use the same check twice with different
     #: parameters, and without this they collapse into one indistinguishable
@@ -88,13 +92,22 @@ class CheckOutcome(BaseModel):
 
 CheckFn = Callable[[RunContext, dict[str, Any]], CheckOutcome]
 
+
+@dataclass(frozen=True)
+class RegisteredCheck:
+    fn: CheckFn
+    #: The kind of failure this check detects, so results can be grouped by
+    #: cause rather than only counted.
+    failure: Failure
+
+
 #: name -> implementation. Populated by the @check decorator below.
-CHECKS: dict[str, CheckFn] = {}
+CHECKS: dict[str, RegisteredCheck] = {}
 
 
-def check(name: str) -> Callable[[CheckFn], CheckFn]:
+def check(name: str, failure: Failure) -> Callable[[CheckFn], CheckFn]:
     def register(fn: CheckFn) -> CheckFn:
-        CHECKS[name] = fn
+        CHECKS[name] = RegisteredCheck(fn=fn, failure=failure)
         return fn
 
     return register
@@ -108,20 +121,27 @@ def known_checks() -> list[str]:
     return sorted(CHECKS)
 
 
+def failure_for(name: str) -> Failure | None:
+    entry = CHECKS.get(name)
+    return entry.failure if entry else None
+
+
 def run_check(name: str, ctx: RunContext, params: dict[str, Any]) -> CheckOutcome:
-    fn = CHECKS.get(name)
-    if fn is None:
+    entry = CHECKS.get(name)
+    if entry is None:
         return _outcome(name, False, f"unknown check {name!r}")
     try:
-        return fn(ctx, params)
+        outcome = entry.fn(ctx, params)
     except Exception as exc:  # a broken check must not abort a whole suite
-        return _outcome(name, False, f"check raised {type(exc).__name__}: {exc}")
+        outcome = _outcome(name, False, f"check raised {type(exc).__name__}: {exc}")
+    outcome.failure = entry.failure
+    return outcome
 
 
 # --- result-level checks ---------------------------------------------------
 
 
-@check("answered")
+@check("answered", Failure.INCOMPLETE_ANSWER)
 def _answered(ctx: RunContext, _p: dict[str, Any]) -> CheckOutcome:
     ok = ctx.result.ok and ctx.result.stop_reason is StopReason.ANSWERED
     return _outcome(
@@ -129,7 +149,7 @@ def _answered(ctx: RunContext, _p: dict[str, Any]) -> CheckOutcome:
     )
 
 
-@check("max_iterations_under")
+@check("max_iterations_under", Failure.PLANNING_FAILURE)
 def _max_iterations_under(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     limit = int(p["value"])
     used = ctx.result.iterations
@@ -138,14 +158,14 @@ def _max_iterations_under(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     )
 
 
-@check("output_contains")
+@check("output_contains", Failure.INCOMPLETE_ANSWER)
 def _output_contains(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     needle = str(p["value"]).lower()
     found = needle in ctx.result.output.lower()
     return _outcome("output_contains", found, f"looking for {needle!r}")
 
 
-@check("output_not_contains")
+@check("output_not_contains", Failure.INSTRUCTION_VIOLATION)
 def _output_not_contains(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     needle = str(p["value"]).lower()
     found = needle in ctx.result.output.lower()
@@ -155,21 +175,21 @@ def _output_not_contains(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
 # --- trace-level checks ----------------------------------------------------
 
 
-@check("called_tool")
+@check("called_tool", Failure.MISSING_TOOL)
 def _called_tool(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     wanted = str(p["value"])
     called = ctx.tools_requested()
     return _outcome("called_tool", wanted in called, f"called {called}")
 
 
-@check("did_not_call_tool")
+@check("did_not_call_tool", Failure.WRONG_TOOL)
 def _did_not_call_tool(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     unwanted = str(p["value"])
     called = ctx.tools_requested()
     return _outcome("did_not_call_tool", unwanted not in called, f"called {called}")
 
 
-@check("first_tool_is")
+@check("first_tool_is", Failure.WRONG_TOOL_ORDER)
 def _first_tool_is(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     wanted = str(p["value"])
     called = ctx.tools_requested()
@@ -179,13 +199,13 @@ def _first_tool_is(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     )
 
 
-@check("no_invalid_arguments")
+@check("no_invalid_arguments", Failure.FORMATTING)
 def _no_invalid_arguments(ctx: RunContext, _p: dict[str, Any]) -> CheckOutcome:
     n = ctx.invalid_argument_count()
     return _outcome("no_invalid_arguments", n == 0, f"{n} rejected call(s)")
 
 
-@check("no_permission_denials")
+@check("no_permission_denials", Failure.UNNECESSARY_ESCALATION)
 def _no_permission_denials(ctx: RunContext, _p: dict[str, Any]) -> CheckOutcome:
     denials = ctx.permission_denials()
     return _outcome(
@@ -196,7 +216,7 @@ def _no_permission_denials(ctx: RunContext, _p: dict[str, Any]) -> CheckOutcome:
     )
 
 
-@check("recovered_after_error")
+@check("recovered_after_error", Failure.PLANNING_FAILURE)
 def _recovered_after_error(ctx: RunContext, _p: dict[str, Any]) -> CheckOutcome:
     """Did tool failures derail the run?
 
@@ -217,7 +237,7 @@ def _recovered_after_error(ctx: RunContext, _p: dict[str, Any]) -> CheckOutcome:
     )
 
 
-@check("delegated_to")
+@check("delegated_to", Failure.WRONG_TOOL)
 def _delegated_to(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     wanted = str(p["value"])
     children = [
@@ -232,7 +252,7 @@ def _delegated_to(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
 # not what the model *said* it did, but what actually landed in the database.
 
 
-@check("task_count")
+@check("task_count", Failure.STATE_MANAGEMENT)
 def _task_count(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     tasks = ctx.tasks()
     if tasks is None:
@@ -252,7 +272,7 @@ def _only_task(ctx: RunContext, name: str) -> tuple[Any, CheckOutcome | None]:
     return found[0], None
 
 
-@check("task_field_absent")
+@check("task_field_absent", Failure.STATE_MANAGEMENT)
 def _task_field_absent(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     """The created task must NOT have this field set.
 
@@ -271,7 +291,7 @@ def _task_field_absent(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     )
 
 
-@check("task_field_is")
+@check("task_field_is", Failure.STATE_MANAGEMENT)
 def _task_field_is(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     field_name = str(p["field"])
     expected = p["value"]
@@ -287,7 +307,7 @@ def _task_field_is(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     )
 
 
-@check("task_matching")
+@check("task_matching", Failure.STATE_MANAGEMENT)
 def _task_matching(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     """Find the task whose title contains `title`, assert one of its fields.
 
@@ -385,7 +405,7 @@ def _content_words(text: str) -> set[str]:
     return significant_words(text) - _META_WORDS
 
 
-@check("no_unsupported_task_claims")
+@check("no_unsupported_task_claims", Failure.HALLUCINATION)
 def _no_unsupported_task_claims(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     """Did the agent describe a task that does not exist?
 
@@ -433,26 +453,62 @@ def _no_unsupported_task_claims(ctx: RunContext, p: dict[str, Any]) -> CheckOutc
     )
 
 
-#: A monetary figure in prose: 5000, 1,234.56, 20000.00
+#: Any number in prose: 5000, 1,234.56, 20000.00
 _NUMBER = re.compile(r"(?<![\w.])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?![\w])")
 
-#: Below this, a number is far more likely to be a count, an id, a day of the
-#: month or a list index than an amount of money. Ignoring them keeps the
-#: check from crying wolf, at the cost of missing small invented figures.
-_MONEY_FLOOR = Decimal(1000)
+#: A number that is *presented as money*: preceded or followed by a currency
+#: marker, or written with decimals or thousands separators.
+#:
+#: This replaced a flat "ignore anything under 1000" floor, which let a small
+#: invented figure -- 450 for a grocery bill -- pass unnoticed. Context is a
+#: sharper signal than magnitude: "450 pesos" is money, "450" beside a task
+#: count is not.
+_CURRENCY = r"(?:₱|PHP|USD|\$|pesos?|dollars?)"
+_MONEY_IN_CONTEXT = re.compile(
+    rf"(?:{_CURRENCY}\s*(\d[\d,]*(?:\.\d+)?)|(\d[\d,]*(?:\.\d+)?)\s*{_CURRENCY})",
+    re.IGNORECASE,
+)
+#: Written like money even without a marker: 1,234.56 or 20000.00
+_MONEY_BY_FORM = re.compile(r"(?<![\w.])(\d{1,3}(?:,\d{3})+(?:\.\d{2})?|\d+\.\d{2})(?![\w])")
+
+
+def _to_decimal(raw: str) -> Decimal | None:
+    try:
+        return Decimal(raw.replace(",", ""))
+    except (InvalidOperation, AttributeError):
+        return None
 
 
 def _numbers_in(text: str) -> set[Decimal]:
+    """Every number, for building the grounded set."""
     found: set[Decimal] = set()
     for raw in _NUMBER.findall(text or ""):
-        try:
-            found.add(Decimal(raw.replace(",", "")))
-        except InvalidOperation:
-            continue
+        value = _to_decimal(raw)
+        if value is not None:
+            found.add(value)
     return found
 
 
-@check("no_unsupported_amounts")
+def monetary_figures(text: str) -> set[Decimal]:
+    """Numbers the text presents *as money*, for judging the answer.
+
+    Deliberately narrower than :func:`_numbers_in`: a bare integer beside a
+    task count should not be treated as an invented amount.
+    """
+    found: set[Decimal] = set()
+    for match in _MONEY_IN_CONTEXT.finditer(text or ""):
+        raw = match.group(1) or match.group(2)
+        value = _to_decimal(raw)
+        if value is not None:
+            found.add(value)
+    for raw in _MONEY_BY_FORM.findall(text or ""):
+        value = _to_decimal(raw)
+        if value is not None:
+            found.add(value)
+    return found
+
+
+@check("no_unsupported_amounts", Failure.UNSUPPORTED_CLAIM)
 def _no_unsupported_amounts(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     """Did the agent state a monetary figure no tool returned?
 
@@ -464,12 +520,22 @@ def _no_unsupported_amounts(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     Grounding accepts both minor and major units, because tools return
     ``total_balance_minor: 2000000`` and the agent quite properly renders that
     as ``20,000.00``.
-    """
-    floor = Decimal(str(p.get("floor", _MONEY_FLOOR)))
 
+    Only figures the output presents *as money* are judged -- a bare integer
+    next to a task count is not an amount. That is a sharper filter than the
+    magnitude floor it replaced, which let an invented ``450`` slip through.
+    """
     grounded: set[Decimal] = set()
     for event in ctx.of_type(Events.TOOL_RESULT):
-        payload = str(event.data.get("result") or event.data.get("result_preview") or "")
+        # Failed calls ground figures too. A tool that refuses and explains --
+        # "cash holds only PHP 2,000.00" -- has supplied a real number, and the
+        # agent repeating it is being accurate, not inventive. Reading only
+        # successful payloads flagged exactly that behaviour as a critical
+        # defect on a holdout case (see ADR-025's standing warning).
+        payload = " ".join(
+            str(event.data.get(key) or "")
+            for key in ("result", "result_preview", "error")
+        )
         for value in _numbers_in(payload):
             grounded.add(value)
             grounded.add(value / 100)  # minor units rendered as major
@@ -479,8 +545,8 @@ def _no_unsupported_amounts(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
 
     invented = sorted(
         value
-        for value in _numbers_in(ctx.result.output)
-        if value >= floor and value not in grounded
+        for value in monetary_figures(ctx.result.output)
+        if value not in grounded
     )
 
     return _outcome(
@@ -492,7 +558,7 @@ def _no_unsupported_amounts(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     )
 
 
-@check("account_balance_is")
+@check("account_balance_is", Failure.STATE_MANAGEMENT)
 def _account_balance_is(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     """Assert a stored balance, in major units, from the database."""
     if ctx.store is None:
@@ -512,7 +578,7 @@ def _account_balance_is(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     )
 
 
-@check("task_title_contains")
+@check("task_title_contains", Failure.STATE_MANAGEMENT)
 def _task_title_contains(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     needle = str(p["value"]).lower()
     tasks = ctx.tasks()

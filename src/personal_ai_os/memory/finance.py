@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field, field_validator
 from personal_ai_os.core.errors import PersonalAIOSError
 from personal_ai_os.core.ids import utc_iso
 from personal_ai_os.memory.store import Store
-from personal_ai_os.memory.tasks import validate_iso_date
+from personal_ai_os.memory.tasks import significant_words, validate_iso_date
 
 MINOR_UNITS = 100  # centavos per peso; same for cents per dollar
 
@@ -221,18 +221,122 @@ class FinanceStore:
         return self.account(name)
 
     def account(self, name: str) -> Account:
+        """Resolve an account by name, tolerating how a person refers to it.
+
+        Exact match first, then token coverage -- so "BPI savings" finds the
+        account recorded as "savings". Same reasoning as ADR-022: requiring an
+        exact identifier the user never supplied is what makes a model invent
+        one, and here inventing one corrupted a ledger.
+
+        Ambiguity is refused rather than resolved by guessing. With money,
+        picking the wrong account silently is the worst available outcome.
+        """
         row = self._store.query_one("SELECT * FROM accounts WHERE name = ?", (name,))
-        if row is None:
-            known = [a.name for a in self.accounts()]
-            raise FinanceError(f"no account named {name!r}. Known accounts: {known}")
-        return Account(**dict(row))
+        if row is not None:
+            return Account(**dict(row))
+
+        candidates = self.accounts()
+        terms = significant_words(name)
+        if terms:
+            scored = [
+                (len(terms & significant_words(a.name)) / len(terms), a)
+                for a in candidates
+            ]
+            best = max((score for score, _ in scored), default=0.0)
+            if best >= 0.5:
+                matches = [a for score, a in scored if score == best]
+                if len(matches) == 1:
+                    return matches[0]
+                raise FinanceError(
+                    f"{name!r} matches more than one account "
+                    f"({[a.name for a in matches]}). Say which one."
+                )
+
+        raise FinanceError(
+            f"no account named {name!r}. Known accounts: "
+            f"{[a.name for a in candidates]}"
+        )
+
+    def transfer(
+        self, from_account: str, to_account: str, amount: str | int | Decimal
+    ) -> tuple[Account, Account]:
+        """Move money between two accounts, **atomically**.
+
+        Both legs or neither. Observed without this: asked to transfer, the
+        agent issued two separate `add_transaction` calls; the debit failed on
+        a mistyped account name, the credit succeeded, and the ledger gained
+        5,000 pesos that never existed.
+
+        A transfer is inherently atomic, so it belongs in one operation rather
+        than being assembled from two by a model that cannot roll back.
+        """
+        source = self.account(from_account)
+        target = self.account(to_account)
+        if source.id == target.id:
+            raise FinanceError(
+                f"cannot transfer from {source.name!r} to itself"
+            )
+        if source.currency != target.currency:
+            raise FinanceError(
+                f"cannot transfer between {source.currency} and {target.currency} "
+                f"accounts: this system has no exchange rate"
+            )
+
+        minor = to_minor(amount)
+        if minor <= 0:
+            raise FinanceError("transfer amount must be positive")
+        if source.balance_minor < minor:
+            raise FinanceError(
+                f"{source.name} holds only "
+                f"{format_minor(source.balance_minor, source.currency)}; "
+                f"cannot move {format_minor(minor, source.currency)}"
+            )
+
+        now = utc_iso()
+        note = f"transfer {source.name} -> {target.name}"
+        with self._store.write() as conn:
+            for account, delta in ((source, -minor), (target, minor)):
+                conn.execute(
+                    "INSERT INTO transactions (account_id, occurred_on, "
+                    "amount_minor, category, description, created_at) "
+                    "VALUES (?, ?, ?, 'transfer', ?, ?)",
+                    (account.id, date.today().isoformat(), delta, note, now),
+                )
+                conn.execute(
+                    "UPDATE accounts SET balance_minor = balance_minor + ?, "
+                    "updated_at = ? WHERE id = ?",
+                    (delta, now, account.id),
+                )
+
+        return self.account(source.name), self.account(target.name)
 
     def accounts(self) -> list[Account]:
         rows = self._store.query("SELECT * FROM accounts ORDER BY name")
         return [Account(**dict(r)) for r in rows]
 
+    def currencies(self) -> set[str]:
+        return {a.currency for a in self.accounts()}
+
     def total_balance_minor(self) -> int:
-        return sum(a.balance_minor for a in self.accounts())
+        """Sum every account -- and refuse if they are not the same currency.
+
+        Adding PHP to USD as though they were the same number is silently,
+        confidently wrong, which is the one failure mode this whole module is
+        built to avoid. There is no exchange rate here and no way to get one
+        offline, so the honest answer is to decline.
+
+        Being unable to answer is a recoverable tool error the agent can
+        explain. Being wrong about someone's money is not recoverable.
+        """
+        accounts = self.accounts()
+        found = {a.currency for a in accounts}
+        if len(found) > 1:
+            raise FinanceError(
+                f"accounts are in more than one currency ({', '.join(sorted(found))}); "
+                f"this system cannot convert between them, so a combined total "
+                f"would be meaningless. Ask about one currency at a time."
+            )
+        return sum(a.balance_minor for a in accounts)
 
     # --- transactions ------------------------------------------------------
 

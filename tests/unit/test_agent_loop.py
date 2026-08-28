@@ -306,6 +306,31 @@ class TestPermissionGate:
         assert len(prompts) == 1
 
 
+class TestEmptyResponse:
+    """An empty turn is not an answer.
+
+    Found by the delegation suite: qwen2.5:3b driving the Master returned no
+    content and no tool call, and the harness scored it `answered` -- a run
+    that produced literally nothing counted as a success.
+    """
+
+    def test_empty_content_with_no_tool_calls_is_a_failure(self, tool_context):
+        agent = make_agent([text_response("")], context=tool_context)
+        result = agent.run("do something")
+        assert not result.ok
+        assert result.stop_reason is StopReason.EMPTY_RESPONSE
+        assert "nothing was produced" in (result.error or "")
+
+    def test_whitespace_only_is_also_empty(self, tool_context):
+        agent = make_agent([text_response("   \n  ")], context=tool_context)
+        assert agent.run("go").stop_reason is StopReason.EMPTY_RESPONSE
+
+    def test_a_real_answer_is_unaffected(self, tool_context):
+        agent = make_agent([text_response("42")], context=tool_context)
+        result = agent.run("what is the answer?")
+        assert result.ok and result.stop_reason is StopReason.ANSWERED
+
+
 class TestFatalFailures:
     def test_model_unavailable_ends_the_run(self, tool_context):
         """The model cannot be told that the model is down."""

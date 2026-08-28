@@ -1,0 +1,289 @@
+{
+  "version": 1,
+  "suite": "planning",
+  "model": "qwen2.5:7b-instruct",
+  "started_at": "2026-08-28T04:09:14Z",
+  "finished_at": "2026-08-28T04:09:56Z",
+  "split": "holdout",
+  "cases": [
+    {
+      "case": "partial_failure_midway",
+      "description": "The first step cannot succeed -- no such task exists. The second must still happen, and the failure must be reported rather than glossed over.\n",
+      "agent": "task_agent",
+      "category": "recovery",
+      "split": "holdout",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "recovered_after_error",
+              "passed": true,
+              "detail": "1 tool error(s), recovered",
+              "failure": "F011",
+              "label": "recovered_after_error"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['Renew passport', 'Follow up with the clinic']",
+              "failure": "F012",
+              "label": "task_title_contains=follow up"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'passport'.status='todo', expected 'todo'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'passport', 'field': 'status', 'value': 'todo'})"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 5542.7,
+            "prompt_tokens": 2486,
+            "completion_tokens": 113,
+            "tokens_per_second": 40.93
+          },
+          "output_preview": "I was unable to find a task related to the dentist appointment. I have added a new task titled \"Follow up with the clinic\" instead. Here is the task details:\n\n- Follow up with the clinic\n  - Priority:"
+        },
+        {
+          "index": 2,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "recovered_after_error",
+              "passed": true,
+              "detail": "1 tool error(s), recovered",
+              "failure": "F011",
+              "label": "recovered_after_error"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['Renew passport', 'Follow up with the clinic']",
+              "failure": "F012",
+              "label": "task_title_contains=follow up"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'passport'.status='todo', expected 'todo'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'passport', 'field': 'status', 'value': 'todo'})"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 4771.4,
+            "prompt_tokens": 2486,
+            "completion_tokens": 89,
+            "tokens_per_second": 40.41
+          },
+          "output_preview": "I was unable to find a task related to the dentist appointment. However, I have added the task \"Follow up with the clinic\" to your list. It is set to be done with a normal priority."
+        },
+        {
+          "index": 3,
+          "passed": false,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "recovered_after_error",
+              "passed": true,
+              "detail": "1 tool error(s), recovered",
+              "failure": "F011",
+              "label": "recovered_after_error"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['Renew passport', 'Follow up with the clinic']",
+              "failure": "F012",
+              "label": "task_title_contains=follow up"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'passport'.status='todo', expected 'todo'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'passport', 'field': 'status', 'value': 'todo'})"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": false,
+              "detail": "invented: ['2026-08-28T04:09:28.904Z', '2026-08-28T04:08:53.467Z']",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 10287.8,
+            "prompt_tokens": 2486,
+            "completion_tokens": 319,
+            "tokens_per_second": 41.15
+          },
+          "output_preview": "I was unable to find a task related to the dentist appointment. I have added the task \"Follow up with the clinic\" for you. Here are your current tasks:\n\n```json\n[\n    {\n        \"id\": 2,\n        \"title"
+        },
+        {
+          "index": 4,
+          "passed": false,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "recovered_after_error",
+              "passed": true,
+              "detail": "1 tool error(s), recovered",
+              "failure": "F011",
+              "label": "recovered_after_error"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['Renew passport', 'Follow up with the clinic']",
+              "failure": "F012",
+              "label": "task_title_contains=follow up"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'passport'.status='todo', expected 'todo'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'passport', 'field': 'status', 'value': 'todo'})"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": false,
+              "detail": "invented: ['2026-08-28T04:09:39.255Z', '2026-08-28T04:09:15.123Z']",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 10309.5,
+            "prompt_tokens": 2486,
+            "completion_tokens": 319,
+            "tokens_per_second": 41.05
+          },
+          "output_preview": "I was unable to find a task related to the dentist appointment. I have added the task \"Follow up with the clinic\" for you. Here are your current tasks:\n\n```json\n[\n    {\n        \"id\": 2,\n        \"title"
+        },
+        {
+          "index": 5,
+          "passed": false,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "recovered_after_error",
+              "passed": true,
+              "detail": "1 tool error(s), recovered",
+              "failure": "F011",
+              "label": "recovered_after_error"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['Renew passport', 'Follow up with the clinic']",
+              "failure": "F012",
+              "label": "task_title_contains=follow up"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'passport'.status='todo', expected 'todo'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'passport', 'field': 'status', 'value': 'todo'})"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": false,
+              "detail": "invented: ['2026-08-28T04:09:49.528Z', '2026-08-28T04:09:19.528Z']",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 10285.9,
+            "prompt_tokens": 2486,
+            "completion_tokens": 321,
+            "tokens_per_second": 41.44
+          },
+          "output_preview": "I was unable to find a task related to the dentist appointment. However, I have successfully added a new task titled \"Follow up with the clinic\". Here are your current tasks:\n\n```json\n[\n    {\n        "
+        }
+      ]
+    }
+  ]
+}

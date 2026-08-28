@@ -10,10 +10,13 @@ import pytest
 
 from personal_ai_os.agents.base import AgentResult, StopReason
 from personal_ai_os.core.types import Message
+from decimal import Decimal
+
 from personal_ai_os.evaluation.checks import (
     RunContext,
     claimed_items,
     known_checks,
+    monetary_figures,
     run_check,
 )
 from personal_ai_os.memory.tasks import TaskStatus, TaskStore
@@ -360,6 +363,91 @@ class TestGroundednessFalsePositives:
         got = outcome("no_unsupported_task_claims", c)
         assert not got.passed
         assert "Call the dentist" in got.detail
+
+
+class TestMonetaryFigures:
+    """Judging money by context, not magnitude.
+
+    The first version ignored anything under 1000 to avoid flagging counts and
+    day-of-month values, which let an invented 450 for a grocery bill through.
+    Context is the sharper filter.
+    """
+
+    def test_a_currency_marker_makes_it_money(self):
+        assert Decimal(450) in monetary_figures("I recorded 450 pesos for groceries")
+        assert Decimal(450) in monetary_figures("that is PHP 450")
+        assert Decimal(5000) in monetary_figures("₱5,000 remains")
+
+    def test_decimals_and_separators_make_it_money(self):
+        assert Decimal("1234.56") in monetary_figures("your balance is 1,234.56")
+        assert Decimal("20000.00") in monetary_figures("total 20000.00")
+
+    def test_a_bare_count_is_not_money(self):
+        """'3 tasks' must not read as three pesos."""
+        assert monetary_figures("You have 3 tasks and 2 are overdue") == set()
+
+    def test_a_day_of_month_is_not_money(self):
+        assert monetary_figures("rent is due on the 28th") == set()
+
+    def test_an_iso_date_is_not_money(self):
+        assert monetary_figures("due on 2026-09-07") == set()
+
+    def test_small_invented_amounts_are_now_caught(self, store, tasks):
+        """The gap the magnitude floor left open."""
+        res = result(output="I recorded 450 pesos of spending on groceries.")
+        res.transcript = [Message.user("What did I spend?")]
+        got = outcome("no_unsupported_amounts", ctx(res=res, store=store))
+        assert not got.passed
+        assert "450" in got.detail
+
+    def test_a_figure_the_user_supplied_is_grounded(self, store):
+        res = result(output="Recorded 450 pesos for groceries.")
+        res.transcript = [Message.user("I spent 450 pesos on groceries")]
+        assert outcome("no_unsupported_amounts", ctx(res=res, store=store)).passed
+
+    def test_a_figure_from_a_refusal_message_is_grounded(self, store):
+        """Verbatim false positive from a holdout run.
+
+        The agent refused an overdrawn transfer and quoted the real balance
+        back from the tool's own error message. Grounding only on successful
+        payloads scored that -- correct, careful behaviour -- as a critical
+        unsupported claim.
+        """
+        res = result(
+            output=(
+                "It seems you have only PHP 2,000.00 in your cash account, so "
+                "we can't transfer PHP 90,000.00."
+            )
+        )
+        res.transcript = [Message.user("Move 90000 pesos from cash to savings.")]
+        events = [
+            event(
+                Events.TOOL_RESULT,
+                tool="transfer",
+                ok=False,
+                error="cash holds only PHP 2,000.00; cannot move PHP 90,000.00",
+            )
+        ]
+        got = outcome(
+            "no_unsupported_amounts", ctx(res=res, events=events, store=store)
+        )
+        assert got.passed, got.detail
+
+    def test_minor_units_from_a_tool_ground_the_major_rendering(self, store):
+        """Tools return 2000000; the agent properly says 20,000.00."""
+        res = result(output="Your total balance is PHP 20,000.00")
+        res.transcript = [Message.user("how much do I have?")]
+        events = [
+            event(
+                Events.TOOL_RESULT,
+                tool="list_accounts",
+                ok=True,
+                result='{"total_balance_minor": 2000000}',
+            )
+        ]
+        assert outcome(
+            "no_unsupported_amounts", ctx(res=res, events=events, store=store)
+        ).passed
 
 
 class TestStoreChecks:

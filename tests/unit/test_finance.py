@@ -177,6 +177,109 @@ class TestGoalReserve:
         assert finance.goal_reserved_minor(today=date(2026, 8, 1)) == 500_000
 
 
+class TestAccountResolution:
+    """Requiring an exact account name is what made a model invent one.
+
+    Observed: asked to transfer from "my savings account", the agent used
+    "BPI savings" -- which did not exist -- and the failed leg left the ledger
+    inconsistent. Same lesson as ADR-022, with money at stake.
+    """
+
+    def test_exact_name_wins(self, finance: FinanceStore):
+        finance.set_balance("savings", "100")
+        finance.set_balance("BPI savings", "200")
+        assert finance.account("savings").balance_minor == 10_000
+
+    def test_a_qualified_name_finds_the_account(self, finance: FinanceStore):
+        finance.set_balance("savings", "20000")
+        finance.set_balance("cash", "1000")
+        assert finance.account("BPI savings").name == "savings"
+
+    def test_ambiguity_is_refused_not_guessed(self, finance: FinanceStore):
+        finance.set_balance("BPI savings", "100")
+        finance.set_balance("BDO savings", "200")
+        with pytest.raises(FinanceError, match="more than one account"):
+            finance.account("my savings")
+
+    def test_no_match_lists_what_exists(self, finance: FinanceStore):
+        finance.set_balance("cash", "100")
+        with pytest.raises(FinanceError, match="cash"):
+            finance.account("brokerage")
+
+
+class TestTransferIsAtomic:
+    """ADR-029. The defect this exists to prevent created money."""
+
+    @pytest.fixture
+    def two_accounts(self, finance: FinanceStore) -> FinanceStore:
+        finance.set_balance("savings", "20000")
+        finance.set_balance("cash", "1000")
+        return finance
+
+    def test_both_legs_move(self, two_accounts: FinanceStore):
+        source, target = two_accounts.transfer("savings", "cash", "5000")
+        assert source.balance_minor == 1_500_000
+        assert target.balance_minor == 600_000
+
+    def test_the_total_is_unchanged(self, two_accounts: FinanceStore):
+        before = two_accounts.total_balance_minor()
+        two_accounts.transfer("savings", "cash", "5000")
+        assert two_accounts.total_balance_minor() == before
+
+    def test_both_legs_are_recorded_as_transactions(self, two_accounts: FinanceStore):
+        two_accounts.transfer("savings", "cash", "5000")
+        moves = [t for t in two_accounts.transactions() if t.category == "transfer"]
+        assert len(moves) == 2
+        assert sum(t.amount_minor for t in moves) == 0
+
+    def test_insufficient_funds_changes_nothing(self, two_accounts: FinanceStore):
+        """The failure mode that motivated the tool: no half-applied transfer."""
+        with pytest.raises(FinanceError, match="holds only"):
+            two_accounts.transfer("cash", "savings", "90000")
+        assert two_accounts.account("cash").balance_minor == 100_000
+        assert two_accounts.account("savings").balance_minor == 2_000_000
+        assert two_accounts.transactions() == []
+
+    def test_an_unknown_account_changes_nothing(self, two_accounts: FinanceStore):
+        with pytest.raises(FinanceError):
+            two_accounts.transfer("brokerage", "cash", "100")
+        assert two_accounts.account("cash").balance_minor == 100_000
+
+    def test_transfer_to_itself_is_refused(self, two_accounts: FinanceStore):
+        with pytest.raises(FinanceError, match="itself"):
+            two_accounts.transfer("cash", "cash", "100")
+
+    def test_cross_currency_is_refused(self, finance: FinanceStore):
+        finance.set_balance("peso", "1000", currency="PHP")
+        finance.set_balance("dollar", "1000", currency="USD")
+        with pytest.raises(FinanceError, match="exchange rate"):
+            finance.transfer("peso", "dollar", "100")
+
+    def test_a_non_positive_amount_is_refused(self, two_accounts: FinanceStore):
+        with pytest.raises(FinanceError, match="positive"):
+            two_accounts.transfer("savings", "cash", "0")
+
+
+class TestMixedCurrency:
+    def test_a_combined_total_is_refused(self, finance: FinanceStore):
+        """Adding PHP to USD is silently, confidently wrong."""
+        finance.set_balance("peso", "1000", currency="PHP")
+        finance.set_balance("dollar", "100", currency="USD")
+        with pytest.raises(FinanceError, match="more than one currency"):
+            finance.total_balance_minor()
+
+    def test_the_error_names_both_currencies(self, finance: FinanceStore):
+        finance.set_balance("peso", "1000", currency="PHP")
+        finance.set_balance("dollar", "100", currency="USD")
+        with pytest.raises(FinanceError, match="PHP.*USD"):
+            finance.total_balance_minor()
+
+    def test_a_single_currency_still_totals(self, finance: FinanceStore):
+        finance.set_balance("a", "1000")
+        finance.set_balance("b", "500")
+        assert finance.total_balance_minor() == 150_000
+
+
 class TestAffordability:
     """ADR-024: this arithmetic never happens in a language model."""
 

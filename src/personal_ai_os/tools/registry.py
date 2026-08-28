@@ -89,6 +89,7 @@ def default_registry() -> ToolRegistry:
         ListGoalsTool,
         ListTransactionsTool,
         SetBalanceTool,
+        TransferTool,
     )
     from personal_ai_os.tools.builtin.list_dir import ListDirTool
     from personal_ai_os.tools.builtin.read_file import ReadFileTool
@@ -115,6 +116,7 @@ def default_registry() -> ToolRegistry:
             AffordabilityCheckTool(),
             SetBalanceTool(),
             AddTransactionTool(),
+            TransferTool(),
             AddCommitmentTool(),
             AddGoalTool(),
             DelegateTool(),

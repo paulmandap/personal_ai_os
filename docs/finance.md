@@ -68,6 +68,45 @@ the answer must trace back to a tool result or to the user's own words.
 
 ---
 
+## 3. If two writes must both happen, they are one tool
+
+`transfer` moves money between accounts in a single database transaction —
+both legs or neither (ADR-029).
+
+This exists because of a measured failure. Asked to move ₱5,000 between
+accounts, the agent issued two separate `add_transaction` calls. The debit
+failed (it guessed the account name "BPI savings" where the record said
+"savings"); the credit succeeded. **The ledger gained ₱5,000 that never
+existed.**
+
+A model cannot roll back. Any operation that must be all-or-nothing has to be a
+single tool call, because inside the tool is the only place a partial failure
+can be undone. No prompt makes the second call succeed.
+
+A failed transfer changes nothing: insufficient funds, an unknown account, a
+same-account move, or mismatched currencies all refuse before anything is
+written.
+
+### Account names resolve the way people say them
+
+`account("BPI savings")` finds the account recorded as `savings` — exact match
+first, then token coverage, with **ambiguity refused rather than guessed**.
+
+Same lesson as ADR-022: requiring an exact identifier the user never supplied
+is what makes a model invent one, and here inventing one corrupted a ledger.
+With money, silently picking the wrong account is the worst available outcome,
+so two plausible matches produce an error naming both.
+
+## Currencies: refuse rather than guess
+
+`total_balance_minor()` raises if accounts hold different currencies, naming
+them. There is no exchange rate here and no way to fetch one offline, so adding
+PHP to USD would be silently, confidently wrong — the exact failure this module
+exists to prevent.
+
+`list_accounts` still reports every balance and marks only the total
+unavailable. A partial answer beats a wrong number.
+
 ## Schema
 
 ```sql
@@ -127,7 +166,11 @@ those prompts routine.
 | Tool | Level |
 |---|---|
 | `list_accounts`, `list_transactions`, `list_commitments`, `list_goals`, `affordability_check` | `read` |
-| `set_balance`, `add_transaction`, `add_commitment`, `add_goal` | `write` |
+| `set_balance`, `add_transaction`, `transfer`, `add_commitment`, `add_goal` | `write` |
+
+`transfer` moves money between the user's *own* accounts. It is still `write`,
+not `spend_money`: nothing leaves the user's control, and the total is
+unchanged.
 
 ---
 
@@ -178,6 +221,6 @@ finance — and it also lifted the task agent's `tool_calling` score from 90% to
   and it is not a licensed adviser.
 - **No bank import.** Manual entry only. Bank CSV formats vary wildly, and
   column-guessing is its own source of silently wrong balances.
-- **No multi-currency arithmetic.** Accounts carry a currency code, but
-  balances are summed as if one currency. Fine for one country; wrong the day
-  it is not.
+- **No currency conversion.** Accounts carry a currency code, and a mixed
+  total is *refused* rather than computed — see above. Conversion needs a rate
+  this system has no offline way to obtain.

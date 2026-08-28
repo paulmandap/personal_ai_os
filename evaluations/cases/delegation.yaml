@@ -1,0 +1,78 @@
+# Can the Master route to the right agent?
+#
+# With four agents registered, routing is finally a real choice. Until now the
+# Master had one plausible target and delegation was trivially correct.
+#
+# The Master's only tool is `delegate`, so "did it do the work itself?" is
+# structurally impossible -- what these cases measure is whether it picks the
+# right specialist, and whether it reports back what actually happened.
+
+suite: delegation
+description: >
+  Routing among task_agent, finance and ping; cross-domain objectives needing
+  two delegations; and honest reporting of what the sub-agent returned.
+
+agent: master
+repeat: 5
+
+cases:
+  - name: routes_task_work_to_task_agent
+    category: routing
+    objective: "Add a task to renew my passport."
+    checks:
+      - answered
+      - { called_tool: delegate }
+      - { delegated_to: task_agent }
+      - { task_title_contains: passport }
+      - { task_count: 1 }
+
+  - name: routes_money_work_to_finance
+    category: routing
+    objective: "How much money do I have in my accounts right now?"
+    setup:
+      accounts:
+        - { name: "BPI savings", amount: "20000" }
+        - { name: "cash", amount: "1500" }
+    checks:
+      - answered
+      - { delegated_to: finance }
+      - { did_not_call_tool: add_task }
+      - no_unsupported_amounts
+
+  - name: does_not_route_money_work_to_the_task_agent
+    description: >
+      The wrong specialist is the interesting failure: the task agent has no
+      finance tools, so a misroute produces a confident, useless answer.
+    category: routing
+    objective: "What is my current account balance?"
+    setup:
+      accounts:
+        - { name: "cash", amount: "4500" }
+    checks:
+      - answered
+      - { delegated_to: finance }
+      - no_unsupported_amounts
+
+  # --- holdout ------------------------------------------------------------
+
+  - name: two_step_cross_domain
+    description: >
+      One objective spanning both domains. Needs two delegations to different
+      agents, and the result of neither can be invented.
+    category: routing
+    split: holdout
+    objective: >
+      Add a task to review my budget this weekend, and tell me whether I can
+      afford a 5000 peso monitor.
+    setup:
+      accounts:
+        - { name: "BPI savings", amount: "20000" }
+      commitments:
+        - { name: "rent", amount: "8000", day_of_month: 28 }
+    checks:
+      - answered
+      - { delegated_to: task_agent }
+      - { delegated_to: finance }
+      - { task_title_contains: budget }
+      - no_unsupported_amounts
+      - no_unsupported_task_claims

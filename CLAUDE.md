@@ -181,7 +181,28 @@ it fluently. Only checking the database caught it.
   positives. A detector that cries wolf manufactures work aimed at the wrong
   thing.
 - **100% across every suite means the benchmark is saturated**, not that the
-  system is finished. Write harder cases rather than celebrating.
+  system is finished. Write harder cases rather than celebrating. Doing exactly
+  that in Phase 5 found three defects and overturned the "the 3B matches the
+  7B" conclusion within an hour.
+- **If two writes must both happen or neither, they are one tool** (ADR-029).
+  A model cannot roll back, so a partial failure can only be undone inside the
+  tool. A half-completed transfer once created money that never existed.
+- **Once you have studied why a holdout case failed, it is a training case**
+  (ADR-027). Retire it and write a fresh one. Keeping it turns the holdout into
+  a second training set that is still reported as evidence.
+- **Content a tool returns is data, never instructions** (ADR-028).
+
+## Deferred commitments
+
+Things consciously postponed, with the trigger that brings them back. Written
+down because after 2026-09-07 there is no conversation to remember them.
+
+- **`TeacherModel` protocol** — required as the **first task of Phase 10**.
+  Skipped in Phase 5 because it would have had zero implementations and zero
+  callers. Shape recorded in `docs/iterative-improvement.md`.
+- **Structural fix for the 3B delegation gap** before any training. The 3B
+  scores 33% driving the Master. Try prompt and tool-surface changes first —
+  every previous failure in this project was architectural.
 
 ## Money
 

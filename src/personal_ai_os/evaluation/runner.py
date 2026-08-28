@@ -23,7 +23,7 @@ from personal_ai_os.agents.base import AgentResult, StopReason
 from personal_ai_os.config.loader import load_settings
 from personal_ai_os.config.schema import Settings
 from personal_ai_os.core.errors import PersonalAIOSError
-from personal_ai_os.evaluation.case import EvalCase, EvalSuite
+from personal_ai_os.evaluation.case import DEFAULT_SPLITS, EvalCase, EvalSuite, Split
 from personal_ai_os.evaluation.checks import RunContext, run_check
 from personal_ai_os.evaluation.report import (
     CaseResult,
@@ -220,17 +220,23 @@ class EvalRunner:
             case=case.name,
             description=case.description,
             agent=case.agent,
+            category=case.category,
+            split=case.split,
             runs=runs,
         )
 
-    def run_suite(self, suite: EvalSuite) -> SuiteResult:
+    def run_suite(
+        self, suite: EvalSuite, *, splits: tuple[Split, ...] = DEFAULT_SPLITS
+    ) -> SuiteResult:
         started = utc_stamp()
-        cases = [self.run_case(c) for c in suite.cases]
+        selected = suite.select(splits)
+        cases = [self.run_case(c) for c in selected]
         return SuiteResult(
             suite=suite.suite,
             model=self.model or self._resolved_model_label(),
             started_at=started,
             finished_at=utc_stamp(),
+            split="+".join(splits),
             cases=cases,
         )
 
