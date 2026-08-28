@@ -264,3 +264,151 @@ wide enough to keep the secrets.
 segment (e.g. `mysecretishere`) would slip through. Acceptable: redaction is a
 safety net against accidental logging, not a substitute for not putting
 credentials in trace payloads.
+
+---
+
+## ADR-012 — A sub-agent is a tool; the Master reuses the agent loop
+
+**Date:** 2026-08-27 · **Status:** accepted · **Phase:** 2
+
+**Context.** §7 describes a Master Agent that decomposes objectives, selects
+agents, passes context, inspects results and recovers from failure. That reads
+like a specification for a second orchestration engine.
+
+**Options.**
+1. A dedicated orchestrator: plan → execute → verify, with its own loop
+2. Expose each sub-agent to the Master as a tool, reusing `BaseAgent`
+
+**Decision.** Option 2. `agents/master.yaml` declares exactly one tool,
+`delegate`, and `MasterAgent` is an ordinary `BaseAgent`.
+
+**Reason.** Everything a Master needs already existed and was tested: the
+permission gate, trace events, argument validation, and — most importantly —
+failure-as-observation recovery (ADR-008). A failed sub-agent returns
+`ok: false` and becomes an observation the Master can act on, through the exact
+mechanism that let the 7B recover from its own `max_bytes` mistake in Phase 1.
+Option 1 would have duplicated all of it to gain an explicit plan that nothing
+yet reads.
+
+There is a second effect worth naming: giving the Master *only* `delegate`
+makes §7's *"prefer delegation when a specialised agent exists"* structural. It
+cannot read a file or touch a task directly, so the discipline does not depend
+on a prompt staying disciplined.
+
+**Revisit when.** Phase 4 resumability needs a *persisted, inspectable* plan —
+"which steps are done, which remain" cannot be reconstructed from an implicit
+sequence of tool calls. That is the trigger for building the planner, not
+before.
+
+**Consequences.** Delegation depth, not a prompt, must bound recursion
+(ADR-014). Sub-agents share the parent's trace, which required stamping every
+event with its agent and depth (ADR-016).
+
+---
+
+## ADR-013 — One generic `delegate` tool, not one tool per agent
+
+**Date:** 2026-08-27 · **Status:** accepted · **Phase:** 2
+
+**Context.** `delegate_task_agent`, `delegate_finance`, … would be easier for a
+small model: picking a tool is more reliable than picking a tool *and* a string
+argument that must match an enum.
+
+**Problem.** It cannot be built without breaking a dependency. `AgentRegistry`
+validates each manifest's tools against `ToolRegistry`, so tools *derived from*
+agents would have to exist before agents load — while being generated from
+them. Resolving it needs a two-pass load, which makes both registries more
+complicated to gain a schema nicety.
+
+**Decision.** A single `delegate(agent, objective)` tool, registered in
+`default_registry()` like anything else.
+
+**Reason.** No cycle. The cost — the model must supply a valid agent name — is
+paid on the path Phase 1 proved works: an unknown name raises through
+`AgentNotFoundError`, which already carries the list of registered agents, and
+arrives at the model as a recoverable `ERROR:` observation naming the valid
+options.
+
+The tool is stateless; the *capability* to actually run a sub-agent arrives
+per-run on `ToolContext.delegate`, injected by `Runtime` — the only component
+that knows how to build an agent. So `ToolRegistry` never needs to know
+`AgentRegistry` exists.
+
+---
+
+## ADR-014 — `delegate` is `read`-level; gates belong where consequences are
+
+**Date:** 2026-08-27 · **Status:** accepted · **Phase:** 2
+
+**Context.** Delegation spawns an agent that may do consequential things. The
+obvious instinct is to gate it.
+
+**Decision.** `DelegateTool.permission = READ`. Delegation is not prompted.
+
+**Reason.** Delegating is not itself consequential — it computes. Everything
+consequential the sub-agent does is gated by that agent's own tools, at the
+point where the consequence actually happens. A prompt on delegation would ask
+the user to approve something that protects nothing, and prompts that protect
+nothing are how people learn to click through prompts without reading them. The
+value of the `ask` path depends on it being rare and meaningful.
+
+What bounds runaway delegation is therefore mechanical, not human:
+`max_delegation_depth` (default 2), a call-stack cycle check that refuses
+`master → a → master`, and the calling agent's own `max_iterations`.
+
+**Consequences.** A Master can spawn sub-agents without asking, each costing
+local inference. Bounded, but not free. If delegation ever reaches something
+external, that tool carries its own level and its own prompt — which is exactly
+the point.
+
+---
+
+## ADR-015 — SQLite for structured memory; vectors still deferred
+
+**Date:** 2026-08-27 · **Status:** accepted · **Phase:** 2
+
+**Decision.** One SQLite file at `paths.db_path`, versioned schema, pydantic
+models at the boundary. No ORM, no vector store.
+
+**Reason.** The volume one person generates is orders of magnitude below where
+SQLite strains, and it is a single file that survives a crash, is transactional,
+and can be inspected with any SQL client — which matters for a system meant to
+be debuggable by a future local agent.
+
+Vectors remain deferred on the test stated in `docs/memory.md`: an agent fails a
+task because it could not *find* a fact it had stored. Until that happens,
+semantic search is infrastructure without a problem — and an embedding model
+would compete for the same 8 GB of VRAM the reasoning model needs, which is a
+real cost paid for a hypothetical benefit.
+
+**Consequences.** `check_same_thread=False` plus an `RLock`, because
+`Tool.execute` runs tools in a worker thread. The lock is not guarding against
+the sync core doing two things at once — it does not — but against the one case
+where concurrency can occur: a tool that exceeded its timeout still running
+after the caller moved on.
+
+---
+
+## ADR-016 — Every trace event carries its agent and depth
+
+**Date:** 2026-08-27 · **Status:** accepted · **Phase:** 2
+
+**Context.** Sub-agents share their parent's `RunTrace`, so one file holds a
+whole nested run.
+
+**Problem, found by reading a real trace.** Only the `delegate.*` events
+carried `depth`, because only `Runtime` set it. The sub-agent's own eight model
+and tool events rendered at the parent's indentation — so a nested run read as
+one flat sequence, and there was no way to tell which agent made which call.
+The nesting was recorded but not legible.
+
+**Decision.** `BaseAgent._trace()` stamps `agent` and `depth` on every event it
+emits. `paios trace` indents by depth.
+
+**Reason.** Attribution is the whole value of tracing a multi-agent run. "Which
+agent called this tool?" must be answerable from the file, without
+reconstructing the call structure by hand.
+
+**Alternative rejected:** one trace file per sub-agent, linked by run id. It
+keeps each file simple but makes the interesting question — what happened, in
+order, across the whole run — require joining files by hand.

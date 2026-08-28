@@ -129,3 +129,118 @@ result = agent.run("What does the README say?")
 Deterministic, millisecond-fast, no GPU. Live-model behaviour belongs in
 `tests/integration/`, where it is measured rather than asserted — see
 `evaluation.md`.
+
+---
+
+# Delegation and the Master Agent
+
+## A sub-agent is a tool
+
+The Master has no orchestration engine. It is an ordinary `BaseAgent` whose
+manifest declares exactly one tool:
+
+```yaml
+name: master
+tools:
+  - delegate
+permissions:
+  - read
+```
+
+That single line does the work of a second engine. Delegation inherits the
+permission gate, the trace events, argument validation and
+failure-as-observation recovery — none of it rewritten (ADR-012).
+
+It also makes delegation *discipline* structural rather than aspirational: the
+Master cannot read a file or touch a task, so "prefer delegation when a
+specialised agent exists" holds without a prompt having to stay disciplined
+about it.
+
+## The flow
+
+```
+master (depth 0)
+  └─ delegate(agent="task_agent", objective="Add a task to renew my passport")
+       ├─ permission gate  (read -> auto)
+       ├─ depth guard      (0 < 2, ok)
+       ├─ cycle guard      ("task_agent" not in ("master",), ok)
+       └─ task_agent (depth 1)
+            ├─ list_tasks   -> gate -> result
+            ├─ add_task     -> gate -> result
+            └─ answers
+       └─ DelegateOutput{ok, output, iterations, tool_calls} back as an observation
+master decides what to do next
+```
+
+## Guards
+
+Runaway delegation is bounded mechanically, not by prompting:
+
+| Guard | Mechanism |
+|---|---|
+| Recursion | `max_delegation_depth` (default 2) |
+| Cycles | `call_stack` refuses `master → a → master`, and self-delegation |
+| Breadth | The caller's own `max_iterations` |
+
+The depth and call stack live on `ToolContext` and are injected by `Runtime` in
+a closure, so a tool cannot fabricate a shallower depth to escape them — it only
+chooses *which* agent to call.
+
+**Delegation is `read`-level and is not prompted** (ADR-014). Delegating
+computes; it is not itself consequential. Everything consequential the
+sub-agent does is gated by its own tools, where the consequence actually
+happens. A prompt here would protect nothing, and prompts that protect nothing
+teach people to click through prompts.
+
+## Adding a delegatable agent
+
+Drop a manifest in `agents/`. Nothing else — the Master's roster is built at
+runtime from the registry, so a new agent becomes routable without editing the
+Master, its manifest, or any code.
+
+Write the `description` carefully. It is what the Master reads when choosing,
+so it should say *when to use this agent*, not just what it is:
+
+```yaml
+description: >
+  Creates, updates, completes and reports on the user's tasks. Use this for
+  anything about what the user has to do, deadlines, or things to remember.
+```
+
+## Writing an objective
+
+The sub-agent cannot see the Master's conversation. `DelegateInput.objective`
+says so in its schema description, because the most common delegation failure
+is a one-word objective that assumes shared context.
+
+## Nested traces
+
+A sub-agent shares its parent's `RunTrace`, so one file holds the whole nested
+run. Every event carries `agent` and `depth` (ADR-016), and `paios trace`
+indents by depth:
+
+```
+    5  tool.requested
+    6  permission.decision
+    7    delegate.start
+    9    model.request          <- task_agent's own work
+   13    tool.result
+   16    delegate.end
+   17  tool.result              <- back in master
+```
+
+## Testing delegation
+
+Pass a `delegate` callable directly on `ToolContext` — no runtime needed:
+
+```python
+context=ToolContext(
+    agent="master",
+    delegate=lambda agent, objective: sub_result(output="task added"),
+    agent_roster={"task_agent": "Manages tasks."},
+    call_stack=("master",),
+)
+```
+
+`tests/unit/test_delegate.py` covers the guards, including that a refused
+delegation never invokes the runner.

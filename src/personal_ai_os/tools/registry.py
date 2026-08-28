@@ -72,8 +72,31 @@ def default_registry() -> ToolRegistry:
 
     Imported lazily so that importing the registry module does not drag in
     every tool implementation.
+
+    ``delegate`` is registered here like any other tool. It is stateless -- the
+    ability to actually run a sub-agent arrives per-run on ``ToolContext`` --
+    which is what keeps the tool registry from needing to know about the agent
+    registry, and avoids the circular dependency that per-agent delegation
+    tools would create (ADR-013).
     """
     from personal_ai_os.tools.builtin.list_dir import ListDirTool
     from personal_ai_os.tools.builtin.read_file import ReadFileTool
+    from personal_ai_os.tools.builtin.tasks import (
+        AddTaskTool,
+        CompleteTaskTool,
+        ListTasksTool,
+        UpdateTaskTool,
+    )
+    from personal_ai_os.tools.delegate import DelegateTool
 
-    return ToolRegistry([ReadFileTool(), ListDirTool()])
+    return ToolRegistry(
+        [
+            ReadFileTool(),
+            ListDirTool(),
+            AddTaskTool(),
+            ListTasksTool(),
+            UpdateTaskTool(),
+            CompleteTaskTool(),
+            DelegateTool(),
+        ]
+    )

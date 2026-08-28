@@ -1,0 +1,33 @@
+# The orchestrator.
+#
+# `tools: [delegate]` and nothing else is the whole design. The Master cannot
+# read a file or touch a task directly, so "prefer delegation when a
+# specialised agent exists" is enforced by what it can reach rather than by
+# hoping a prompt stays disciplined.
+#
+# It needs no `write` permission: everything consequential happens inside the
+# sub-agent it calls, gated there by that agent's own tools.
+
+name: master
+description: >
+  Understands an objective, decides which specialised agent should handle it,
+  delegates the work, and reports what actually happened.
+
+version: 0.1.0
+
+entrypoint: personal_ai_os.agents.builtin.master:MasterAgent
+
+model:
+  role: reason
+
+tools:
+  - delegate
+
+permissions:
+  - read
+
+# Higher than a leaf agent: each delegation costs an iteration, and a
+# multi-step request needs several plus a turn to summarise.
+max_iterations: 8
+timeout_s: 900
+requires_human_approval: false

@@ -11,108 +11,99 @@
 
 ## Current Phase
 
-**Phase 1 — Foundation. Complete.**
+**Phase 2 — Master Agent, Task Agent, Memory. Complete.**
 
-Next: Phase 2 — Master Agent, Task Agent, memory layer.
+Next: Phase 3 — Finance and Research agents, or Phase 4 reliability work. See
+Next Steps for the recommendation.
 
 ---
 
 ## Current Objective
 
-Phase 1's goal was **not features**. It was to establish contracts that a local
-model can keep building on after Claude Code access ends on **2026-09-07**.
+Phase 1 built contracts. Phase 2 made them a system: a Master that delegates, a
+Task Agent that does real work, and persistence so that work survives the
+process.
 
-Concretely: make it true that `pytest` passes with Ollama stopped and the
-network unplugged, while `paios run ping` produces a real answer from a local
-model that called a real, permission-gated tool. Both hold.
+Two questions the phase was really testing, and their answers:
+
+1. **Does the registry abstraction hold?** *Yes.* Two new, independently
+   motivated agents were added with **zero changes to `agents/registry.py`**.
+   Pinned by `tests/unit/test_agent_registry.py::TestShippedManifests`.
+2. **Can delegation reuse the agent loop?** *Yes.* The Master is a `BaseAgent`
+   with one tool. No second orchestration engine was written (ADR-012).
 
 ---
 
 ## Completed
 
-### Foundation
-- `src/` layout, PEP 621 `pyproject.toml`, venv, editable install, `paios` CLI
-- **Three runtime dependencies:** `pydantic`, `httpx`, `pyyaml`
-- Git repository initialised. **No commits made** — Paul commits.
+### Phase 2
 
-### Core contracts (`core/`)
-- Provider-neutral types: `Message`, `ToolCall`, `ModelResponse`, `ToolSchema`,
-  `Usage`, `ModelHealth`
-- `AgentModel` ABC — `generate()` + `health()`, synchronous (ADR-002)
-- Typed error hierarchy separating recoverable from fatal failures
+**Persistence (`memory/`)**
+- `Store` — SQLite, versioned append-only migrations, WAL, guarded write
+  transactions, `RLock` + `check_same_thread=False` for the tool worker thread
+- `TaskStore` + `Task` — typed CRUD; ordering done in SQL so `limit` returns the
+  *most important* rows, not an arbitrary page
+- Shared `validate_iso_date` used by both the model and the tool schemas
 
-### Models (`models/`)
-- `OllamaModel` — direct HTTP via httpx, wire format **verified empirically**
-  against Ollama 0.33.0 before anything depended on it (ADR-010)
-- `ScriptedModel` — the second `AgentModel` implementation; makes the entire
-  agent loop testable with no GPU and no network
-- `ModelRegistry` — lazy, cached, config-driven
-- `ModelRouter` — deterministic; precedence model → role → complexity →
-  default; degrades **down** the local ladder only (ADR-009)
+**Task tools** — `add_task`, `list_tasks`, `update_task`, `complete_task`.
+First tools at `write` level, so the first real exercise of the `ask` path.
 
-### Tools (`tools/`)
-- `Tool` base: pydantic input model → advertised JSON Schema (cannot drift)
-- Filesystem jail `resolve_within_roots()` — Windows-safe case folding,
-  separator-aware prefix matching, resolves `..` and symlinks before checking
-- `read_file`, `list_dir`
-- Timeout guard, with its limitation documented honestly (bounds the wait, not
-  the thread)
+**Delegation**
+- `DelegateTool` — one generic `delegate(agent, objective)` (ADR-013)
+- Guards: depth limit, call-stack cycle check, missing-capability handling
+- `ToolContext` extended with `store`, `delegate`, `agent_roster`, `depth`,
+  `call_stack`, `max_delegation_depth`
+- `Runtime.run_sub_agent` + closure injection so a tool cannot fake its depth
 
-### Permissions (`permissions/`)
-- Seven levels, `read` → `destructive`, with config policy `auto|ask|deny`
-- `PolicyBroker`, `CLIPermissionBroker`, plus test doubles
-- Unconfigured level → **deny**; `requires_human_approval` overrides `auto`;
-  non-interactive sessions **refuse** rather than self-approve
-- Single enforcement point in the agent loop (ADR-006)
+**Agents** — `master` (tool: `delegate` only) and `task_agent`.
 
-### Agents (`agents/`)
-- `AgentSpec` YAML manifests
-- `AgentRegistry` — directory discovery, lazy entrypoint resolution, and two
-  load-time refusals: unregistered tool, and undeclared permission
-- `BaseAgent` loop; recoverable failures fed back as observations (ADR-008)
-- `PingAgent` + `agents/ping_agent.yaml` — the vertical slice
+**CLI** — `paios tasks [list|add|done]`; `paios trace` indents by depth;
+`paios doctor` reports the database and schema version.
 
-### Observability (`observability/`)
-- JSONL run traces, append-and-flush per event (survives a crash)
-- Fixed event vocabulary; doubles as Phase 8 trajectory substrate (ADR-005)
-- Segment-based secret redaction (ADR-011)
+### Phase 1 (unchanged)
 
-### CLI
-`paios doctor | models | agents | run | trace`
-
-### Documentation
-`README.md`, `CLAUDE.md`, this file, and nine `docs/*.md` including 11 ADRs.
+Model abstraction + Ollama provider · deterministic router · agent registry ·
+typed tools + filesystem jail · permission gate · JSONL traces · CLI · docs.
 
 ---
 
 ## In Progress
 
-Nothing. Phase 1 is closed.
+Nothing. Phase 2 is closed.
 
 ---
 
 ## Known Problems
 
-1. **`large` tier is unmapped.** A 14B at Q4 (~9 GB) exceeds this machine's
-   8 GB VRAM and would spill to CPU at ~5–10 tok/s. The router degrades past
-   it. Mapping it is a one-line config edit if that trade is ever worth making.
+1. **`write: ask` prompts on every task mutation.** Correct as a default, and
+   genuinely annoying in daily use. `write: auto` in `config/local.yaml` is a
+   defensible override *because the filesystem jail already bounds where writes
+   can land* — the jail, not the prompt, is what makes it safe. Shipped default
+   stays `ask`.
 
-2. **Tool timeouts bound the wait, not the thread.** Python cannot kill a
-   thread; a runaway tool keeps running in the background until the process
-   exits. Documented in `docs/tools.md`. Tools touching slow resources should
-   carry their own internal timeouts.
+2. **The 7B embellishes stored data.** Observed live: asked to add a task, it
+   invented `priority: high` and a due date nobody mentioned. The Task Agent
+   prompt now forbids this explicitly, but it is a *prompt* fix, not a
+   structural one — it should be measured, not assumed fixed. First real
+   candidate for the Phase 4 evaluation suite.
 
-3. **Model swapping can crash Ollama's runner.** Switching between the 3B and
-   7B under load produced `wsarecv: connection forcibly closed`. The
-   integration suite evicts models explicitly (`fresh_vram` fixture). Any new
-   test using a different model size must do the same.
+3. **The Master's plan is implicit.** It decides one delegation at a time, so
+   there is nothing to inspect before execution and nothing to resume from.
+   This is the documented revisit trigger for ADR-012 and blocks §27/§28
+   resumability.
 
-4. **Disk is nearly full.** ~3.4 GB free of 476 GB on C:. Enough for now;
-   pulling another model will need space cleared first.
+4. **Tool timeouts bound the wait, not the thread** (carried over from Phase 1).
+   Python cannot kill a thread. This is why `Store` holds a lock.
 
-5. **No memory, no Master Agent, no evaluation harness.** Deliberate — those
-   are Phases 2–4 and were left out so they could be built on settled
-   contracts. See `docs/memory.md` and `docs/evaluation.md` for intended design.
+5. **`large` tier still unmapped** — 14B at Q4 (~9 GB) exceeds 8 GB VRAM.
+
+6. **Model swapping can crash Ollama's runner** — integration tests evict
+   models between size changes (`fresh_vram`). Master and Task Agent share the
+   medium tier deliberately, so delegation causes no swap.
+
+7. **Disk is tight** — ~3 GB free of 476 GB on C:.
+
+8. **No evaluation harness, no retry policy, no resumability.** Phase 4.
 
 ---
 
@@ -124,20 +115,27 @@ None.
 
 ## Next Steps
 
-Recommended order for Phase 2:
+**Recommended: Phase 4 reliability before Phase 3 breadth.**
 
-1. **Task Agent** — a second real agent. The first genuine test of whether the
-   registry abstraction holds, since `ping` was written alongside it and may
-   have shaped it.
-2. **Memory layer (SQLite)** — start with structured state; add vectors only
-   when retrieval is *measured* to be the bottleneck (`docs/memory.md`).
-3. **Master Agent** — objective decomposition and delegation. Must route
-   through the same permission gate; no second path to `Tool.execute`.
-4. **A `write` tool** — the first non-`read` permission level exercised
-   end to end, and the first real test of the `ask` policy path.
+The reasoning: known problems 2 and 3 are both *measurement* problems. Adding a
+Finance Agent now would add a third agent whose output quality is equally
+unmeasured, on top of a Master whose routing quality is unmeasured. Evaluation
+is what turns "the prompt now forbids inventing due dates" into something known
+rather than hoped.
 
-Before starting: run `paios doctor` and `pytest -q` to confirm a green
-baseline.
+1. **Evaluation harness** (`evaluations/`) — read `runs/*.jsonl`, score tool
+   selection, structured-output validity, task completion, and hallucination.
+   The traces already contain everything needed; nothing new to instrument.
+2. **Measure the embellishment fix** — does the 7B still invent due dates?
+3. **Measure the 3B** — can it drive the Task Agent? This is the open question
+   from Phase 1 and it decides how much routing work is worth doing.
+4. *Then* Phase 3 agents, with a way to tell whether they work.
+
+If you would rather build breadth first, the Finance Agent is the natural next
+one — it exercises a genuinely different shape (numeric reasoning, and
+`requires_human_approval` on anything touching money).
+
+Before starting: `paios doctor` and `pytest -q` for a green baseline.
 
 ---
 
@@ -146,25 +144,32 @@ baseline.
 **2026-08-27**
 
 ```
-pytest -q                 ->  163 passed  (sockets blocked, Ollama not needed)
-pytest -m integration     ->  8 passed    (live qwen2.5:3b + 7b)
+pytest -q                 ->  239 passed  (sockets blocked, Ollama not needed)
+pytest -m integration     ->  11 passed   (live qwen2.5:3b + 7b)
 ```
 
-Live end-to-end run: `paios run ping "Read config/default.yaml and tell me
-which model is mapped to the medium tier."` → correct answer in 3 iterations,
-2 tool calls, trace `runs/20260827T124046Z_33abea87.jsonl`.
+Live delegation verified end to end:
+
+```
+paios run master "Add a task to review the Phase 2 delegation design,
+                  then tell me everything on my list."
+```
+
+→ master delegated to `task_agent`, which called `add_task` and `list_tasks`,
+and the task is really in `data/paios.db`. Trace
+`runs/20260827T134226Z_63847bb8.jsonl` shows the sub-agent's whole run nested
+under `delegate.start` / `delegate.end`.
 
 ---
 
 ## Last User-Approved Change
 
 Paul approved, in this session:
-- the Phase 1 plan (skeleton + vertical slice, sync core, pull 7B, `git init`)
-- deleting the failed 4.36 GB Ollama partial download and running
-  `pip cache purge` to free disk space
+- the Phase 2 plan (sub-agents as tools, full scope, both agents on the 7B)
+- Phase 1 was committed (`f561e9d`) and pushed to
+  `github.com/paulmandap/personal_ai_os` (private)
 
-**No commits have been made.** The working tree is uncommitted and awaiting
-review.
+**Phase 2 is uncommitted** — 28 changed/new files awaiting review.
 
 ---
 
@@ -174,17 +179,22 @@ Full records in [`docs/decisions.md`](docs/decisions.md).
 
 | ADR | Decision |
 |---|---|
-| 001 | **Local-first. No cloud provider, not even as fallback** — a fallback fails open and masks every weakness until the day it is gone |
-| 002 | Synchronous core — one GPU holds one model; concurrency thrashes |
-| 003 | Direct HTTP to Ollama, not a vendor SDK — keeps the provider seam real |
-| 004 | Pydantic as the single typing layer — one dep, four jobs |
+| 001 | **Local-first. No cloud provider, not even as fallback** |
+| 002 | Synchronous core — one GPU holds one model |
+| 003 | Direct HTTP to Ollama, not a vendor SDK |
+| 004 | Pydantic as the single typing layer |
 | 005 | JSONL traces = observability **and** future trajectory data |
 | 006 | One permission gate, in the agent loop |
-| 007 | `src/` layout, pip + venv, uv-compatible |
+| 007 | `src/` layout, pip + venv |
 | 008 | Recoverable failures are observations, not exceptions |
 | 009 | Deterministic router until evaluation data says otherwise |
 | 010 | Ollama wire-format findings, verified empirically |
 | 011 | Trace redaction matches key segments, not substrings |
+| **012** | **A sub-agent is a tool; the Master reuses the agent loop** |
+| **013** | One generic `delegate` tool — per-agent tools create a registry cycle |
+| **014** | `delegate` is `read`-level; gates belong where consequences are |
+| **015** | SQLite for structured memory; vectors still deferred |
+| **016** | Every trace event carries its agent and depth |
 
 ---
 
@@ -194,13 +204,11 @@ Hardware: RTX 3050 **8 GB VRAM**, 16 GB RAM, Ryzen 5 3600, Windows 10.
 
 | Tier | Model | Size | Status |
 |---|---|---|---|
-| `small` | `qwen2.5:3b-instruct` | ~2.2 GB | installed |
-| `medium` | `qwen2.5:7b-instruct` | ~4.7 GB (5.1 GB resident, 100% GPU) | installed — the workhorse |
+| `small` | `qwen2.5:3b-instruct` | ~2.2 GB | installed, unproven for tool calling |
+| `medium` | `qwen2.5:7b-instruct` | ~4.7 GB (5.1 GB resident) | the workhorse |
 | `large` | — | — | unmapped by design |
 
 Roles: `classify`/`extract` → small; `plan`/`reason`/`code` → medium.
-
-Change models in `config/local.yaml`. No code edit required.
 
 ---
 
@@ -208,28 +216,29 @@ Change models in `config/local.yaml`. No code edit required.
 
 | Agent | Model | Tools | Permissions |
 |---|---|---|---|
+| `master` | role `reason` → medium | `delegate` | `read` |
+| `task_agent` | role `reason` → medium | 4 task tools | `read`, `write` |
 | `ping` | role `reason` → medium | `read_file`, `list_dir` | `read` |
+
+`max_delegation_depth: 2`. Master and Task Agent share the medium tier so
+delegation causes no VRAM swap.
 
 ---
 
 ## Pending Experiments
 
-- **Can the 3B drive the agent loop reliably?** The 7B is the workhorse; the 3B
-  is unproven for tool calling. This is the first real question for the Phase 4
-  evaluation framework, and the answer shapes how much routing work is worth
-  doing.
-- **How often does the recovery path fire?** It worked on the very first live
-  run (the model exceeded a `max_bytes` bound and corrected itself). Worth
-  measuring, since frequent recovery means the tool schemas need better
-  descriptions rather than the loop needing more iterations.
-- **Is `role`-based routing enough**, or is per-task complexity assessment
-  needed? Deferred until there is data (ADR-009).
+- **Does the anti-embellishment prompt work?** Needs measurement (problem 2).
+- **Can the 3B drive an agent loop?** Still open from Phase 1. Decides how much
+  the router is worth investing in.
+- **How often does the Master delegate wrongly?** Unmeasured. With one
+  sub-agent the choice is trivial; the question becomes real at three or four.
+- **Is an explicit plan needed?** Blocked on resumability (problem 3).
 
 ---
 
 ## Repository Facts
 
-- ~2,740 lines of source, ~1,670 lines of tests
-- 171 tests: 163 unit (offline), 8 integration (live)
-- 3 runtime dependencies
-- **0 commits** — the working tree awaits Paul's review
+- ~3,680 lines of source, ~2,400 lines of tests
+- 250 tests: 239 unit (offline), 11 integration (live)
+- 3 runtime dependencies (`pydantic`, `httpx`, `pyyaml`)
+- 1 commit (`f561e9d`, Phase 1). Phase 2 uncommitted.

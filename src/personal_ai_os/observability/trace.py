@@ -114,6 +114,11 @@ class Events:
     TOOL_RESULT = "tool.result"
     ERROR = "error"
     RETRY = "retry"
+    # Delegation. A sub-agent shares its parent's trace, so one file holds a
+    # whole nested run; `depth` on these events is what makes the nesting
+    # legible when reading it back.
+    DELEGATE_START = "delegate.start"
+    DELEGATE_END = "delegate.end"
 
 
 class RunTrace:

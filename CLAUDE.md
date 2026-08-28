@@ -92,7 +92,23 @@ is the boundary keeping an agent inside the project.
 
 **Prefer configuration over code.** Changing which model an agent uses, or what
 a role maps to, must be a config edit. If it requires a code change, the
-abstraction is wrong.
+abstraction is wrong. Likewise, adding an agent must be a new
+`agents/*.yaml` and nothing else — no edit to the Master, its manifest, or any
+registry.
+
+**Never let a tool reach for a global.** Capabilities (`store`, `delegate`)
+arrive on `ToolContext` and are `None` when unavailable; a tool that needs one
+reports that clearly instead of crashing. This is what keeps tools testable
+without a wired process.
+
+**Never let delegation escape its guards.** `depth` and `call_stack` are
+injected by `Runtime` inside a closure, so a tool chooses *which* agent to call
+and nothing else. Do not add a code path that lets a caller supply its own
+depth.
+
+**Gate where the consequence is.** `delegate` is `read`-level and does not
+prompt; the sub-agent's own tools carry the real levels. Adding prompts that
+protect nothing trains the user to click through the ones that matter.
 
 ## Layout
 
@@ -100,19 +116,21 @@ abstraction is wrong.
 src/personal_ai_os/
   core/          types, AgentModel ABC, errors      <- contracts
   models/        ollama, fake, registry, router
-  tools/         base (+ path jail), registry, builtin/
+  memory/        store (SQLite), tasks              <- persistence
+  tools/         base (+ path jail), registry, delegate, builtin/
   permissions/   levels, brokers                    <- the gate
-  agents/        spec, registry, base loop, builtin/
+  agents/        spec, registry, base loop, builtin/{ping,master,task_agent}
   observability/ logging, JSONL traces
   config/        schema, loader
   runtime.py     composition root — the only place things are wired
-  cli.py         doctor | models | agents | run | trace
+  cli.py         doctor | models | agents | run | tasks | trace
 
 agents/*.yaml    agent manifests (data, not code)
 config/          default.yaml (committed), local.yaml (gitignored)
 docs/            architecture, agents, tools, permissions, model-routing,
                  memory, evaluation, development-workflow, decisions
 runs/            JSONL traces (gitignored)
+data/            paios.db (gitignored)
 ```
 
 ## Commands
@@ -121,8 +139,9 @@ runs/            JSONL traces (gitignored)
 paios doctor                  # does this machine work?
 paios models                  # the ladder + availability
 paios agents                  # registered agents
-paios run ping "..."          # run an agent
-paios trace <run_id> -v       # replay a run
+paios run master "..."        # delegate an objective
+paios tasks                   # the task list, no model involved
+paios trace <run_id> -v       # replay a run, sub-agents indented
 
 pytest -q                     # unit — must pass with Ollama STOPPED
 pytest -m integration         # live — needs Ollama

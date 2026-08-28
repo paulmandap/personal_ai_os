@@ -189,12 +189,40 @@ class TestSystemPrompt:
             registry.system_prompt_for(spec)
 
 
-class TestShippedManifest:
-    def test_the_real_ping_manifest_is_valid(self, tool_registry):
-        """Guards the manifest that ships with the repo."""
+class TestShippedManifests:
+    """Guards the manifests that ship with the repo.
+
+    These also record the answer to Phase 2's first open question: two new,
+    independently-motivated agents were added without a single change to
+    `AgentRegistry`. The abstraction held.
+    """
+
+    @pytest.fixture
+    def shipped(self, tool_registry) -> AgentRegistry:
         repo_agents = Path(__file__).resolve().parents[2] / "agents"
-        registry = AgentRegistry.from_dir(repo_agents, tools=tool_registry)
-        assert "ping" in registry.names()
-        spec = registry.get("ping")
+        return AgentRegistry.from_dir(repo_agents, tools=tool_registry)
+
+    def test_every_shipped_manifest_loads(self, shipped):
+        assert shipped.names() == ["master", "ping", "task_agent"]
+
+    def test_ping_resolves_to_its_class(self, shipped):
+        spec = shipped.get("ping")
         assert PermissionLevel.READ in spec.permissions
-        assert registry.resolve_class(spec) is PingAgent
+        assert shipped.resolve_class(spec) is PingAgent
+
+    def test_task_agent_declares_write(self, shipped):
+        """It mutates stored data, so the manifest must say so."""
+        spec = shipped.get("task_agent")
+        assert PermissionLevel.WRITE in spec.permissions
+        assert set(spec.tools) == {
+            "add_task",
+            "list_tasks",
+            "update_task",
+            "complete_task",
+        }
+
+    def test_master_can_only_delegate(self, shipped):
+        """Delegation discipline is structural: it has no other tools."""
+        spec = shipped.get("master")
+        assert spec.tools == ["delegate"]
+        assert PermissionLevel.WRITE not in spec.permissions

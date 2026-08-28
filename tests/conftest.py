@@ -7,6 +7,7 @@ in ``tests/unit`` reads the real repository configuration, touches the real
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,8 @@ import yaml
 from personal_ai_os.agents.spec import AgentSpec, ModelPreference
 from personal_ai_os.config.loader import load_settings
 from personal_ai_os.config.schema import Settings
+from personal_ai_os.memory.store import Store
+from personal_ai_os.memory.tasks import TaskStore
 from personal_ai_os.permissions.types import PermissionLevel
 from personal_ai_os.tools.base import ToolContext
 from personal_ai_os.tools.registry import ToolRegistry, default_registry
@@ -87,12 +90,28 @@ def tools() -> ToolRegistry:
 
 
 @pytest.fixture
-def tool_context(settings: Settings) -> ToolContext:
+def store() -> Iterator[Store]:
+    """An in-memory database. Never touches the filesystem."""
+    db = Store.in_memory()
+    yield db
+    db.close()
+
+
+@pytest.fixture
+def tasks(store: Store) -> TaskStore:
+    return TaskStore(store)
+
+
+@pytest.fixture
+def tool_context(settings: Settings, store: Store) -> ToolContext:
     return ToolContext(
         allowed_roots=settings.resolved_allowed_roots(),
         workspace_root=settings.workspace_root.resolve(),
         agent="test_agent",
         run_id="testrun",
+        store=store,
+        max_delegation_depth=2,
+        call_stack=("test_agent",),
     )
 
 

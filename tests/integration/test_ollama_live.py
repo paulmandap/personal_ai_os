@@ -11,15 +11,23 @@ be translating to a dialect nobody speaks any more.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import httpx
 import pytest
 
-from personal_ai_os.agents.base import BaseAgent, StopReason
+from personal_ai_os.agents.base import AgentResult, BaseAgent, StopReason
+from personal_ai_os.agents.builtin.master import MasterAgent
+from personal_ai_os.agents.builtin.task_agent import TaskAgent
 from personal_ai_os.agents.spec import AgentSpec
+from personal_ai_os.core.errors import ToolExecutionError
 from personal_ai_os.core.types import FinishReason, Message, ToolSchema
+from personal_ai_os.memory.tasks import TaskStore
 from personal_ai_os.models.ollama import OllamaModel
+from personal_ai_os.observability.trace import RunTrace
 from personal_ai_os.permissions.broker import PolicyBroker, RecordingBroker
 from personal_ai_os.permissions.types import PermissionLevel
+from personal_ai_os.tools.delegate import DelegateTool
 from personal_ai_os.tools.registry import default_registry
 
 pytestmark = pytest.mark.integration
@@ -217,3 +225,106 @@ class TestAgentEndToEnd:
         # It may answer or exhaust its turns; it must not raise, and it must
         # never have executed the denied tool.
         assert result.stop_reason in {StopReason.ANSWERED, StopReason.MAX_ITERATIONS}
+
+
+@requires_medium
+@pytest.mark.usefixtures("fresh_vram")
+class TestDelegationEndToEnd:
+    """The Phase 2 vertical slice against a real local model.
+
+    Both agents sit on the medium tier deliberately: they share one resident
+    model, so delegation costs no VRAM swap on an 8 GB card.
+    """
+
+    @staticmethod
+    def _task_agent(tool_context, broker) -> BaseAgent:
+        spec = AgentSpec(
+            name="task_agent",
+            description="Manages the user's tasks.",
+            tools=["list_tasks", "add_task", "update_task", "complete_task"],
+            permissions=[PermissionLevel.READ, PermissionLevel.WRITE],
+            max_iterations=8,
+        )
+        return TaskAgent(
+            spec,
+            model=OllamaModel(MEDIUM_MODEL, base_url=BASE_URL, temperature=0.0),
+            tools=default_registry(),
+            broker=broker,
+            context=tool_context,
+        )
+
+    def test_task_agent_really_persists_a_task(self, tool_context, store):
+        broker = PolicyBroker(
+            {PermissionLevel.READ: "auto", PermissionLevel.WRITE: "auto"},
+            interactive=False,
+        )
+        result = self._task_agent(tool_context, broker).run(
+            "Add a task titled 'Buy oat milk'. No due date, normal priority."
+        )
+
+        assert result.ok, f"run failed: {result.error}"
+        # Verified against the database, not against what the model claimed.
+        titles = [t.title for t in TaskStore(store).list()]
+        assert any("oat milk" in t.lower() for t in titles), titles
+
+    def test_master_delegates_and_the_work_actually_happens(
+        self, tool_context, store
+    ):
+        broker = PolicyBroker(
+            {PermissionLevel.READ: "auto", PermissionLevel.WRITE: "auto"},
+            interactive=False,
+        )
+        trace = RunTrace.disabled(agent="master")
+        delegated: list[str] = []
+
+        def delegate(agent_name: str, objective: str) -> AgentResult:
+            delegated.append(agent_name)
+            sub_ctx = replace(
+                tool_context, agent=agent_name, depth=1, call_stack=("master", agent_name)
+            )
+            return self._task_agent(sub_ctx, broker).run(objective)
+
+        master_spec = AgentSpec(
+            name="master",
+            description="Coordinates work.",
+            tools=["delegate"],
+            permissions=[PermissionLevel.READ],
+            max_iterations=6,
+        )
+        master = MasterAgent(
+            master_spec,
+            model=OllamaModel(MEDIUM_MODEL, base_url=BASE_URL, temperature=0.0),
+            tools=default_registry(),
+            broker=broker,
+            context=replace(
+                tool_context,
+                agent="master",
+                delegate=delegate,
+                call_stack=("master",),
+                agent_roster={
+                    "master": "Coordinates work.",
+                    "task_agent": "Manages the user's tasks: add, list, complete.",
+                },
+            ),
+            trace=trace,
+        )
+
+        result = master.run("Please add a task to renew my passport.")
+
+        assert result.ok, f"master failed: {result.error}"
+        assert delegated == ["task_agent"], f"delegated to: {delegated}"
+        titles = [t.title.lower() for t in TaskStore(store).list()]
+        assert any("passport" in t for t in titles), titles
+
+    def test_depth_limit_holds_against_a_real_model(self, tool_context):
+        """A model cannot talk its way past the guard, whatever it decides."""
+        exhausted = replace(
+            tool_context, depth=2, max_delegation_depth=2, call_stack=("master",),
+            delegate=lambda a, o: pytest.fail("sub-agent must not run"),
+        )
+        tool = DelegateTool()
+        with pytest.raises(ToolExecutionError, match="depth limit"):
+            tool.run(
+                tool.validate_input({"agent": "task_agent", "objective": "go"}),
+                exhausted,
+            )

@@ -15,6 +15,7 @@ from pathlib import Path
 from personal_ai_os import __version__
 from personal_ai_os.config.loader import load_settings
 from personal_ai_os.core.errors import PersonalAIOSError
+from personal_ai_os.memory.tasks import TaskPriority, TaskStatus, TaskStore
 from personal_ai_os.observability.logging import setup_logging
 from personal_ai_os.observability.trace import (
     find_trace,
@@ -66,6 +67,21 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         except OSError as exc:
             failures += 1
             print(_status("runs directory", FAIL, f"{runs_dir}: {exc}"))
+
+        # Structured memory
+        try:
+            task_count = TaskStore(runtime.store).count()
+            print(
+                _status(
+                    "database",
+                    OK,
+                    f"{runtime.store.path} (schema v{runtime.store.version}, "
+                    f"{task_count} tasks)",
+                )
+            )
+        except PersonalAIOSError as exc:
+            failures += 1
+            print(_status("database", FAIL, str(exc)))
 
         # Models
         print()
@@ -209,6 +225,47 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
+# --- tasks -----------------------------------------------------------------
+
+
+def cmd_tasks(args: argparse.Namespace) -> int:
+    """Human access to the task list, with no model in the loop.
+
+    Useful on its own, and useful for verifying that what an agent claims it
+    saved is actually in the database.
+    """
+    runtime = Runtime.build(workspace_root=args.workspace, configure_logging=False)
+    try:
+        tasks = TaskStore(runtime.store)
+
+        if args.task_command == "add":
+            task = tasks.add(
+                args.title,
+                notes=args.notes or "",
+                priority=TaskPriority(args.priority),
+                due_date=args.due,
+            )
+            print(f"added {task.summary()}")
+            return 0
+
+        if args.task_command == "done":
+            task = tasks.complete(args.id)
+            print(f"completed {task.summary()}")
+            return 0
+
+        status = TaskStatus(args.status) if args.status else None
+        found = tasks.list(status=status, include_done=args.all, limit=args.limit)
+        if not found:
+            print("no tasks")
+            return 0
+        for task in found:
+            print(f"  {task.summary()}")
+        print(f"\n  {len(found)} shown, {tasks.count()} total")
+        return 0
+    finally:
+        runtime.close()
+
+
 # --- trace -----------------------------------------------------------------
 
 
@@ -226,13 +283,17 @@ def cmd_trace(args: argparse.Namespace) -> int:
 
     print(f"{path}\n")
     for event in read_trace(path):
-        print(f"  {event.seq:>3}  {event.ts}  {event.type}")
+        # Sub-agents share their parent's trace, so indentation by depth is
+        # what makes a nested delegation readable as one run.
+        depth = int(event.data.get("depth") or 0)
+        pad = "  " * depth
+        print(f"  {event.seq:>3}  {event.ts}  {pad}{event.type}")
         if args.verbose:
             for key, value in event.data.items():
                 rendered = str(value)
                 if not args.full and len(rendered) > 160:
                     rendered = rendered[:160] + "..."
-                print(f"         {key}: {rendered}")
+                print(f"         {pad}{key}: {rendered}")
     return 0
 
 
@@ -265,6 +326,27 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("agent")
     run_p.add_argument("objective")
     run_p.set_defaults(func=cmd_run)
+
+    tasks_p = sub.add_parser("tasks", help="inspect or edit the task list directly")
+    tasks_p.set_defaults(func=cmd_tasks, task_command="list")
+    tasks_sub = tasks_p.add_subparsers(dest="task_command")
+
+    tasks_p.add_argument("--status", choices=[s.value for s in TaskStatus])
+    tasks_p.add_argument("--all", action="store_true", help="include finished tasks")
+    tasks_p.add_argument("--limit", type=int, default=50)
+
+    add_p = tasks_sub.add_parser("add", help="add a task")
+    add_p.add_argument("title")
+    add_p.add_argument("--notes", default="")
+    add_p.add_argument(
+        "--priority", choices=[p.value for p in TaskPriority], default="normal"
+    )
+    add_p.add_argument("--due", default=None, help="ISO date, e.g. 2026-09-07")
+    add_p.set_defaults(func=cmd_tasks, task_command="add")
+
+    done_p = tasks_sub.add_parser("done", help="mark a task complete")
+    done_p.add_argument("id", type=int)
+    done_p.set_defaults(func=cmd_tasks, task_command="done")
 
     trace_p = sub.add_parser("trace", help="replay a recorded run")
     trace_p.add_argument("run_id", nargs="?", default="latest")

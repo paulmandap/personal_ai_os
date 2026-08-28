@@ -13,11 +13,12 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -28,21 +29,53 @@ from personal_ai_os.core.errors import (
     ToolTimeoutError,
 )
 from personal_ai_os.core.types import ToolSchema
+from personal_ai_os.memory.store import Store
 from personal_ai_os.permissions.types import PermissionLevel
+
+if TYPE_CHECKING:  # pragma: no cover
+    from personal_ai_os.agents.base import AgentResult
+
+
+#: Runs a sub-agent and returns its result. Supplied by the Runtime, which is
+#: the only component that knows how to build an agent. Typed as a forward
+#: reference because `agents.base` imports this module, not the other way
+#: round -- the dependency points one way on purpose.
+DelegateFn = Callable[[str, str], "AgentResult"]
 
 
 @dataclass
 class ToolContext:
-    """Ambient facts a tool may need, passed explicitly rather than imported.
+    """Ambient facts and capabilities a tool may need.
 
     Tools receive their world instead of reaching for it, which is what makes
-    them testable without a configured process.
+    them testable without a configured process. The optional capabilities below
+    are the same idea: a tool that needs a database or the ability to delegate
+    is handed one, and reports a clear error when it was not -- rather than
+    importing a global and working only inside a fully wired process.
     """
 
     allowed_roots: list[Path] = field(default_factory=list)
     workspace_root: Path = field(default_factory=Path.cwd)
     agent: str = ""
     run_id: str = ""
+
+    # --- capabilities (None when not available in this context) ---
+    #: Structured memory, for tools that persist things.
+    store: Store | None = None
+    #: Ability to run another agent.
+    delegate: DelegateFn | None = None
+    #: Agents available to delegate to, name -> description. Kept here rather
+    #: than duplicated into the Master's manifest so that adding an agent makes
+    #: it routable without editing any other file.
+    agent_roster: dict[str, str] = field(default_factory=dict)
+
+    # --- delegation bookkeeping ---
+    #: How many delegations deep this agent is. The top-level agent is 0.
+    depth: int = 0
+    #: Agents currently on the delegation stack, used to refuse cycles.
+    call_stack: tuple[str, ...] = ()
+    max_delegation_depth: int = 2
+
     extras: dict[str, Any] = field(default_factory=dict)
 
 

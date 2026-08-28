@@ -112,6 +112,17 @@ class BaseAgent:
     def system_prompt(self) -> str:
         return self._system_prompt or self.spec.system_prompt or DEFAULT_SYSTEM_PROMPT
 
+    def _trace(self, event_type: str, **data: object) -> None:
+        """Record an event stamped with who produced it and how deep it is.
+
+        Sub-agents share their parent's trace, so without these two fields a
+        nested run reads as one flat sequence and there is no way to tell which
+        agent made which call.
+        """
+        self.trace.event(
+            event_type, agent=self.spec.name, depth=self.context.depth, **data
+        )
+
     def tool_schemas(self) -> list[ToolSchema]:
         """Only the tools this agent's manifest declares are advertised.
 
@@ -132,7 +143,7 @@ class BaseAgent:
         iteration = 0
 
         for iteration in range(1, self.max_iterations + 1):
-            self.trace.event(
+            self._trace(
                 Events.MODEL_REQUEST,
                 iteration=iteration,
                 model=self.model.name,
@@ -156,7 +167,7 @@ class BaseAgent:
                     transcript=messages,
                 )
 
-            self.trace.event(
+            self._trace(
                 Events.MODEL_RESPONSE,
                 iteration=iteration,
                 model=response.model,
@@ -217,7 +228,7 @@ class BaseAgent:
         a recoverable failure: the model is told what went wrong so it can try
         something else.
         """
-        self.trace.event(
+        self._trace(
             Events.TOOL_REQUESTED,
             tool=call.name,
             call_id=call.id,
@@ -240,9 +251,7 @@ class BaseAgent:
         try:
             args = tool.validate_input(call.arguments)
         except ToolInputError as exc:
-            self.trace.event(
-                Events.TOOL_RESULT, tool=call.name, ok=False, error=str(exc)
-            )
+            self._trace(Events.TOOL_RESULT, tool=call.name, ok=False, error=str(exc))
             return f"ERROR: {exc}. Correct the arguments and call the tool again."
 
         # 3. The gate. Nothing below this runs without a granted decision.
@@ -257,7 +266,7 @@ class BaseAgent:
             ),
         )
         decision = self.broker.request(request)
-        self.trace.event(
+        self._trace(
             Events.PERMISSION_DECISION,
             tool=call.name,
             level=tool.permission.value,
@@ -277,13 +286,11 @@ class BaseAgent:
         try:
             output = tool.execute(args, self.context)
         except ToolError as exc:
-            self.trace.event(
-                Events.TOOL_RESULT, tool=call.name, ok=False, error=str(exc)
-            )
+            self._trace(Events.TOOL_RESULT, tool=call.name, ok=False, error=str(exc))
             return f"ERROR: {exc}"
 
         payload = output.model_dump_json()
-        self.trace.event(
+        self._trace(
             Events.TOOL_RESULT,
             tool=call.name,
             ok=True,

@@ -81,6 +81,8 @@ paths:
     - "."
   agents_dir: "agents"
   runs_dir: "runs"
+  # Structured memory (tasks, and whatever follows). Gitignored via `*.db`.
+  db_path: "data/paios.db"
 
 observability:
   log_level: INFO
@@ -99,3 +101,8 @@ observability:
 agent_defaults:
   max_iterations: 6
   timeout_s: 300
+  # How deep delegation may nest: master -> agent -> agent, then refused.
+  # This, not a permission prompt, is what bounds runaway delegation --
+  # delegating is not itself consequential, so gating it would only teach
+  # you to click through prompts. See docs/decisions.md ADR-014.
+  max_delegation_depth: 2

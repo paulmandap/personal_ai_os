@@ -106,11 +106,13 @@ tomorrow and continue? If not, `PROJECT_STATE.md` is not finished.
 
 | Adding | Do |
 |---|---|
-| A tool | Subclass `Tool`, add to `default_registry()`, test `run()` and any path handling |
-| An agent | Write `agents/<name>.yaml`. Add a class only if it needs custom prompt/output logic |
+| A tool | Subclass `Tool`, add to `default_registry()`, test `run()` and any path handling. Put every constraint on the `Input` model, not just downstream |
+| An agent | Write `agents/<name>.yaml` — nothing else. It becomes delegatable automatically. Add a class only for custom prompt/output logic |
 | A model | Change `config/local.yaml`. No code change |
 | A provider | Implement `AgentModel`, extend `default_factory()` in `models/registry.py` |
 | A permission level | Add to the enum *and* to `config/default.yaml` — unconfigured levels deny |
+| A stored domain | Append a migration to `MIGRATIONS` in `memory/store.py` (never edit a shipped one), add a typed store class beside `TaskStore` |
+| A tool capability | Add a field to `ToolContext`, inject it in `Runtime.tool_context`, and have the tool report clearly when it is `None` |
 
 ## Conventions
 

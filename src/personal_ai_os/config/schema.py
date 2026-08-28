@@ -79,6 +79,8 @@ class PathSettings(BaseModel):
     allowed_roots: list[Path] = Field(default_factory=list)
     agents_dir: Path = Path("agents")
     runs_dir: Path = Path("runs")
+    #: Structured memory. Covered by the `*.db` line in .gitignore.
+    db_path: Path = Path("data/paios.db")
 
 
 class ObservabilitySettings(BaseModel):
@@ -106,6 +108,10 @@ class AgentDefaults(BaseModel):
 
     max_iterations: int = 6
     timeout_s: float = 300.0
+    #: How deep delegation may nest. The Master is depth 0, so 2 allows
+    #: master -> sub-agent -> sub-sub-agent and refuses anything past that.
+    #: This, not a permission prompt, is what bounds runaway delegation.
+    max_delegation_depth: int = 2
 
 
 class Settings(BaseModel):

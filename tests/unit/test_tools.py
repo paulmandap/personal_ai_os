@@ -186,7 +186,15 @@ class TestTimeoutGuard:
 
 class TestToolRegistry:
     def test_default_registry_has_the_builtins(self):
-        assert default_registry().names() == ["list_dir", "read_file"]
+        assert default_registry().names() == [
+            "add_task",
+            "complete_task",
+            "delegate",
+            "list_dir",
+            "list_tasks",
+            "read_file",
+            "update_task",
+        ]
 
     def test_unknown_tool_lists_what_is_available(self):
         with pytest.raises(ToolNotFoundError, match="read_file"):

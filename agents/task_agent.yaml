@@ -1,0 +1,34 @@
+# Manages the user's task list, persisted in SQLite.
+#
+# Note the `permissions:` list. The registry checks it against the tools below
+# and refuses to load this manifest if a tool needs a level that is not
+# declared -- so `write` appearing here is a checked statement that this agent
+# can change stored data, not a comment.
+
+name: task_agent
+description: >
+  Creates, updates, completes and reports on the user's tasks. Use this for
+  anything about what the user has to do, deadlines, or things to remember.
+
+version: 0.1.0
+
+# Subclasses BaseAgent only to inject today's date, so relative dates like
+# "next Friday" become real ISO dates instead of guesses.
+entrypoint: personal_ai_os.agents.builtin.task_agent:TaskAgent
+
+model:
+  role: reason
+
+tools:
+  - list_tasks
+  - add_task
+  - update_task
+  - complete_task
+
+permissions:
+  - read
+  - write
+
+max_iterations: 8
+timeout_s: 300
+requires_human_approval: false

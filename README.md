@@ -15,13 +15,16 @@ fallback.
 
 ## Status
 
-**Phase 1 (Foundation) — complete.** See [`PROJECT_STATE.md`](PROJECT_STATE.md).
+**Phase 2 (Master Agent, Task Agent, Memory) — complete.** See
+[`PROJECT_STATE.md`](PROJECT_STATE.md).
 
-Working today: the model abstraction, an Ollama provider, a deterministic model
-router, an agent registry driven by YAML manifests, a typed tool interface with
-a filesystem jail, a permission system, JSONL run tracing, and a CLI.
+Working today: the model abstraction and Ollama provider, a deterministic model
+router, an agent registry driven by YAML manifests, typed tools with a
+filesystem jail, a permission gate, SQLite persistence, delegation between
+agents, JSONL run tracing, and a CLI.
 
-One agent (`ping`) exercises the whole path end to end.
+Three agents: `master` (delegates), `task_agent` (manages a real task list),
+and `ping` (verifies the machine works).
 
 ## Requirements
 
@@ -47,30 +50,46 @@ registered tools and agents, and the permission policy — in one command.
 
 ## Use
 
-```powershell
-paios run ping "Read config/default.yaml and tell me which model is on the medium tier."
-```
-
-```
-[runtime]  agent ping -> qwen2.5:7b-instruct (role 'reason' -> tier 'medium')
-
-The medium tier maps to the model "qwen2.5:7b-instruct".
-
-  [ok] agent=ping model=qwen2.5:7b-instruct iterations=3 tool_calls=2
-  trace: paios trace 33abea87
-```
-
-Then replay exactly what happened:
+Give the Master an objective and it routes the work:
 
 ```powershell
-paios trace 33abea87 -v
+paios run master "Add a task to renew my passport, then tell me what's on my list."
+```
+
+```
+[runtime]  agent master -> qwen2.5:7b-instruct (role 'reason' -> tier 'medium')
+[runtime]  master -> delegating to task_agent (depth 1)
+
+I've added "Renew my passport" to your list. You now have three tasks:
+...
+  [ok] agent=master model=qwen2.5:7b-instruct iterations=2 tool_calls=1
+  trace: paios trace 63847bb8
+```
+
+Then replay exactly what happened, sub-agent and all:
+
+```powershell
+paios trace 63847bb8 -v
+```
+
+```
+    5  tool.requested
+    6  permission.decision
+    7    delegate.start
+    9    model.request        <- task_agent's own work, nested
+   13    tool.result
+   16    delegate.end
+   17  tool.result            <- back in master
 ```
 
 Other commands:
 
 ```powershell
+paios doctor     # does this machine work?
 paios models     # the model ladder and live availability
 paios agents     # registered agents, their tools and permissions
+paios tasks      # the task list, with no model involved
+paios tasks add "Something" --priority high --due 2026-09-07
 ```
 
 ## How it fits together
@@ -89,10 +108,18 @@ paios agents     # registered agents, their tools and permissions
         │              └── ScriptedModel (tests)
         ▼
     BaseAgent ── loop ──► PermissionBroker ──► Tool
-        │
-        ▼
-     RunTrace ──► runs/<timestamp>_<id>.jsonl
+        │                                       │
+        │                        ┌──────────────┴──────────────┐
+        ▼                        ▼                             ▼
+     RunTrace            Store (SQLite)                    delegate
+   runs/*.jsonl           data/paios.db                        │
+                                                               ▼
+                                              another BaseAgent (depth + 1)
 ```
+
+**The Master Agent is not a new layer.** It is a `BaseAgent` whose only tool is
+`delegate`, so orchestration reuses the loop instead of duplicating it — and
+inherits the permission gate, tracing and failure recovery unchanged.
 
 Read [`docs/architecture.md`](docs/architecture.md) for the reasoning.
 
@@ -120,8 +147,8 @@ using a tool whose permission level it did not declare — so that
 ## Testing
 
 ```powershell
-pytest -q                 # 163 unit tests — pass with Ollama STOPPED
-pytest -m integration     # 8 live tests against real local models
+pytest -q                 # 239 unit tests — pass with Ollama STOPPED
+pytest -m integration     # 11 live tests against real local models
 ```
 
 The unit suite blocks network sockets outright. That is deliberate: if these
@@ -136,7 +163,7 @@ tests ever need a model server, the model has quietly become the architecture.
 | [tools.md](docs/tools.md) | Writing tools; the filesystem jail |
 | [permissions.md](docs/permissions.md) | The authorisation model |
 | [model-routing.md](docs/model-routing.md) | The local model ladder |
-| [memory.md](docs/memory.md) | Planned (Phase 2) |
+| [memory.md](docs/memory.md) | SQLite persistence, and why not vectors |
 | [evaluation.md](docs/evaluation.md) | Planned (Phase 4) |
 | [development-workflow.md](docs/development-workflow.md) | Day-to-day process |
 | [decisions.md](docs/decisions.md) | Architecture decision records |

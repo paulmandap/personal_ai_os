@@ -13,7 +13,7 @@ unplugged.** If that ever stops being true, the model has quietly become the
 architecture. `tests/unit/conftest.py` blocks sockets so the property is
 enforced rather than trusted.
 
-## Shape as built (Phase 1)
+## Shape as built (Phase 2)
 
 ```
                         paios CLI
@@ -33,13 +33,23 @@ enforced rather than trusted.
         │              └── ScriptedModel (tests)
         ▼
     BaseAgent  ── the loop ──►  PermissionBroker ──► Tool
-        │
-        ▼
-     RunTrace  ──►  runs/<ts>_<id>.jsonl
+        │                                             │
+        │                            ┌────────────────┴────────────────┐
+        │                            ▼                                 ▼
+        │                     read_file, list_dir              Store (SQLite)
+        │                     task tools                        data/paios.db
+        │                     delegate ─┐
+        ▼                               │
+     RunTrace ──► runs/<ts>_<id>.jsonl  │
+                                        ▼
+                            another BaseAgent (depth + 1)
+                            sharing the same RunTrace
 ```
 
-Phases 2–8 add a Master Agent above `BaseAgent`, a memory layer beside it, and
-more agents in the registry. None of those require changing the seams above.
+**The Master Agent is not a new layer.** It is a `BaseAgent` whose only tool is
+`delegate`, so orchestration reuses the loop rather than duplicating it
+(ADR-012). Phases 3–8 add more agents and more tools; neither requires changing
+a seam above.
 
 ## The layers, and why each exists
 
@@ -135,13 +145,39 @@ small model will misuse tools; the loop is shaped to let it notice and correct.
 Observed on the first live run — the 7B exceeded a `max_bytes` bound, was told,
 and fixed its own call on the next turn.
 
-## What is deliberately absent in Phase 1
+## Delegation
 
-Master Agent · memory layer · retry and recovery policy · evaluation harness ·
-resumable long-running tasks · MCP · any agent beyond `ping`.
+```
+master (depth 0)  --delegate-->  task_agent (depth 1)  --add_task-->  Store
+```
 
-These are Phases 2–4. They are absent because each of them wants to be built
-*on* settled contracts, and the contracts were what Phase 1 was for.
+Three properties make this safe rather than merely possible:
+
+- **Gates sit where consequences are.** `delegate` is `read`-level and never
+  prompts; the `write` on `add_task` is what asks. Prompting on delegation
+  would protect nothing and teach the habit of clicking through (ADR-014).
+- **Bounds are mechanical.** `max_delegation_depth` and a call-stack cycle
+  check are injected by `Runtime` inside a closure, so a tool can choose *which*
+  agent to call but cannot fabricate a shallower depth to escape the guard.
+- **One trace, attributed.** Sub-agents share the parent's `RunTrace`; every
+  event carries `agent` and `depth` so a nested run is readable in order
+  (ADR-016).
+
+## Memory
+
+`Store` (SQLite) is reached through `ToolContext.store`, the same injection
+pattern as `delegate`. Tools handed no store report it rather than crashing,
+which keeps them testable without a database. See `memory.md` — including why
+vectors are still deliberately absent.
+
+## What is still deliberately absent
+
+Retry and escalation policy · evaluation harness · resumable long-running tasks
+and persisted plans · semantic memory · MCP · Finance and Research agents.
+
+These are Phases 3–4. Each wants to be built *on* settled contracts, which is
+what the earlier phases were for. The nearest is a persisted plan: that is the
+documented trigger for revisiting ADR-012's implicit-plan decision.
 
 ## Constraints that shaped this design
 

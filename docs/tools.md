@@ -113,6 +113,55 @@ All of these come back to the model as observations so it can try something
 else (ADR-008). Do not raise bare exceptions — `Tool.execute` wraps them as
 `ToolExecutionError`, but the message will be less useful than one you wrote.
 
+## ToolContext: facts and capabilities
+
+Tools receive their world instead of reaching for it. `ToolContext` carries
+both ambient facts and optional *capabilities*:
+
+| Field | Purpose |
+|---|---|
+| `allowed_roots`, `workspace_root` | The filesystem jail |
+| `agent`, `run_id` | Who is calling, in which run |
+| `store` | Structured memory (`Store`), for tools that persist |
+| `delegate` | Ability to run another agent |
+| `agent_roster` | Which agents exist, name → description |
+| `depth`, `call_stack`, `max_delegation_depth` | Delegation bookkeeping |
+
+A capability is `None` when unavailable, and a tool that needs one **reports it
+rather than crashing**:
+
+```python
+if ctx.store is None:
+    raise ToolExecutionError("task storage is not available in this context")
+```
+
+This is what keeps a tool constructible and testable without a fully wired
+process — and it is why `ToolRegistry` never needs to know that `AgentRegistry`
+exists. `delegate` is a stateless registered tool; the ability to actually run
+a sub-agent is injected per-run by `Runtime`, the only component that knows how
+to build an agent (ADR-013).
+
+Never reach for a global instead. A tool that imports the runtime works only
+inside a real process, which means it cannot be tested and cannot be reused.
+
+## Validate at the boundary, not just downstream
+
+Put every constraint on the tool's `Input` model, even when the layer beneath
+also enforces it.
+
+`add_task` originally validated `due_date` only inside `TaskStore`. A malformed
+date therefore passed `validate_input()` and failed later inside `run()`, where
+it surfaced to the model as a generic execution failure instead of the message
+written to help it retry:
+
+```
+due_date must be an ISO date like '2026-09-07', got 'next tuesday'
+```
+
+Both boundaries now share one validator (`memory/tasks.py::validate_iso_date`).
+The rule is: if a model can get a field wrong, the *schema* must say so, and the
+error must name the fix.
+
 ## Testing
 
 Test `run()` directly with a `ToolContext`; no agent, no model, no registry:

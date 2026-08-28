@@ -1,0 +1,181 @@
+"""SQLite connection and schema management.
+
+One file, one connection, versioned schema. No ORM: the queries here are small
+enough that an ORM would add a dependency and a mental model without removing
+any work.
+
+**Threading.** `Tool.execute` runs `Tool.run` inside a single-worker
+`ThreadPoolExecutor`, so a store opened on the main thread is used from a
+worker thread. Hence `check_same_thread=False`, plus an `RLock` around every
+operation. The lock is not defending against the sync core running two things
+at once (it does not -- ADR-002); it is defending against the one case where
+concurrency *can* happen: a tool that exceeded its timeout keeps running in the
+background while the caller has already moved on.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any
+
+from personal_ai_os.core.errors import PersonalAIOSError
+from personal_ai_os.observability.logging import get_logger
+
+log = get_logger("store")
+
+IN_MEMORY = ":memory:"
+
+
+class StoreError(PersonalAIOSError):
+    """The database could not be opened, migrated, or queried."""
+
+
+#: Ordered migrations. Append only -- never edit a shipped migration, because
+#: a database that already applied it will not see the change.
+MIGRATIONS: list[tuple[int, str]] = [
+    (
+        1,
+        """
+        CREATE TABLE IF NOT EXISTS tasks (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            title        TEXT NOT NULL,
+            notes        TEXT NOT NULL DEFAULT '',
+            status       TEXT NOT NULL DEFAULT 'todo',
+            priority     TEXT NOT NULL DEFAULT 'normal',
+            due_date     TEXT,
+            created_at   TEXT NOT NULL,
+            updated_at   TEXT NOT NULL,
+            completed_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+        CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due_date);
+        """,
+    ),
+]
+
+LATEST_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else 0
+
+
+class Store:
+    """Owns the SQLite file and its schema."""
+
+    def __init__(self, path: Path | str) -> None:
+        self.path = path if path == IN_MEMORY else Path(path)
+        self._lock = threading.RLock()
+        self._conn: sqlite3.Connection | None = None
+
+    # --- lifecycle ---------------------------------------------------------
+
+    @classmethod
+    def in_memory(cls) -> Store:
+        """An ephemeral store. Used by tests; never touches the filesystem."""
+        store = cls(IN_MEMORY)
+        store.connect()
+        return store
+
+    def connect(self) -> sqlite3.Connection:
+        """Open the database and bring its schema up to date. Idempotent."""
+        with self._lock:
+            if self._conn is not None:
+                return self._conn
+
+            if self.path != IN_MEMORY:
+                Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+
+            try:
+                conn = sqlite3.connect(
+                    self.path if self.path == IN_MEMORY else str(self.path),
+                    check_same_thread=False,
+                )
+            except sqlite3.Error as exc:
+                raise StoreError(f"cannot open database at {self.path}: {exc}") from exc
+
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA foreign_keys = ON")
+            if self.path != IN_MEMORY:
+                # WAL survives a crash better and tolerates a reader during a
+                # write. Meaningless for :memory:, which rejects it.
+                conn.execute("PRAGMA journal_mode = WAL")
+
+            self._conn = conn
+            self._migrate()
+            return conn
+
+    @property
+    def conn(self) -> sqlite3.Connection:
+        return self._conn or self.connect()
+
+    def close(self) -> None:
+        with self._lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
+
+    def __enter__(self) -> Store:
+        self.connect()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    # --- schema ------------------------------------------------------------
+
+    def _migrate(self) -> None:
+        conn = self._conn
+        assert conn is not None
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)"
+        )
+        row = conn.execute("SELECT version FROM schema_version").fetchone()
+        current = row["version"] if row else 0
+
+        if current == 0 and row is None:
+            conn.execute("INSERT INTO schema_version (version) VALUES (0)")
+
+        for version, sql in MIGRATIONS:
+            if version <= current:
+                continue
+            log.debug("applying migration %d to %s", version, self.path)
+            try:
+                conn.executescript(sql)
+            except sqlite3.Error as exc:
+                conn.rollback()
+                raise StoreError(f"migration {version} failed: {exc}") from exc
+            conn.execute("UPDATE schema_version SET version = ?", (version,))
+            current = version
+
+        conn.commit()
+
+    @property
+    def version(self) -> int:
+        row = self.conn.execute("SELECT version FROM schema_version").fetchone()
+        return int(row["version"]) if row else 0
+
+    # --- queries -----------------------------------------------------------
+
+    @contextmanager
+    def write(self) -> Iterator[sqlite3.Connection]:
+        """A guarded write transaction: commits on success, rolls back on error."""
+        with self._lock:
+            conn = self.conn
+            try:
+                yield conn
+            except Exception:
+                conn.rollback()
+                raise
+            conn.commit()
+
+    def query(self, sql: str, params: tuple[Any, ...] = ()) -> list[sqlite3.Row]:
+        with self._lock:
+            try:
+                return self.conn.execute(sql, params).fetchall()
+            except sqlite3.Error as exc:
+                raise StoreError(f"query failed: {exc}") from exc
+
+    def query_one(self, sql: str, params: tuple[Any, ...] = ()) -> sqlite3.Row | None:
+        rows = self.query(sql, params)
+        return rows[0] if rows else None
