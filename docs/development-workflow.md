@@ -51,6 +51,34 @@ quietly reaches a live server fails loudly instead of eroding the claim.
 Use `ScriptedModel` for agent behaviour and `httpx.MockTransport` for provider
 translation. Live models belong in `tests/integration/`.
 
+### Measuring, as distinct from testing
+
+Tests answer "is the code correct?". Evaluation answers "does the agent behave
+well?". They are different questions and live in different places:
+
+```powershell
+paios eval list
+paios eval run tool_calling --model qwen2.5:3b-instruct --repeat 5
+paios eval compare <a.json> <b.json>
+```
+
+Run an evaluation after changing a **prompt, a tool schema, or a model** —
+none of which unit tests can judge. Phase 4 found a defect that every test
+passed through: the agent answered fluently and described the wrong action
+confidently, and only checking the database caught it.
+
+**Never assert a score in a test.** The integration test checks that a scored
+result comes back, not what the score is. Pinning a score turns a finding into
+a fixture.
+
+When comparing models, unload the previous one first — swapping under load has
+crashed Ollama's runner on this hardware:
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:11434/api/generate" -Method Post `
+  -Body '{"model":"qwen2.5:7b-instruct","keep_alive":0}' -ContentType "application/json"
+```
+
 ### Integration tests and VRAM
 
 Tests that switch between the 3B and 7B evict the previous model first
@@ -113,6 +141,8 @@ tomorrow and continue? If not, `PROJECT_STATE.md` is not finished.
 | A permission level | Add to the enum *and* to `config/default.yaml` — unconfigured levels deny |
 | A stored domain | Append a migration to `MIGRATIONS` in `memory/store.py` (never edit a shipped one), add a typed store class beside `TaskStore` |
 | A tool capability | Add a field to `ToolContext`, inject it in `Runtime.tool_context`, and have the tool report clearly when it is `None` |
+| An evaluation case | Add it to a suite in `evaluations/cases/*.yaml`. Check names are validated at load, so a typo fails loudly |
+| An evaluation check | Add a `@check("name")` function in `evaluation/checks.py` and a unit test for it — a broken check produces a confidently wrong number |
 
 ## Conventions
 

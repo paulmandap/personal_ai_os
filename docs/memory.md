@@ -94,6 +94,28 @@ At one person's data volume, `SELECT ... WHERE status IN ('todo','doing')` is
 not the bottleneck, and pretending otherwise would be building for a scale this
 system will never see.
 
+## Sensitive domains (FUTURE — NOT IMPLEMENTED)
+
+A future Health & Wellness domain would need memory guarantees this layer does
+not currently provide. Recording the gap now, because it is easier to build
+namespacing before there is data in the store than after:
+
+| Needed | Today |
+|---|---|
+| Separate namespace per sensitive domain | One namespace; any tool holding `ctx.store` reaches everything |
+| "Never store this" as a real category | No such concept — storage is all-or-nothing |
+| User-facing forget | No delete path above `TaskStore.delete` |
+| Storage gated on *sensitivity*, not just severity | The permission enum has one axis (ADR-019) |
+
+There is also a **trace** problem, which is the sharper one:
+`RunTrace` records tool arguments in full, and redaction keys on *secrets*
+(ADR-011), not sensitivity. A wellness domain on today's tracing would write
+emotional conversations verbatim into `runs/*.jsonl`, permanently, in plain
+text. That must be fixed before the first such agent runs, not after.
+
+See [`health-wellness.md`](health-wellness.md) for the memory categories and the
+principle that emotional conversation is **not persisted by default**.
+
 ## Open questions
 
 - **Who writes long-term memory** — the agent mid-run, or a separate

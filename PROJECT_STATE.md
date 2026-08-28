@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-08-27
+**Last updated:** 2026-08-28
 **Updated by:** Claude Code (development assistant), reviewed by Paul
 
 > This file is the handoff document. It must be enough for a future local agent
@@ -11,99 +11,134 @@
 
 ## Current Phase
 
-**Phase 2 — Master Agent, Task Agent, Memory. Complete.**
+**Phase 4 — Evaluation harness. Complete.**
 
-Next: Phase 3 — Finance and Research agents, or Phase 4 reliability work. See
-Next Steps for the recommendation.
+Phases 1, 2 and 4 are done. **Phase 3 (Finance + Research agents) was
+deliberately deferred** until there was a way to measure agent quality; that
+now exists, so Phase 3 is next.
 
 ---
 
 ## Current Objective
 
-Phase 1 built contracts. Phase 2 made them a system: a Master that delegates, a
-Task Agent that does real work, and persistence so that work survives the
-process.
+Continue the roadmap toward Phase 3 while preserving the model-agnostic,
+local-first architecture.
 
-Two questions the phase was really testing, and their answers:
+Phase 4 existed to answer two questions that had been open and unmeasurable.
+Both now have numbers:
 
-1. **Does the registry abstraction hold?** *Yes.* Two new, independently
-   motivated agents were added with **zero changes to `agents/registry.py`**.
-   Pinned by `tests/unit/test_agent_registry.py::TestShippedManifests`.
-2. **Can delegation reuse the agent loop?** *Yes.* The Master is a `BaseAgent`
-   with one tool. No second orchestration engine was written (ADR-012).
+### 1. Does the anti-embellishment prompt fix work? **Yes — 20/20.**
+
+Both `qwen2.5:7b` and `qwen2.5:3b` score 100% on the `embellishment` suite,
+in *both* directions: they no longer invent due dates or priorities, and they
+still record values the user actually stated.
+
+### 2. Can `qwen2.5:3b` drive an agent loop? **Yes — and it matches the 7B.**
+
+| | 7B | 3B |
+|---|---|---|
+| `tool_calling` pass rate | 90% | **90%** |
+| throughput | ≈32 tok/s | **≈63 tok/s** |
+| `embellishment` | 100% | 100% |
+
+The small tier is real, not decorative. Failure *profiles* differ slightly (the
+3B is better at error recovery, the 7B at the multi-step completion), so this
+is not a reason to abandon the ladder — but it is strong evidence that routing
+easy work to the 3B costs nothing and roughly doubles speed.
+
+### 3. What the harness found that nobody asked it to
+
+`completes_the_right_task` scored **0/5 on both models**. Identical failure
+across two very different models is the signal that a *design* is at fault, not
+a model.
+
+Given *"I finished buying the oat milk, mark that done"*, both models guessed
+`complete_task(id=1)` and completed **"Renew passport"**. The 7B then
+hallucinated a task list containing an item that had never existed — while
+correctly stating, one sentence earlier, that it had completed the wrong task.
+
+The prompt already forbade this. **A prompt instruction was not the lever.**
+The fix was structural (ADR-022): `complete_task` now accepts a `title`, and
+matching scores by token coverage rather than substring containment.
+
+**0/5 → 5/5. Suite 75% → 90% on both models.**
+
+The lesson: the failure was invisible in normal use. The agent answered
+fluently every time and described the wrong action confidently. Only checking
+the database caught it.
 
 ---
 
 ## Completed
 
-### Phase 2
+### Phase 4 — Evaluation
 
-**Persistence (`memory/`)**
-- `Store` — SQLite, versioned append-only migrations, WAL, guarded write
-  transactions, `RLock` + `check_same_thread=False` for the tool worker thread
-- `TaskStore` + `Task` — typed CRUD; ordering done in SQL so `limit` returns the
-  *most important* rows, not an arbitrary page
-- Shared `validate_iso_date` used by both the model and the tool schemas
+- `evaluation/case.py` — YAML suites; check names validated at **load** time
+- `evaluation/checks.py` — 15 checks reading the result, the trace, or the
+  database. No judge model (ADR-020)
+- `evaluation/runner.py` — isolated fixture workspace per repetition; model
+  pinning; `RecordingBroker` so the gate is provably consulted
+- `evaluation/report.py` — pass rates (ADR-021), per-check rates keyed on
+  label, metric spread, save/load, side-by-side comparison
+- `evaluations/cases/` — `embellishment` (4 cases) and `tool_calling` (4 cases)
+- `paios eval list | run | compare`
+- **Fix found by the harness:** title-based `complete_task` + token matching
 
-**Task tools** — `add_task`, `list_tasks`, `update_task`, `complete_task`.
-First tools at `write` level, so the first real exercise of the `ask` path.
+### Phase 2 — Master, Task Agent, memory
 
-**Delegation**
-- `DelegateTool` — one generic `delegate(agent, objective)` (ADR-013)
-- Guards: depth limit, call-stack cycle check, missing-capability handling
-- `ToolContext` extended with `store`, `delegate`, `agent_roster`, `depth`,
-  `call_stack`, `max_delegation_depth`
-- `Runtime.run_sub_agent` + closure injection so a tool cannot fake its depth
+Delegation via sub-agents-as-tools (ADR-012); SQLite store; four task tools;
+`master` and `task_agent`.
 
-**Agents** — `master` (tool: `delegate` only) and `task_agent`.
+### Phase 1 — Foundation
 
-**CLI** — `paios tasks [list|add|done]`; `paios trace` indents by depth;
-`paios doctor` reports the database and schema version.
+Model abstraction + Ollama provider; deterministic router; agent registry;
+typed tools + filesystem jail; permission gate; JSONL traces; CLI.
 
-### Phase 1 (unchanged)
+### Recorded, not built
 
-Model abstraction + Ollama provider · deterministic router · agent registry ·
-typed tools + filesystem jail · permission gate · JSONL traces · CLI · docs.
+Health & Wellness domain — `docs/health-wellness.md`, ADR-017/018/019.
+**Do not implement until explicitly requested.**
 
 ---
 
 ## In Progress
 
-Nothing. Phase 2 is closed.
+Nothing. Phase 4 is closed.
 
 ---
 
 ## Known Problems
 
-1. **`write: ask` prompts on every task mutation.** Correct as a default, and
-   genuinely annoying in daily use. `write: auto` in `config/local.yaml` is a
-   defensible override *because the filesystem jail already bounds where writes
-   can land* — the jail, not the prompt, is what makes it safe. Shipped default
-   stays `ask`.
+1. **`survives_a_bad_start` scores 60–80%.** After a failed tool call the model
+   sometimes skips the explicit fallback instruction. Real, measured, and low
+   priority — it is a compound conditional instruction, the hardest kind.
 
-2. **The 7B embellishes stored data.** Observed live: asked to add a task, it
-   invented `priority: high` and a due date nobody mentioned. The Task Agent
-   prompt now forbids this explicitly, but it is a *prompt* fix, not a
-   structural one — it should be measured, not assumed fixed. First real
-   candidate for the Phase 4 evaluation suite.
+2. **`update_task` still takes only an id**, so it has the same latent flaw
+   ADR-022 fixed in `complete_task`. Not yet exercised by any case, which is
+   the only reason it has not shown up.
 
-3. **The Master's plan is implicit.** It decides one delegation at a time, so
-   there is nothing to inspect before execution and nothing to resume from.
-   This is the documented revisit trigger for ADR-012 and blocks §27/§28
-   resumability.
+3. **The 7B hallucinated a task list** during the id-guessing failure. The
+   prompt now forbids stating task contents no tool returned, but that is a
+   prompt fix and therefore unproven. **No case measures it yet** — worth
+   adding one.
 
-4. **Tool timeouts bound the wait, not the thread** (carried over from Phase 1).
-   Python cannot kill a thread. This is why `Store` holds a lock.
+4. **`write: ask` prompts on every task mutation** in normal use. Correct
+   default; `write: auto` in `config/local.yaml` is defensible because the
+   filesystem jail already bounds where writes land.
 
-5. **`large` tier still unmapped** — 14B at Q4 (~9 GB) exceeds 8 GB VRAM.
+5. **Result files are ~30 KB each** and are committed. Fine now; if the
+   directory grows unwieldy, trim `detail` on passing checks.
 
-6. **Model swapping can crash Ollama's runner** — integration tests evict
-   models between size changes (`fresh_vram`). Master and Task Agent share the
-   medium tier deliberately, so delegation causes no swap.
+6. **`large` tier unmapped** — 14B at Q4 (~9 GB) exceeds 8 GB VRAM.
 
-7. **Disk is tight** — ~3 GB free of 476 GB on C:.
+7. **Model swapping can crash Ollama's runner.** Evict between size changes —
+   integration tests use `fresh_vram`; the eval CLI needs a manual unload
+   between `--model` runs.
 
-8. **No evaluation harness, no retry policy, no resumability.** Phase 4.
+8. **Four gaps recorded for sensitive domains** (traces store arguments
+   verbatim; `delegate` passes free text; `Store` is one namespace; permissions
+   have one axis). None are bugs today. See the Health & Wellness section of
+   this file's history and ADR-019.
 
 ---
 
@@ -115,25 +150,23 @@ None.
 
 ## Next Steps
 
-**Recommended: Phase 4 reliability before Phase 3 breadth.**
+**Phase 3 — Finance and Research agents.** The reason to defer it has been
+removed: there is now a way to tell whether a new agent works.
 
-The reasoning: known problems 2 and 3 are both *measurement* problems. Adding a
-Finance Agent now would add a third agent whose output quality is equally
-unmeasured, on top of a Master whose routing quality is unmeasured. Evaluation
-is what turns "the prompt now forbids inventing due dates" into something known
-rather than hoped.
+1. **Finance Agent.** Exercises genuinely new shapes: numeric reasoning, and
+   `requires_human_approval` on anything touching money — the first real use of
+   that flag. Needs a `transactions` domain in `memory/`.
+2. **Write its evaluation cases alongside it, not after.** Phase 4's lesson is
+   that fluent output hides wrong actions; a finance agent that is confidently
+   wrong about money is worse than one that is slow.
+3. **Research Agent** after, since it likely needs web access and therefore the
+   first `external_action` tool.
 
-1. **Evaluation harness** (`evaluations/`) — read `runs/*.jsonl`, score tool
-   selection, structured-output validity, task completion, and hallucination.
-   The traces already contain everything needed; nothing new to instrument.
-2. **Measure the embellishment fix** — does the 7B still invent due dates?
-3. **Measure the 3B** — can it drive the Task Agent? This is the open question
-   from Phase 1 and it decides how much routing work is worth doing.
-4. *Then* Phase 3 agents, with a way to tell whether they work.
+Two smaller items worth doing first, both cheap:
 
-If you would rather build breadth first, the Finance Agent is the natural next
-one — it exercises a genuinely different shape (numeric reasoning, and
-`requires_human_approval` on anything touching money).
+- Add a hallucination case (known problem 3) — the harness exists, the case
+  does not.
+- Give `update_task` the same title-based lookup as `complete_task` (ADR-022).
 
 Before starting: `paios doctor` and `pytest -q` for a green baseline.
 
@@ -141,35 +174,33 @@ Before starting: `paios doctor` and `pytest -q` for a green baseline.
 
 ## Last Successful Test
 
-**2026-08-27**
+**2026-08-28**
 
 ```
-pytest -q                 ->  239 passed  (sockets blocked, Ollama not needed)
-pytest -m integration     ->  11 passed   (live qwen2.5:3b + 7b)
+pytest -q                 ->  341 passed  (sockets blocked, Ollama not needed)
+pytest -m integration     ->  13 passed   (live qwen2.5:3b + 7b)
 ```
 
-Live delegation verified end to end:
+Evaluation results in `evaluations/results/` (committed, including the pre-fix
+runs — the regression history is the point):
 
 ```
-paios run master "Add a task to review the Phase 2 delegation design,
-                  then tell me everything on my list."
+embellishment  7b  20/20 (100%)      tool_calling  7b  18/20 (90%)
+embellishment  3b  20/20 (100%)      tool_calling  3b  18/20 (90%)
 ```
 
-→ master delegated to `task_agent`, which called `add_task` and `list_tasks`,
-and the task is really in `data/paios.db`. Trace
-`runs/20260827T134226Z_63847bb8.jsonl` shows the sub-agent's whole run nested
-under `delegate.start` / `delegate.end`.
+`paios tasks` confirms the real database was never touched by any eval run.
 
 ---
 
 ## Last User-Approved Change
 
 Paul approved, in this session:
-- the Phase 2 plan (sub-agents as tools, full scope, both agents on the 7B)
-- Phase 1 was committed (`f561e9d`) and pushed to
-  `github.com/paulmandap/personal_ai_os` (private)
+- Phase 4 plan: evaluation harness, deterministic scoring, cases targeting the
+  two open questions
 
-**Phase 2 is uncommitted** — 28 changed/new files awaiting review.
+Phases 1 and 2 are committed and pushed (`f561e9d`, `61965a9`). The Health &
+Wellness documentation amendment and all of Phase 4 are **uncommitted**.
 
 ---
 
@@ -190,11 +221,17 @@ Full records in [`docs/decisions.md`](docs/decisions.md).
 | 009 | Deterministic router until evaluation data says otherwise |
 | 010 | Ollama wire-format findings, verified empirically |
 | 011 | Trace redaction matches key segments, not substrings |
-| **012** | **A sub-agent is a tool; the Master reuses the agent loop** |
-| **013** | One generic `delegate` tool — per-agent tools create a registry cycle |
-| **014** | `delegate` is `read`-level; gates belong where consequences are |
-| **015** | SQLite for structured memory; vectors still deferred |
-| **016** | Every trace event carries its agent and depth |
+| 012 | A sub-agent is a tool; the Master reuses the agent loop |
+| 013 | One generic `delegate` tool — per-agent tools create a registry cycle |
+| 014 | `delegate` is `read`-level; gates belong where consequences are |
+| 015 | SQLite for structured memory; vectors deferred |
+| 016 | Every trace event carries its agent and depth |
+| 017 | *(future)* Health & Wellness is a domain agent; it **is** the coordinator |
+| 018 | *(future)* Safety is cross-cutting; crisis resources are static data |
+| 019 | *(future)* Permissions need a sensitivity axis orthogonal to severity |
+| **020** | **Deterministic trace-based scoring; no judge model** |
+| **021** | **A case result is a pass rate over N runs, not a boolean** |
+| **022** | **Identify a task by title; ids invite guessing** |
 
 ---
 
@@ -204,11 +241,15 @@ Hardware: RTX 3050 **8 GB VRAM**, 16 GB RAM, Ryzen 5 3600, Windows 10.
 
 | Tier | Model | Size | Status |
 |---|---|---|---|
-| `small` | `qwen2.5:3b-instruct` | ~2.2 GB | installed, unproven for tool calling |
-| `medium` | `qwen2.5:7b-instruct` | ~4.7 GB (5.1 GB resident) | the workhorse |
+| `small` | `qwen2.5:3b-instruct` | ~2.2 GB | **measured: 90% on tool_calling, ≈63 tok/s** |
+| `medium` | `qwen2.5:7b-instruct` | ~4.7 GB | **measured: 90% on tool_calling, ≈32 tok/s** |
 | `large` | — | — | unmapped by design |
 
 Roles: `classify`/`extract` → small; `plan`/`reason`/`code` → medium.
+
+**Open decision:** the measurements suggest `reason` could move to `small` for
+the task agent's workload. Not changed yet — one suite is thin evidence for a
+routing change, and Phase 3's agents will exercise harder reasoning.
 
 ---
 
@@ -220,25 +261,25 @@ Roles: `classify`/`extract` → small; `plan`/`reason`/`code` → medium.
 | `task_agent` | role `reason` → medium | 4 task tools | `read`, `write` |
 | `ping` | role `reason` → medium | `read_file`, `list_dir` | `read` |
 
-`max_delegation_depth: 2`. Master and Task Agent share the medium tier so
-delegation causes no VRAM swap.
+`max_delegation_depth: 2`.
 
 ---
 
 ## Pending Experiments
 
-- **Does the anti-embellishment prompt work?** Needs measurement (problem 2).
-- **Can the 3B drive an agent loop?** Still open from Phase 1. Decides how much
-  the router is worth investing in.
-- **How often does the Master delegate wrongly?** Unmeasured. With one
-  sub-agent the choice is trivial; the question becomes real at three or four.
-- **Is an explicit plan needed?** Blocked on resumability (problem 3).
+- **Should `reason` route to the 3B?** The data says it might. One suite is not
+  enough; revisit after Phase 3 adds harder reasoning workloads.
+- **Does the anti-hallucination prompt work?** Unmeasured (known problem 3).
+- **How often does the Master delegate wrongly?** Unmeasured. Trivial with one
+  sub-agent; becomes a real question at three or four.
+- **Is an explicit plan needed?** Still blocked on resumability (ADR-012's
+  revisit trigger).
 
 ---
 
 ## Repository Facts
 
-- ~3,680 lines of source, ~2,400 lines of tests
-- 250 tests: 239 unit (offline), 11 integration (live)
+- ~4,700 lines of source, ~3,190 lines of tests
+- 354 tests: 341 unit (offline, sockets blocked), 13 integration (live)
 - 3 runtime dependencies (`pydantic`, `httpx`, `pyyaml`)
-- 1 commit (`f561e9d`, Phase 1). Phase 2 uncommitted.
+- 2 commits. Health & Wellness docs + Phase 4 uncommitted (24 files).

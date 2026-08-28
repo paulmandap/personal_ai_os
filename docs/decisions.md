@@ -412,3 +412,201 @@ reconstructing the call structure by hand.
 **Alternative rejected:** one trace file per sub-agent, linked by run id. It
 keeps each file simple but makes the interesting question — what happened, in
 order, across the whole run — require joining files by hand.
+
+---
+
+## ADR-017 — Health & Wellness is a domain agent, and the domain agent is the coordinator
+
+**Date:** 2026-08-27 · **Status:** accepted (architecture only) · **Phase:** future
+
+**Context.** A future Health & Wellness domain needs several specialists
+(emotional support, lifestyle, reflection). The amendment that proposed it drew
+a `health_wellness` agent delegating to a separate `wellness_coordinator`, which
+delegates to the specialists.
+
+**Problem.** That is four agents deep. `max_delegation_depth` is 2, which allows
+exactly `master → domain → specialist`. The drawn hierarchy would not run.
+
+**Options.**
+1. Raise `max_delegation_depth` to 3 globally
+2. Collapse the coordinator into the domain agent
+
+**Decision.** Option 2. `health_wellness` **is** the coordinator.
+
+**Reason.** Every responsibility listed for the coordinator — choose the
+specialist, combine results, resolve conflicts, pass only necessary context — is
+what a domain agent does. A domain agent that only forwards to a coordinator is
+a hop that costs a full local model call (several seconds on a 7B) and decides
+nothing. Option 1 would also raise the ceiling for every other agent to
+accommodate one domain's diagram.
+
+**Consequences.** Domain agents are a *pattern*, not new machinery: the Phase 2
+delegation mechanism (ADR-012) already supports this shape unchanged. The master
+routes to the domain and never learns what is inside it, which is what keeps
+top-level orchestration flat as domains multiply.
+
+**Revisit when.** A domain genuinely needs three levels of its own. Raise the
+limit then, for that reason, rather than pre-emptively.
+
+---
+
+## ADR-018 — Safety is cross-cutting; crisis resources are static human-reviewed data
+
+**Date:** 2026-08-27 · **Status:** accepted (architecture only) · **Phase:** future
+
+**Context.** The Health & Wellness amendment specified a "Safety Layer" but drew
+it in two contradictory places: once as a leaf beneath the specialists, once as
+a gate on user input.
+
+**Decision, two parts.**
+
+**(a) Safety is cross-cutting, not a node.** It runs on input before routing and
+on output before anything reaches the user. Drawing it as a leaf implies a
+specialist can be reached without passing it — exactly the property that must
+not hold. Where a check can be deterministic it runs *outside* the model, for
+the same reason the permission gate does (ADR-006): a model that can be argued
+out of a safeguard does not have one.
+
+**(b) Crisis resources are static local data, never model-generated.** Written
+and reviewed by a human, shipped in the repository, rendered verbatim.
+
+**Reason for (b).** This system is local-only and offline-capable by design
+(ADR-001) — there is no hotline API to call. That leaves two options: generate
+the resource text, or ship it. A hallucinated helpline number fails at the exact
+moment it matters most, and fails while looking like it worked. There is no
+acceptable error rate here, so the content cannot come from a model.
+
+**Consequences.** The system must never display risk scores or claim to assess
+risk — it cannot, and implying otherwise would be the most harmful thing this
+project could ship. Escalation *suggests* human contact; it never acts, notifies,
+or files anything on the user's behalf. When uncertain, fail conservative and
+fail toward people: silence is not a safe default, it is abandonment.
+
+---
+
+## ADR-019 — Permissions need a sensitivity axis orthogonal to severity
+
+**Date:** 2026-08-27 · **Status:** accepted (direction only, not built) · **Phase:** future
+
+**Context.** The amendment proposed new permission levels: `STORE_MEMORY`,
+`SHARE_WITH_AGENT`, `DELETE_MEMORY`.
+
+**Problem.** `PermissionLevel` is a single ordered severity axis (`read`=10 …
+`destructive`=70). These do not slot into it. Reading a wellness journal is
+**low severity and high sensitivity simultaneously**, and one axis cannot say
+that. Forcing them in requires answering "is sharing a journal more or less
+severe than spending money?" — a question with no meaningful answer, which is
+the signal that it is the wrong axis.
+
+**Decision.** Keep `PermissionLevel` as severity. Add an orthogonal
+`sensitivity` marker (`normal` | `sensitive`) on tools and stored data. The
+existing broker keeps gating on severity; cross-agent sharing and memory writes
+gate on sensitivity.
+
+**Reason.** Two independent questions deserve two independent answers: *how much
+damage can this do?* and *how private is this?* Conflating them makes both
+harder to reason about, and would silently mis-classify every future sensitive
+domain — health, finance, private correspondence — not just this one.
+
+**Status is deliberately "direction, not built".** No code changes now. The
+purpose of recording it is to establish that the current model *cannot* absorb
+this requirement, so a future implementer extends the model rather than
+discovering the problem mid-build and hammering the levels in.
+
+**Consequences when built.** `Tool` gains a sensitivity marker; `Store` needs
+namespacing; `RunTrace` redaction must become sensitivity-aware (today it keys
+on secrets only, ADR-011) or wellness conversations land verbatim in
+`runs/*.jsonl`.
+
+---
+
+## ADR-020 — Deterministic trace-based scoring; no judge model
+
+**Date:** 2026-08-28 · **Status:** accepted · **Phase:** 4
+
+**Context.** Evaluating agent behaviour usually means either brittle string
+matching or a second model scoring the first.
+
+**Decision.** Score from the trace and the database. No LLM judge.
+
+**Reason.** Everything worth asking of these agents is already ground truth:
+which tool was called first, whether arguments validated, whether a permission
+was denied, and — crucially — what actually landed in storage. A judge would
+add a second *unmeasured* model grading an unmeasured agent, competing for the
+same 8 GB of VRAM, producing scores that differ between runs. Non-reproducible
+scores cannot detect regressions, which is the entire point.
+
+The decisive evidence arrived immediately: the defect this harness found was
+invisible in prose. The agent answered fluently and described its action
+confidently — while having completed the wrong task. A judge reading the output
+would have scored it well. Only checking the database caught it.
+
+**Consequences.** Some qualities (was the answer *helpful*?) are out of reach.
+`Scorer` stays a plain interface so a judge can be added when a question
+genuinely needs one. None has yet.
+
+---
+
+## ADR-021 — A case result is a pass rate over N runs, not a boolean
+
+**Date:** 2026-08-28 · **Status:** accepted · **Phase:** 4
+
+**Context.** The obvious design is one run per case, pass or fail.
+
+**Decision.** Every case runs `repeat` times (default 3, suites use 5) and
+reports `passed/total` plus per-check rates and the metric spread.
+
+**Reason.** Local models are stochastic even at `temperature=0`. A single run
+distinguishes nothing between *reliable* and *lucky*, and the difference is
+exactly what needs measuring before trusting a small model with real work.
+
+This paid off directly: `completes_the_right_task` scored 4/5 on the 3B and 5/5
+on the 7B after fixing. A single run would have shown both as "pass" and hidden
+a 20% failure rate.
+
+Per-check rates are keyed on the check's *label* (name plus parameters), not its
+name — a case may use `task_matching` twice with different arguments, and keying
+on the bare name collapsed them into one row that hid which of the two failed.
+
+**Consequences.** Suites take minutes, not seconds. Acceptable: they are run
+deliberately, not on every commit.
+
+---
+
+## ADR-022 — Identify a task by title; ids invite guessing
+
+**Date:** 2026-08-28 · **Status:** accepted · **Phase:** 4
+
+**Context.** `complete_task` originally took only a numeric `id`.
+
+**Problem, measured.** Given *"I finished buying the oat milk, mark that done"*,
+**both qwen2.5:3b and 7b** called `complete_task(id=1)` without calling
+`list_tasks` first, completing the wrong task — 0/5 on both models. The 7B then
+hallucinated a task list containing an item that had never existed.
+
+The Task Agent prompt already said *"Task ids come from list_tasks. If you do
+not know an id, list first."* Both models ignored it.
+
+**Decision.** `complete_task` accepts `title` or `id`, exactly one, and the
+description steers toward `title`. Matching scores by **token coverage of the
+search terms**, not substring containment.
+
+**Reason.** Identical failure on two models of very different capability is the
+signal that a design, not a model, is at fault. Requiring an integer the user
+never mentioned forces the model to invent one; removing that requirement
+removes the failure. A prompt instruction had already been tried and did not
+work — the structure was the lever.
+
+Substring matching was then found to be its own defect: a model searching
+`"buying the oat milk"` matched nothing against `"Buy oat milk"`, and responded
+by *saying* it would complete the task without calling anything. Token coverage
+handles the paraphrase; scoring on the search terms rather than on the title
+keeps a genuinely ambiguous search ambiguous, so `"oat milk"` against two
+similar tasks is refused rather than resolved by guessing.
+
+**Result.** 0/5 → 5/5. Suite 75% → 90% on both models.
+
+**Consequences.** `update_task` still takes only an id and has the same latent
+flaw; it is simply not yet exercised by a case. The general rule this
+establishes: **when an argument names something the user never said, expect a
+model to invent it.**

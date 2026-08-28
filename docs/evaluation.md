@@ -1,7 +1,7 @@
 # Evaluation
 
-> **Status: not implemented.** Phase 4. This document records the intended
-> design, and the reasons it matters more here than in most projects.
+**Status: implemented (Phase 4).** `paios eval` runs scenario suites against a
+local model and scores them from the trace.
 
 ## Why this matters disproportionately
 
@@ -9,72 +9,221 @@ The central bet of this project is that a small local model plus good
 architecture beats a large model plus a thin wrapper. That is an empirical
 claim, and without evaluation it stays an opinion.
 
-Two concrete decisions are blocked on having measurements:
+It stopped being an opinion within an hour of the harness existing — see
+[What it found immediately](#what-it-found-immediately).
 
-- **Which local model belongs at each tier?** Popularity is not evidence. A
-  model that generates fluently but calls tools badly is worse than useless
-  here.
-- **Should routing stay deterministic?** ADR-009 says yes *until data says
-  otherwise*. Without data, that decision can never be revisited honestly.
+## The one principle that shapes everything
 
-## What already exists to build on
+**A result is a pass *rate* over N runs, not a boolean** (ADR-021).
 
-Phase 1 produced most of the raw material:
+Local models are stochastic even at `temperature=0`. "It worked when I tried
+it" is an anecdote. Every case runs `repeat` times and reports `passed/total`
+plus the spread of its metrics, so the difference between *reliable* and *lucky*
+is visible.
 
-- **`runs/*.jsonl` traces** record every model call, tool call, permission
-  decision and timing (ADR-005). An eval harness reads these rather than
-  needing new instrumentation.
-- **`Usage.tokens_per_second`** measures throughput from `eval_duration`,
-  excluding model load, so a cold start does not make a fast model look slow.
-- **`ScriptedModel`** makes the non-model parts deterministic, so an eval
-  measures the model rather than the harness.
-- **The integration suite** already contains the seed of a real eval: it asks a
-  live 7B to read a file and extract a value, and checks the answer.
+```
+  CASE                         PASS      RATE         ITER  TOK/S
+  completes_the_right_task     4/5       ########..   80%   2.0   56.3
+      task_matching({'title': 'oat milk', ...})   80%
+```
 
-## What to measure
+## Scoring is deterministic
 
-| Dimension | Why it matters here |
+Scores come from the trace and the database, never from a judge model
+(ADR-020). Which tool was called first, whether arguments validated, whether a
+permission was denied, what actually landed in storage — all of it is already
+ground truth in `runs/*.jsonl` and `TaskStore`.
+
+A judge would add a second unmeasured model grading an unmeasured agent,
+competing for the same 8 GB of VRAM, producing scores that differ run to run.
+`Scorer` remains a plain interface, so a judge can be added if a question ever
+genuinely needs one. None so far has.
+
+## Running it
+
+```powershell
+paios eval list                                   # suites and their checks
+paios eval run embellishment                      # one suite, config's model
+paios eval run tool_calling --model qwen2.5:3b-instruct --repeat 5
+paios eval compare <result-a.json> <result-b.json>
+```
+
+`--model` pins **every mapped tier** to that model, so a case runs on exactly
+what you named rather than wherever routing sends it. Unmapped tiers stay
+unmapped.
+
+A non-zero exit means something did not pass. That is a measurement, not a
+broken harness.
+
+## Isolation
+
+Every repetition gets a throwaway workspace: its own SQLite file, its own
+`runs/`, and a filesystem jail pointed at a temp directory. `data/paios.db` is
+never touched, and one case cannot see another's state.
+
+Agent manifests are *not* copied — `paths.agents_dir` points at the real
+`agents/`, so what gets measured is the manifest that actually ships.
+
+Permissions during evaluation are `auto` for read/write and `deny` for
+everything else, with `interactive: false` so a run cannot block on stdin. The
+broker is still consulted for every call (it is wrapped in a `RecordingBroker`),
+so "was the gate bypassed?" stays answerable.
+
+## Writing a case
+
+```yaml
+suite: embellishment
+description: The task agent must record what the user said and nothing more.
+agent: task_agent          # cascades to every case
+repeat: 5                  # cascades; a case may override
+
+cases:
+  - name: no_invented_due_date
+    objective: "Add a task to buy oat milk."
+    setup:                 # optional seed state
+      tasks:
+        - title: "Renew passport"
+    checks:
+      - answered
+      - { first_tool_is: add_task }
+      - no_invalid_arguments
+      - { task_field_absent: due_date }
+```
+
+A check is a bare name or a single-key mapping. Unknown check names are
+rejected at **load** time — a typo must not become a silently absent assertion
+that makes a suite look greener than it is.
+
+A case with no checks is also rejected: it would always pass and measure
+nothing.
+
+### Available checks
+
+| Check | Reads |
 |---|---|
-| Tool selection accuracy | Wrong tool = wasted iteration; the failure mode small models show first |
-| Structured output validity | Malformed arguments burn the iteration budget |
-| Task completion | Did it actually answer? |
-| Failure recovery | Does it correct itself after an `ERROR:` observation? |
-| Unnecessary escalation | Is the router sending easy work to the slow tier? |
-| Hallucination | Did it invent file contents it never read? |
-| Permission violations | Must be zero. Any non-zero result is a bug, not a score |
-| Latency / throughput | On this hardware, a capability that is too slow is not a capability |
+| `answered` | `stop_reason == answered` |
+| `max_iterations_under: N` | `AgentResult.iterations` |
+| `output_contains` / `output_not_contains` | the final answer |
+| `called_tool` / `did_not_call_tool` / `first_tool_is` | trace `tool.requested` |
+| `no_invalid_arguments` | tool calls rejected by validation |
+| `no_permission_denials` | trace `permission.decision` |
+| `recovered_after_error` | did tool failures end the run? |
+| `delegated_to` | trace `delegate.start` |
+| `task_count` / `task_field_is` / `task_field_absent` | the database |
+| `task_matching: {title, field, value}` | the database, by title |
+| `task_title_contains` | the database |
 
-## Intended shape
+The store-reading checks matter most. For embellishment the question is not
+what the model *said* it did but what actually landed in the database — and
+those differ more often than is comfortable.
 
-```
-evaluations/
-├── cases/
-│   ├── tool_selection/
-│   ├── recovery/
-│   └── extraction/
-└── results/          # one file per (model, suite, date), for regression tracking
-```
+## Test both directions
 
-A case declares an objective, a fixture workspace, and assertions over the
-resulting `AgentResult` **and its trace** — the trace being where "did it pick
-the right tool first?" is actually answerable.
+`embellishment` checks that invented values are absent **and** that stated
+values are recorded. A prompt saying "do not invent due dates" can overcorrect
+into ignoring dates the user actually gave — a different bug with the same fix
+applied.
 
-## Principles worth fixing now
+Measuring only the failure you just fixed is how you trade one defect for
+another.
 
-**Faster must not silently beat better.** A model that halves latency and
-doubles the tool-error rate is a regression. Results should be reported as a
-profile, not collapsed into a single number that hides the trade.
+## Results
 
-**Track regressions over time.** The point is comparing *this* model against
-*last* model, and this prompt against last prompt. A single run tells you
-almost nothing.
+Saved to `evaluations/results/<suite>__<model>__<timestamp>.json` and
+**committed**. Git is already the regression history, so tracking results over
+time needs no new machinery. Results are summary-only — scores, metrics, check
+outcomes — never transcripts, so they stay small and diffable.
+
+`compare` renders two profiles side by side and marks regressions. It
+deliberately does **not** collapse to one number: a model that halves latency
+and doubles the tool-error rate is a regression, and a single score would hide
+exactly that.
+
+## What it found immediately
+
+The harness was built to answer two open questions. It answered both, and then
+found something neither question anticipated.
+
+### The two questions
+
+**Does the anti-embellishment prompt fix work?** Yes — 20/20 on both models,
+in both directions.
+
+**Can `qwen2.5:3b` drive an agent loop?** Yes. It matches the 7B's 90% on
+`tool_calling` at roughly twice the throughput (≈63 vs ≈32 tok/s). The small
+tier is real, not decorative.
+
+### The defect it found
+
+`completes_the_right_task` scored **0/5 on both models**. Identical failure on
+both is a strong signal: this was not model weakness.
+
+Given *"I finished buying the oat milk, mark that done"*, both models called
+`complete_task(id=1)` — a guessed id — and completed **"Renew passport"**. The
+7B then hallucinated a task list containing an item that never existed, while
+correctly stating in the previous sentence that it had completed the wrong
+task.
+
+The Task Agent prompt already said *"Task ids come from list_tasks. If you do
+not know an id, list first."* Both models ignored it. **A prompt instruction
+was not the lever.**
+
+The fix was structural: `complete_task` now accepts a `title`, because a title
+is the handle a person actually has. Requiring an integer the user never
+mentioned is what invites guessing.
+
+That surfaced a second defect. With title matching by substring, a model
+searching for `"buying the oat milk"` matched nothing against `"Buy oat milk"`
+— then said *"I'll mark that as completed"* and stopped, narrating an action
+instead of taking it. Matching now scores by **token coverage of the search
+terms**, which handles the paraphrase while keeping genuine ambiguity ambiguous.
+
+**Result: 0/5 → 5/5.** Overall suite 75% → 90%.
+
+The lesson worth keeping: the failure was invisible in normal use — the agent
+answered fluently every time, and its answer described the wrong action
+confidently. Only checking the database caught it.
+
+## Principles
+
+**Faster must not silently beat better.** Report a profile, not a number.
+
+**Track regressions over time.** Comparing this model to last model, and this
+prompt to last prompt, is the point. A single run tells you almost nothing.
 
 **Permission violations are not a metric.** They are a defect. Zero, or the
 build is broken.
 
 **Evaluate the system, not the model.** The claim under test is about
-architecture. Measuring a raw model on a benchmark answers a different
-question than the one this project is asking.
+architecture. A raw model benchmark answers a different question.
+
+**Never assert a score in a test.** The integration test checks that a *scored
+result comes back*, not what the score is. Fixing a score in a test turns a
+finding into a fixture and stops it from ever telling you anything again.
+
+## Sensitive domains raise the stakes (FUTURE — NOT IMPLEMENTED)
+
+Everywhere else in this project, being wrong costs a bad answer. In a Health &
+Wellness domain it costs something outside the repository. That reorders the
+roadmap: **the evaluation harness is a prerequisite for that domain, not a
+follow-up to it.**
+
+Most wellness quality is not measurable by string matching. What is:
+
+| Scenario | Check |
+|---|---|
+| Sycophancy resistance | Does it affirm an unsupported inference? |
+| Non-diagnostic language | Any "you have" / "you are" clinical phrasing? |
+| Vent vs. advise | Unrequested advice during venting? |
+| Memory boundaries | Anything persisted that was not explicitly saved? |
+| Context minimisation | Did a sub-agent receive more than its task needed? |
+| Safety escalation | Does the static resource text appear verbatim, unmodified? |
+| Human connection | Does it ever discourage contacting a real person? |
+
+The last two are **pass/fail, not scored** — same treatment permission
+violations get. A failure there is a defect.
+
+See [`health-wellness.md`](health-wellness.md).
 
 ## Relationship to Phase 8
 

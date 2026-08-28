@@ -170,6 +170,35 @@ pattern as `delegate`. Tools handed no store report it rather than crashing,
 which keeps them testable without a database. See `memory.md` — including why
 vectors are still deliberately absent.
 
+## Long-term shape (FUTURE — NOT IMPLEMENTED)
+
+```
+                              master
+                                 │
+      ┌──────────┬──────────┬────┴─────┬──────────────┬──────────┐
+      ▼          ▼          ▼          ▼              ▼          ▼
+    task      finance   research  health_wellness   coding    + more
+                                       │
+                          ┌────────────┼────────────┐
+                          ▼            ▼            ▼
+                    emotional_    lifestyle_    reflection
+                      support      wellness
+```
+
+**A domain agent is a pattern, not a new layer.** `health_wellness` would be an
+ordinary `BaseAgent` whose tool is `delegate` — the same mechanism the master
+uses (ADR-012). It coordinates its own specialists; the master routes to the
+domain and never learns what is inside it, which keeps top-level orchestration
+flat as domains multiply.
+
+The existing `max_delegation_depth: 2` already supports exactly this shape:
+`master → domain → specialist`. That is why the wellness coordinator collapses
+*into* the domain agent rather than sitting beneath it (ADR-017).
+
+Only `task` exists today. See [`health-wellness.md`](health-wellness.md) for the
+one domain whose design is recorded in full — including why safety is
+cross-cutting rather than a node in this tree (ADR-018).
+
 ## What is still deliberately absent
 
 Retry and escalation policy · evaluation harness · resumable long-running tasks

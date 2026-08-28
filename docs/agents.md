@@ -244,3 +244,31 @@ context=ToolContext(
 
 `tests/unit/test_delegate.py` covers the guards, including that a refused
 delegation never invokes the runner.
+
+## Domain agents (FUTURE — NOT IMPLEMENTED)
+
+A *domain agent* coordinates several specialists in one subject area, so the
+master routes to a subject rather than to a capability:
+
+```
+master  →  health_wellness  →  emotional_support | lifestyle_wellness | reflection
+```
+
+It needs no new machinery. A domain agent is a `BaseAgent` whose tool is
+`delegate` — structurally identical to the master, one level down.
+
+Two rules make it work:
+
+- **The coordinator *is* the domain agent.** Not a separate agent beneath it.
+  Coordination is what a domain agent does, and an extra hop costs a full local
+  model call while deciding nothing. It would also exceed
+  `max_delegation_depth: 2` (ADR-017).
+- **The master stays ignorant of the inside.** It knows the domain exists and
+  what it is for. Adding a fourth specialist later changes nothing above the
+  domain agent — which is the property that keeps orchestration flat as domains
+  multiply.
+
+The one domain designed in full is
+[`health-wellness.md`](health-wellness.md) — including memory boundaries,
+sensitivity-aware sharing, and why its safety layer is cross-cutting rather than
+an agent in the tree. Nothing in it is built.

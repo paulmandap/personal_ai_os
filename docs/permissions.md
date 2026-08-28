@@ -116,6 +116,34 @@ Permissions decide whether an action may happen. The **filesystem jail**
 nameable at all. Both must pass; neither substitutes for the other. See
 `tools.md`.
 
+## Severity is not sensitivity (FUTURE — NOT IMPLEMENTED)
+
+`PermissionLevel` answers one question: *how much damage can this do?* It cannot
+answer a second one: *how private is this?*
+
+Those come apart immediately in any sensitive domain. Reading a wellness journal
+is **`read` severity and high sensitivity at the same time** — the current model
+has no way to say so, and would wave it through on `read: auto`.
+
+The recorded direction (ADR-019) is a second, orthogonal axis:
+
+```
+severity     read < write < external_action < ... < destructive     (existing)
+sensitivity  normal | sensitive                                     (future)
+```
+
+The broker keeps gating on severity; cross-agent sharing and memory writes gate
+on sensitivity.
+
+**Why not just add levels.** Squeezing `store_memory` and `share_with_agent`
+into the severity ladder forces an answer to "is sharing a journal more or less
+severe than spending money?" — a question with no meaningful answer, which is
+the signal that it is the wrong axis.
+
+Nothing here is built. It is recorded so a future implementer extends the model
+deliberately rather than discovering the mismatch mid-build. See
+[`health-wellness.md`](health-wellness.md).
+
 ## Auditing
 
 Every decision is traced:

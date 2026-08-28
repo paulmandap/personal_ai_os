@@ -120,12 +120,14 @@ src/personal_ai_os/
   tools/         base (+ path jail), registry, delegate, builtin/
   permissions/   levels, brokers                    <- the gate
   agents/        spec, registry, base loop, builtin/{ping,master,task_agent}
+  evaluation/    case, checks, runner, report       <- measurement
   observability/ logging, JSONL traces
   config/        schema, loader
   runtime.py     composition root — the only place things are wired
   cli.py         doctor | models | agents | run | tasks | trace
 
 agents/*.yaml    agent manifests (data, not code)
+evaluations/     cases/*.yaml (data), results/*.json (committed history)
 config/          default.yaml (committed), local.yaml (gitignored)
 docs/            architecture, agents, tools, permissions, model-routing,
                  memory, evaluation, development-workflow, decisions
@@ -142,10 +144,32 @@ paios agents                  # registered agents
 paios run master "..."        # delegate an objective
 paios tasks                   # the task list, no model involved
 paios trace <run_id> -v       # replay a run, sub-agents indented
+paios eval run <suite>        # measure agent behaviour
+paios eval compare a.json b.json
 
 pytest -q                     # unit — must pass with Ollama STOPPED
 pytest -m integration         # live — needs Ollama
 ```
+
+## Measuring, not guessing
+
+`pytest` says the code is correct. `paios eval` says the agent behaves well.
+They are different questions.
+
+**Run an evaluation after changing a prompt, a tool schema, or a model.** None
+of those are judged by unit tests. Phase 4 found a defect every test passed
+through: both models guessed a task id, completed the wrong task, and described
+it fluently. Only checking the database caught it.
+
+- **Never assert a score in a test.** Pinning a score turns a finding into a
+  fixture. Integration tests assert that a scored result comes back, not what
+  it is.
+- **A prompt fix is unproven until measured.** If a fix cannot be measured, say
+  so rather than calling it done.
+- **Identical failure across two different models means the design is wrong,
+  not the model** (ADR-022). Reach for structure before prompt wording.
+- **When an argument names something the user never said, expect a model to
+  invent it.**
 
 ## Conventions
 
@@ -187,6 +211,38 @@ thing worth understanding, let him inspect it, test, iterate. Do not lecture.
 For meaningful changes: inspect the repository first, produce a plan, identify
 risks and tests, then execute. Do not start editing many files before
 understanding what is there.
+
+## Future architecture: Health & Wellness
+
+A Health & Wellness domain is **recorded, not built**. Full design in
+`docs/health-wellness.md`; decisions in ADR-017/018/019.
+
+**Do not implement any of it until Paul explicitly asks.** No agents, no tools,
+no tables. It is recorded so the system can grow into it without a rewrite.
+
+When it is eventually built, these are not negotiable:
+
+- **Never present the system as a psychiatrist, psychologist, therapist, or
+  physician.** The term is "Health & Wellness Support".
+- **No diagnostic or clinical functionality, ever.** No diagnosing, no treating,
+  no interpreting symptoms, no risk scores. Out of scope for this project
+  permanently — not "later".
+- **Never claim to assess mental-health risk.** A local 7B is not a clinical
+  instrument and must not imply it is.
+- **Crisis resources are static, human-reviewed data shipped in the repo,
+  rendered verbatim.** Never model-generated. A hallucinated helpline number
+  fails at the moment it matters most, while looking like it worked.
+- **Escalation suggests; it never acts.** Nothing contacts anyone on the user's
+  behalf.
+- **Never design for engagement or emotional dependency.** Support the user's
+  human relationships instead of substituting for them. Never frame the system
+  as their only safe space, and never discourage contacting real people.
+- **No sycophancy.** Do not affirm unsupported inferences to seem supportive.
+- **Sensitive data needs stricter memory and sharing rules than severity alone
+  implies** (ADR-019), and emotional conversation is not persisted by default.
+- **Evaluation comes first.** The harness is a prerequisite for this domain, not
+  a follow-up — it is the one place where being wrong costs something outside
+  the repository.
 
 ## Phase
 
