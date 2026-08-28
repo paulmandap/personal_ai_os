@@ -115,7 +115,7 @@ class ListAccountsTool(Tool):
             count=len(accounts),
             accounts=accounts,
             total=total,
-            summary="\n".join(a.summary() for a in accounts) or "(no accounts)",
+            summary="\n".join(a.summary for a in accounts) or "(no accounts)",
         )
 
 
@@ -147,7 +147,7 @@ class ListTransactionsTool(Tool):
         return TransactionsOutput(
             count=len(found),
             transactions=found,
-            summary="\n".join(t.summary() for t in found) or "(no transactions)",
+            summary="\n".join(t.summary for t in found) or "(no transactions)",
         )
 
 
@@ -173,7 +173,7 @@ class ListCommitmentsTool(Tool):
         return CommitmentsOutput(
             count=len(found),
             commitments=found,
-            summary="\n".join(c.summary() for c in found) or "(no commitments)",
+            summary="\n".join(c.summary for c in found) or "(no commitments)",
         )
 
 
@@ -196,7 +196,7 @@ class ListGoalsTool(Tool):
         return GoalsOutput(
             count=len(found),
             goals=found,
-            summary="\n".join(g.summary() for g in found) or "(no goals)",
+            summary="\n".join(g.summary for g in found) or "(no goals)",
         )
 
 
@@ -387,10 +387,17 @@ class TransferTool(Tool):
             )
         except FinanceError as exc:
             raise ToolExecutionError(str(exc)) from exc
+        # "already applied" is the load-bearing phrase. Without it the agent
+        # read these post-transfer balances as opening ones, subtracted the
+        # amount a second time, and reported 10,000 where the ledger correctly
+        # said 15,000 -- in 5 of 5 runs (ADR-033).
         return TransferOutput(
             from_account=source,
             to_account=target,
-            summary=f"{source.summary()}   |   {target.summary()}",
+            summary=(
+                f"transfer already applied. Balances now: "
+                f"{source.summary}; {target.summary}"
+            ),
         )
 
 

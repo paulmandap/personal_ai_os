@@ -20,7 +20,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 from personal_ai_os.core.errors import PersonalAIOSError
 from personal_ai_os.core.ids import utc_iso
@@ -87,8 +87,23 @@ class Account(BaseModel):
     balance_minor: int = 0
     updated_at: str = ""
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
     def summary(self) -> str:
-        return f"{self.name}: {format_minor(self.balance_minor, self.currency)}"
+        """Serialized, and phrased as a *current* balance (ADR-033).
+
+        Serialized because a `def summary(self)` is invisible to
+        `model_dump_json()`: the agent used to receive `balance_minor: 1500000`
+        and nothing else, and had to divide by 100 itself. Measured, qwen2.5:7b
+        divided by 1000 and reported a 15,000.00 balance as 1,500.00.
+
+        "holds", not ":", because the first version read as a *starting*
+        balance when it came back from a write. Asked to transfer 5,000, the
+        agent received `from_account.summary = "savings: PHP 15,000.00"` --
+        already the post-transfer figure -- subtracted 5,000 again and reported
+        10,000. A figure has to say which state it describes.
+        """
+        return f"{self.name} holds {format_minor(self.balance_minor, self.currency)}"
 
 
 class Transaction(BaseModel):
@@ -103,11 +118,17 @@ class Transaction(BaseModel):
 
     _check_date = field_validator("occurred_on")(lambda v: validate_iso_date(v) or v)
 
-    def summary(self, currency: str = "PHP") -> str:
+    def render(self, currency: str = "PHP") -> str:
         return (
             f"{self.occurred_on}  {format_minor(self.amount_minor, currency):>16}  "
             f"{self.category:<14} {self.description}"
         )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def summary(self) -> str:
+        """Serialized so the agent never has to convert minor units (ADR-033)."""
+        return self.render()
 
 
 class Commitment(BaseModel):
@@ -121,12 +142,18 @@ class Commitment(BaseModel):
     category: str = "bills"
     active: bool = True
 
-    def summary(self, currency: str = "PHP") -> str:
+    def render(self, currency: str = "PHP") -> str:
         state = "" if self.active else "  (inactive)"
         return (
             f"{self.name}: {format_minor(self.amount_minor, currency)} "
             f"on day {self.day_of_month}{state}"
         )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def summary(self) -> str:
+        """Serialized so the agent never has to convert minor units (ADR-033)."""
+        return self.render()
 
 
 class Goal(BaseModel):
@@ -142,12 +169,18 @@ class Goal(BaseModel):
     def remaining_minor(self) -> int:
         return max(0, self.target_minor - self.saved_minor)
 
-    def summary(self, currency: str = "PHP") -> str:
+    def render(self, currency: str = "PHP") -> str:
         by = f" by {self.target_date}" if self.target_date else ""
         return (
             f"{self.name}: {format_minor(self.saved_minor)} of "
             f"{format_minor(self.target_minor, currency)}{by}"
         )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def summary(self) -> str:
+        """Serialized so the agent never has to convert minor units (ADR-033)."""
+        return self.render()
 
 
 class Verdict(str, Enum):
@@ -173,7 +206,17 @@ class Affordability(BaseModel):
     verdict: Verdict
     explanation: str
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
     def summary(self) -> str:
+        """The working, serialized (ADR-033).
+
+        This table is the whole of ADR-024 -- the tool computes and shows its
+        arithmetic so the model only has to explain it. As a plain method it
+        was never serialized, so the agent received seven raw `*_minor`
+        integers and derived the figures anyway. Measured: it rendered an
+        800,000-minor commitment as "PHP 800.00".
+        """
         money = lambda m: format_minor(m, self.currency)  # noqa: E731
         return (
             f"requested            {money(self.requested_minor)}\n"

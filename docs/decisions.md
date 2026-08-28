@@ -996,3 +996,78 @@ pattern. A tool description says what the tool does and what it returns.
 
 And the standing one: changing a tool description is changing a prompt. It must
 be measured across *every* suite, not just the case it was written for.
+
+---
+
+## ADR-033 — A computed figure must cross the boundary, and say which state it is
+
+**Date:** 2026-08-28 · **Status:** accepted · **Phase:** 5
+
+**Context, found by verifying a detector rather than trusting it.** Four
+reported numbers rested on groundedness checks nobody had audited. Checking
+them against real transcripts split them cleanly.
+
+`no_unsupported_amounts` was **right both times**, and what it caught matters:
+
+| Case | Truth | The agent said |
+|---|---|---|
+| `transfer_moves_both_legs` | savings **15,000.00** | *"BPI savings: **1,500.00** PHP"* |
+| `says_no_when_the_answer_is_no` | rent **8,000** | *"upcoming bills of PHP **800.00**"* |
+
+The ledger was correct both times. The *answer* was wrong by a factor of ten,
+and every database check passed — only the groundedness detector could see it.
+1,500,000 ÷ 1000 = 1,500 and 800,000 ÷ 1000 = 800: the model dividing minor
+units by the wrong factor.
+
+**Why it had to.** `FINANCE_SYSTEM_PROMPT` says, in capitals, *"NEVER do
+arithmetic yourself. Every number you state must have come back from a tool."*
+`Affordability.summary()` renders exactly the table that makes this possible —
+requested, balance, bills, discretionary, verdict, every figure formatted.
+
+**It was a plain method, so `model_dump_json()` never included it.** The agent
+received seven raw `*_minor` integers and had to derive every figure. ADR-024's
+mechanism existed, was correct, and never crossed the model boundary.
+
+**Decision, part one.** `summary` is a pydantic `@computed_field` on `Account`,
+`Transaction`, `Commitment`, `Goal` and `Affordability`, so the rendered figure
+is in the payload. `render(currency)` keeps the parameterised form for the CLI.
+
+Forbidding the model from computing a figure is only half a rule. The other
+half is that **the tools must return the figures that make the ban obeyable.**
+
+**Decision, part two — added because part one caused a regression.**
+`transfer_moves_both_legs` immediately fell to **0/5**, identically every run:
+the ledger correctly said savings 15,000 and cash 6,000, and the agent reported
+**10,000 and 11,000**. It applied the transfer twice.
+
+The payload explains it:
+
+```json
+{"from_account": {"balance_minor":1500000, "summary":"savings: PHP 15,000.00"},
+ "to_account":   {"balance_minor": 600000, "summary":"cash: PHP 6,000.00"}}
+```
+
+`from_account` reads as *the account the money came from*, so its summary reads
+as an **opening** balance — and 15,000 − 5,000 = 10,000. Serializing the nested
+summaries made a pre-existing ambiguity legible enough for the model to act on.
+
+So a returned figure must also **say which state it describes**. `Account`
+renders `savings holds PHP 15,000.00`; `transfer` leads with `transfer already
+applied. Balances now: …`. `AddTransactionOutput` needed no change — *"cash is
+now PHP 2,500.00"* had the word "now" doing that work already.
+
+Measured after both parts: `transfer_moves_both_legs` 0/5 → **5/5**, `finance`
+**100% on both models** (the 7B was 96%), and every other 7B suite at 100%.
+
+**Consequences.**
+
+- Any new write tool needs both halves: return the state you produced, and name
+  it. Returning a bare post-state figure invites it to be read as a pre-state.
+- **More formatted figures is not automatically better.** Part one gave the
+  model three renderings of the same balance and it started reasoning about
+  them. Precision about *what a figure means* mattered more than repetition.
+- The companion finding is in `no_unsupported_task_claims`, which was **not**
+  sound: it scored echoed `created_at` timestamps and bullets naming tools as
+  invented tasks — 2 of its 3 training failures were false. Repairing it took
+  the holdout from 31/35 to **35/35**, because both holdout failures were
+  false positives. A number from an unverified detector is not evidence.

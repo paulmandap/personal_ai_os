@@ -55,8 +55,8 @@ honest justification for considering training (Phases 10–16).
 
 ### Detector false positives: a recurring hazard
 
-**Three times now**, a groundedness detector's first version has produced false
-positives that would have manufactured work aimed at the wrong thing:
+**Four times now**, a groundedness detector has needed checking before its
+number could be used:
 
 1. Phase 3: substring matching reported a 55% hallucination rate — all false.
 2. This phase: a magnitude floor let a real invented ₱450 through.
@@ -64,8 +64,16 @@ positives that would have manufactured work aimed at the wrong thing:
    quoting a balance back from a tool's **refusal message** was scored a
    critical unsupported claim — on a holdout case. It scored 0/5; after the
    fix, 10/10.
+4. This phase, the audit that matters most, because the two detectors came out
+   **opposite ways**:
+   - `no_unsupported_amounts` was **right** — and what it caught was a real
+     money defect nothing else could see (ADR-033).
+   - `no_unsupported_task_claims` was **wrong** twice in three, and two
+     reported holdout "60%" scores were its false positives.
 
-**Always verify a detector against real transcripts before believing it.**
+**Always verify a detector against real transcripts before believing it** —
+and audit against the *training* split, so repairing the instrument does not
+spend a holdout case (ADR-027). Full record in `docs/evaluation.md`.
 
 ---
 
@@ -85,7 +93,8 @@ positives that would have manufactured work aimed at the wrong thing:
 
 ## Known Problems
 
-1. **`contradiction_is_surfaced` — improved, not solved.** 7B 47% → **60%**,
+1. **`contradiction_is_surfaced` — improved, not solved.** 7B 47% → **53–60%**
+   (8/15 and 9/15 on two runs of identical code — still noisy at 15),
    3B 0% → 27% (at `repeat: 15`). Two structural fixes landed (ADR-030,
    ADR-031) and both original mechanisms are gone: no duplicates, no empty
    responses. The **residual failure is a dishonesty**, and it is now measured
@@ -122,24 +131,30 @@ positives that would have manufactured work aimed at the wrong thing:
    even at `repeat: 15` two runs of identical code gave 11/15 and 8/15. The
    *mechanism* is stable where the rate is not — judge a fix by which failure
    remains, not by the score. `contradiction_is_surfaced` is now `repeat: 15`.
-3. **The groundedness detectors need verifying — this is the recurring one.**
-   Four separate results now hang on them and none has been checked against a
-   transcript:
-   - `planning` holdout 60% and `delegation` holdout 60%, both failing
-     `no_unsupported_task_claims`;
-   - `transfer_moves_both_legs` fluctuating 4/5–5/5 on `no_unsupported_amounts`
-     reporting an invented `1500.00`;
-   - one `finance` run flagging `800.00` in "upcoming bills of PHP 800.00".
+3. ~~**The groundedness detectors need verifying**~~ **DONE — and they split.**
+   `no_unsupported_amounts` was **sound**: both flags were real, and what they
+   caught was a money defect no database check could see. The agent reported a
+   ₱15,000 balance as ₱1,500 and an ₱8,000 bill as ₱800 — dividing minor units
+   by 1000 instead of 100, because `Affordability.summary()` and
+   `Account.summary()` were plain methods that never serialized. Fixed by
+   ADR-033; `finance` is now 100% on both models.
 
-   Either the model is summing figures itself — a real ADR-024 violation worth
-   knowing about — or the detectors are crying wolf, which this project has
-   already been caught by three times. **Do not act on these numbers until one
-   of them is checked against the actual transcript.** Highest-value next task.
+   `no_unsupported_task_claims` was **not sound**: it flagged echoed
+   `created_at` timestamps and bullets naming tools as invented tasks, 2 of 3
+   training failures being false. Repaired, and **the holdout went 31/35 →
+   35/35** — both holdout failures had been false positives. The two "60%"
+   scores previously reported here were artefacts.
+
+   Audit record and method now in `docs/evaluation.md`.
 4. ~~**Holdout is thin**~~ **Replenished: 4 → 7 cases.** Three fresh ones added
    2026-08-28, written before the ADR-032 fix was measured and never run during
    it. All three passed 5/5 on their single unbiased run.
-5. **`robustness` and `finance` are drifting toward saturation** on the 7B
-   (80% and 96%).
+5. **Six of seven suites are saturated on the 7B.** `finance`, `planning`,
+   `delegation`, `hallucination`, `tool_calling` and `embellishment` are all
+   100%, and the holdout is 35/35. Only `robustness` still measures anything
+   (80%), and only via `contradiction_is_surfaced`. **The benchmark, not the
+   system, is now the limiting factor** — write harder cases before reading
+   any of these numbers as progress.
 6. Multi-currency refuses rather than converts; no bank import; `write: ask`
    prompts on every mutation.
 7. Training blocked on disk: ~22 GB needed, 5.5 GB free, and a GGUF cannot be
@@ -167,20 +182,26 @@ because after 2026-09-07 there is no conversation to remember them.
 
 ## Next Steps
 
-1. **Verify a groundedness detector against a real transcript** (problem 3).
-   Four reported numbers now depend on detectors nobody has checked, and this
-   project has been fooled by exactly this three times. Pick the
-   `transfer_moves_both_legs` `1500.00` case, read the transcript, and settle
-   whether the model summed it or the regex invented it. Cheap, and everything
-   downstream of those numbers is unreliable until it is done.
-2. **`complete_task` arguments rejected by validation on the 3B** — ~20% of
-   runs, and it is the shared mechanism behind `completes_the_right_task` (60%)
-   and `ordering_matters` (2/5). Read the rejected arguments before designing
+1. **Write harder cases — the benchmark is now the bottleneck** (problem 5).
+   Six of seven suites are at 100% on the 7B and the holdout is 35/35. Those
+   numbers no longer distinguish a good change from a neutral one. Phase 5
+   found three defects within an hour of doing exactly this. Aim at what the
+   last two passes exposed rather than inventing fresh territory:
+   - answers that contradict the write that was made (the only live failure);
+   - figures returned by a *write* being read as pre-state;
+   - a tool description changing behaviour on a different tool's task.
+2. **Upgrade Ollama to 0.33.2** as its own commit. Deferred deliberately so it
+   would not confound this change's before/after. Run `pytest -m integration`
+   plus one suite per model and compare against the table below — ADR-010's
+   wire-format findings need re-confirming on every bump.
+3. **`complete_task` arguments rejected by validation on the 3B** — ~20% of
+   runs, and the shared mechanism behind `completes_the_right_task` (60%) and
+   `ordering_matters` (2/5). Read the rejected arguments before designing
    anything; ADR-022 and ADR-030 both started from exactly this symptom.
-3. The residual dishonesty (problem 1). No structural fix is obvious. The new
+4. The residual dishonesty (problem 1). No structural fix is obvious. The new
    `answer_matches_task_status` check makes it measurable, which is the
    precondition for working on it at all.
-4. Then either the Research Agent (first `external_action` tool) or Phase 10.
+5. Then either the Research Agent (first `external_action` tool) or Phase 10.
 
 Before starting: `paios doctor` and `pytest -q` for a green baseline.
 
@@ -192,35 +213,50 @@ Before starting: `paios doctor` and `pytest -q` for a green baseline.
 findings still hold — the integration suite confirms).
 
 ```
-pytest -q                 ->  535 passed  (sockets blocked, Ollama not needed)
+pytest -q                 ->  544 passed  (sockets blocked, Ollama not needed)
 pytest -m integration     ->   16 passed  (live qwen2.5:3b + 7b)
 
-                          before ADR-030/031/032    after
+                        start of session       now (ADR-030..033)
 two_writes_in_one_request (repeat 15)
                7B / 3B       1/5                    15/15 · 15/15   ADR-032
 contradiction_is_surfaced (repeat 15)
-               7B            7/15  (47%)             9/15  (60%)
+               7B            7/15  (47%)             8/15  (53%)
                3B            0/15  ( 0%)             4/15  (27%)
 robustness     7B            74%                     80%
-robustness     3B            46%                     54%
-planning       7B            73%                    100%
-planning       3B            67%                     88%
-finance        7B / 3B      100%                     96% · 100%      see problem 3
-tool_calling   3B          "100%" (one sample)        80%  (repeat 15; truly 60%)
+robustness     3B            46%                     57%
+finance        7B / 3B      100% / 100%             100% · 100%     ADR-033
+planning       7B            93%                    100%
+delegation     7B           100%                    100%
+hallucination  7B           100%                    100%    <- detector repair
+tool_calling   7B           100%                    100%
+embellishment  7B           100%                    100%
+tool_calling   3B          "100%" (one sample)       (true rate 60% at repeat 15)
 delegation     3B            33%                     40%             ADR-031
-holdout        7B      (4 cases)                     31/35 (89%), 7 cases
+holdout        7B      31/35 (89%, 4 cases)         35/35 (100%), 7 cases
 ```
 
 Mechanisms, which are steadier than the rates: the 7B's duplicate-task failure
 went 8 of 8 → 0; the 3B's empty responses on that case 14 of 15 → 0; and every
 `two_writes` run now quotes a tool-returned balance instead of inventing one.
 
-**One regression was caused and caught here.** Guidance added to
-`add_transaction`'s *description* made `set_balance` salient on every turn, and
-qwen2.5:3b began assembling a transfer from two `set_balance` calls — zeroing
-an account. `transfer_moves_both_legs` fell from six consecutive 5/5 runs to
-2/5. Removing the sentence restored 5/5 while `two_writes` stayed 15/15, so the
-structural change did all the work. See ADR-032's consequences.
+**Two regressions were caused and caught here**, both on the same case, and
+both worth remembering because neither was visible in a unit test.
+
+1. Guidance added to `add_transaction`'s *description* made `set_balance`
+   salient on every turn, and qwen2.5:3b began assembling a transfer from two
+   `set_balance` calls — zeroing an account. `transfer_moves_both_legs` fell
+   from six consecutive 5/5 runs to 2/5. Removing the sentence restored 5/5
+   while `two_writes` stayed 15/15, so the structural change had done all the
+   work. See ADR-032.
+2. Serializing `Account.summary` rendered a transfer's **post**-transfer
+   balance inside `from_account`, where it reads as an *opening* balance. The
+   7B subtracted the amount a second time and reported ₱10,000 where the ledger
+   correctly said ₱15,000 — 0/5. Labelling the state (`savings holds …`,
+   `transfer already applied. Balances now: …`) restored 5/5. See ADR-033.
+
+The shared lesson: **a change to what a tool returns or how it is described is
+a change to the prompt, and must be measured across every suite** — not only
+the case it was written for.
 
 All results committed in `evaluations/results/`, pre-fix runs included — the
 regression history is the point.
@@ -234,7 +270,7 @@ then two structural fixes measured separately (ADR-030 `add_task` referent
 guard, ADR-031 empty-turn retry), with `confirm_duplicate` as the escape hatch.
 
 Phases 1–5 committed and pushed (`f561e9d`, `61965a9`, `20b6e5e`, `5de9ec9`,
-`cf628df`, `83224ee`, `bfcab5f`). The ADR-032 work is **uncommitted**.
+`cf628df`, `83224ee`, `bfcab5f`, `57a8b7e`). The ADR-033 work is **uncommitted**.
 
 ---
 
@@ -256,6 +292,7 @@ no cloud provider) overrides everything.
 | **030** | **A create tool must resolve its referent** |
 | **031** | **An empty turn is a stumble, not a terminus** |
 | **032** | **A tool that changes state returns the state it produced** |
+| **033** | **A computed figure must cross the boundary, and say which state it is** |
 
 ---
 
@@ -290,7 +327,7 @@ three new agents since Phase 1.
 
 ## Repository Facts
 
-- 551 tests: 535 unit (offline, sockets blocked), 16 integration (live)
+- 560 tests: 544 unit (offline, sockets blocked), 16 integration (live)
 - 7 evaluation suites, 35 cases, 7 holdout · 21 checks · 15 failure codes
 - 3 runtime dependencies (`pydantic`, `httpx`, `pyyaml`)
-- 6 commits. The ADR-032 work is uncommitted.
+- 7 commits. The ADR-033 work is uncommitted.

@@ -321,7 +321,7 @@ class TestFinanceEndToEnd:
         after = sum(a.balance_minor for a in finance.accounts())
         assert after == before, (
             f"money was created or destroyed: {before} -> {after} "
-            f"({[a.summary() for a in finance.accounts()]})"
+            f"({[a.summary for a in finance.accounts()]})"
         )
 
     def test_money_never_becomes_a_float(self, store):

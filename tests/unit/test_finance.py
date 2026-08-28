@@ -72,6 +72,107 @@ class TestMoneyRepresentation:
         assert format_minor(1, "PHP") == "PHP 0.01"
 
 
+class TestTheWorkingCrossesTheBoundary:
+    """ADR-033: a computed figure the model never receives is not a fix.
+
+    ADR-024 put the arithmetic in the tool and rendered it into `summary()`.
+    But a plain method is invisible to `model_dump_json()`, so the agent got
+    only raw `*_minor` integers and derived the figures anyway -- reporting an
+    800,000-minor commitment as "PHP 800.00" and a 1,500,000-minor balance as
+    "1,500.00". Both were division by 1000 instead of 100.
+
+    These tests assert the payload, not the method, because the payload is what
+    the model actually reads.
+    """
+
+    def test_an_account_payload_carries_the_formatted_balance(self):
+        import json
+
+        from personal_ai_os.memory.finance import Account
+
+        payload = json.loads(Account(name="savings", balance_minor=1_500_000).model_dump_json())
+        assert "15,000.00" in payload["summary"]
+
+    def test_the_affordability_payload_carries_the_whole_working(self, finance):
+        import json
+
+        finance.set_balance("cash", "3000")
+        finance.add_commitment("rent", "8000", day_of_month=28)
+        result = finance.affordability("50000", today=date(2026, 8, 1))
+        payload = json.loads(result.model_dump_json())
+
+        # The figure the model rendered as "PHP 800.00" when it had to divide
+        # 800000 itself.
+        assert "8,000.00" in payload["summary"]
+        assert "verdict" in payload["summary"]
+
+    def test_every_money_record_serializes_its_summary(self, finance: FinanceStore):
+        """One missed model is one more place the model does the arithmetic."""
+        import json
+
+        finance.set_balance("cash", "1000")
+        finance.add_commitment("rent", "8000", day_of_month=5)
+        finance.add_goal("laptop", "60000", target_date="2027-08-01")
+        _, account = finance.add_transaction("cash", "-250.50", category="groceries")
+
+        records = [
+            account,
+            finance.transactions()[0],
+            finance.commitments()[0],
+            finance.goals()[0],
+        ]
+        for record in records:
+            payload = json.loads(record.model_dump_json())
+            assert "summary" in payload, type(record).__name__
+            assert payload["summary"], type(record).__name__
+
+    def test_a_balance_reads_as_current_not_opening(self, finance: FinanceStore):
+        """The regression half of ADR-033.
+
+        The first version rendered "savings: PHP 15,000.00". Coming back from a
+        *transfer* that is the post-transfer figure, but it reads like an
+        opening balance -- so the agent subtracted the amount a second time and
+        reported 10,000, in 5 of 5 runs, while the ledger correctly said
+        15,000. Returning the state is not enough; the payload has to say which
+        state it is.
+        """
+        from personal_ai_os.memory.finance import Account
+
+        assert Account(name="savings", balance_minor=1_500_000).summary == (
+            "savings holds PHP 15,000.00"
+        )
+
+    def test_the_transfer_payload_says_it_is_already_applied(self, finance: FinanceStore):
+        import json
+
+        from personal_ai_os.tools.builtin.finance import TransferTool
+        from personal_ai_os.tools.base import ToolContext  # noqa: F401
+
+        finance.set_balance("savings", "20000")
+        finance.set_balance("cash", "1000")
+        source, target = finance.transfer("savings", "cash", "5000")
+        payload = json.loads(
+            TransferTool.Output(
+                from_account=source,
+                to_account=target,
+                summary=(
+                    f"transfer already applied. Balances now: "
+                    f"{source.summary}; {target.summary}"
+                ),
+            ).model_dump_json()
+        )
+        assert "already applied" in payload["summary"]
+        assert "15,000.00" in payload["summary"]
+        assert "6,000.00" in payload["summary"]
+
+    def test_render_still_honours_an_explicit_currency(self, finance: FinanceStore):
+        """The CLI prints per-account currency; the property uses the default."""
+        finance.add_commitment("rent", "8000", day_of_month=5)
+        commitment = finance.commitments()[0]
+        assert "USD" in commitment.render("USD")
+        assert "PHP" in commitment.summary
+
+
 class TestMigration:
     def test_finance_tables_are_migration_two(self, tmp_path: Path):
         with Store(tmp_path / "f.db") as store:
@@ -333,7 +434,7 @@ class TestAffordability:
         assert got.verdict is Verdict.TIGHT  # zero left is not comfortable
 
     def test_summary_shows_every_component(self, setup: FinanceStore):
-        text = setup.affordability("5000", today=date(2026, 8, 1)).summary()
+        text = setup.affordability("5000", today=date(2026, 8, 1)).summary
         for label in ("requested", "total balance", "upcoming bills",
                       "reserved for goals", "discretionary", "verdict"):
             assert label in text

@@ -66,6 +66,24 @@ costs the most.
 `no_unsupported_amounts` in the evaluation suite enforces it: every figure in
 the answer must trace back to a tool result or to the user's own words.
 
+### The working has to actually reach the model
+
+`Affordability.summary()` renders the table above. It was a plain method, so
+`model_dump_json()` never included it and the agent received only seven raw
+`*_minor` integers — then divided one by 1000 instead of 100 and reported an
+₱8,000 bill as ₱800. The ledger was right; the answer was not.
+
+Every money record now carries `summary` as a `@computed_field`, so the
+rendered figure is in the payload (ADR-033). `render(currency)` keeps the
+parameterised form for the CLI, which prints per-account currencies.
+
+**And a figure must say which state it describes.** `Account` renders
+`savings holds PHP 15,000.00`, not `savings: PHP 15,000.00`; `transfer` leads
+with `transfer already applied. Balances now: …`. Without that, the agent read
+a transfer's *post*-transfer balance as an opening one, subtracted the amount
+again, and reported ₱10,000 where the ledger said ₱15,000 — in five runs out of
+five.
+
 ### Forbidding the arithmetic is only half the rule
 
 The other half is that the tools must return the figures that make the ban

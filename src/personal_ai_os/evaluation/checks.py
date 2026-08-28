@@ -399,6 +399,25 @@ _QUOTED = re.compile(r"[\"“]([^\"“”\n]{3,160})[\"”]")
 #: The annotation is commentary, not part of the claimed title.
 _ANNOTATION = re.compile(r"\s+[-–—]\s+")
 
+#: An ISO timestamp is never a task title. Verified false positive: an agent
+#: that echoed the stored task JSON had its real `created_at` values reported
+#: as invented tasks, because grounding never read those fields.
+_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}|$)")
+
+#: Tool names as a model writes them in prose -- underscores dropped as often
+#: as not, and `significant_words` folds the trailing "s". A bullet telling the
+#: user which tool to call is narration, not a claim that a task exists.
+#: Verified false positive: "Use completetask on both tasks" and "listtasks to
+#: confirm the tasks" were both scored as invented.
+#:
+#: Tool names ONLY. An earlier version added the generic verbs around them --
+#: "call", "use", "tool" -- and that blinded the detector to "Call the dentist",
+#: a perfectly ordinary invented task. An existing test caught it. The words
+#: that identify narration are the ones no real task title contains.
+_TOOL_WORDS = frozenset(
+    {"listtask", "addtask", "updatetask", "completetask", "deletetask"}
+)
+
 
 def _strip_decoration(claim: str) -> str:
     """Reduce a rendered list item to the title it is claiming."""
@@ -409,8 +428,20 @@ def _strip_decoration(claim: str) -> str:
     return text.strip(" .,:;-")
 
 
+def _is_narration(claim: str) -> bool:
+    """Is this the agent describing a tool call rather than naming a task?"""
+    words = significant_words(claim)
+    return bool(words & _TOOL_WORDS)
+
+
 def claimed_items(text: str) -> list[str]:
-    """Task-like references the agent asserted in prose."""
+    """Task-like references the agent asserted in prose.
+
+    Deliberately excludes two things that are not claims about tasks: a bare
+    ISO timestamp, and a sentence naming a tool. Both were producing false
+    hallucination reports on real transcripts -- and a detector that cries wolf
+    gets switched off, which is worse than not having one.
+    """
     found: list[str] = []
     found.extend(_JSON_TITLE.findall(text))
     for line in text.splitlines():
@@ -424,9 +455,12 @@ def claimed_items(text: str) -> list[str]:
     for raw in found:
         cleaned = _strip_decoration(raw)
         key = cleaned.lower()
-        if cleaned and key not in seen:
-            seen.add(key)
-            items.append(cleaned)
+        if not cleaned or key in seen:
+            continue
+        if _TIMESTAMP.match(cleaned) or _is_narration(cleaned):
+            continue
+        seen.add(key)
+        items.append(cleaned)
     return items
 
 
@@ -461,6 +495,12 @@ def _no_unsupported_task_claims(ctx: RunContext, p: dict[str, Any]) -> CheckOutc
         grounded |= _content_words(task.due_date or "")
         grounded |= _content_words(task.priority.value)
         grounded |= _content_words(task.status.value)
+        # Timestamps and ids too. An agent that renders the stored row verbatim
+        # is quoting real data; leaving these out made that look invented.
+        grounded |= _content_words(task.created_at)
+        grounded |= _content_words(task.updated_at)
+        grounded |= _content_words(task.completed_at or "")
+        grounded |= _content_words(str(task.id))
     for message in ctx.result.transcript:
         if message.role is Role.USER:
             grounded |= _content_words(message.content)

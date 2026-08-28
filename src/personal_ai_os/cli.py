@@ -283,7 +283,7 @@ def cmd_finance(args: argparse.Namespace) -> int:
 
         if args.amount:
             result = finance.affordability(args.amount)
-            print(result.summary())
+            print(result.summary)
             print(f"\n  {result.explanation}")
             return 0 if result.verdict.value != "not_affordable" else 1
 
@@ -292,7 +292,7 @@ def cmd_finance(args: argparse.Namespace) -> int:
 
         print("\n  ACCOUNTS")
         for account in accounts or []:
-            print(f"    {account.summary()}")
+            print(f"    {account.summary}")
         if not accounts:
             print("    (none)")
         else:
@@ -300,13 +300,13 @@ def cmd_finance(args: argparse.Namespace) -> int:
 
         print("\n  RECURRING")
         for commitment in finance.commitments() or []:
-            print(f"    {commitment.summary(currency)}")
+            print(f"    {commitment.render(currency)}")
         if not finance.commitments():
             print("    (none)")
 
         print("\n  GOALS")
         for goal in finance.goals() or []:
-            print(f"    {goal.summary(currency)}")
+            print(f"    {goal.render(currency)}")
         if not finance.goals():
             print("    (none)")
         print()

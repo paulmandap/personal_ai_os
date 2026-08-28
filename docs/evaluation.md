@@ -352,6 +352,49 @@ detector that cries wolf is worse than none — it manufactures work, aimed at
 the wrong thing. Both false positives are now regression tests using the
 verbatim output that triggered them.
 
+### The audit record
+
+Four times now a groundedness detector has needed checking before its number
+could be used. Keeping the record here so the next one is checked the same way.
+
+| # | Detector | What was wrong | How it showed |
+|---|---|---|---|
+| 1 | task claims | apostrophes parsed as quotes; grounding used titles only | 55% "hallucination" rate, entirely false |
+| 2 | amounts | a magnitude floor ignored small figures | a real invented ₱450 passed |
+| 3 | amounts | grounding read only *successful* tool payloads | an agent quoting a refusal message scored 0/5 on a holdout case; 10/10 after |
+| 4 | both | see below | opposite verdicts |
+
+**The fourth audit is the one worth reading**, because the two detectors came
+out differently and the difference was the whole finding.
+
+`no_unsupported_amounts` was **sound**. Both flags were real: the agent reported
+a ₱15,000 balance as ₱1,500 and an ₱8,000 bill as ₱800 — dividing minor units
+by 1000 instead of 100 — while the database stayed correct. No other check
+could see it. That led to ADR-033.
+
+`no_unsupported_task_claims` was **not**. Of three training-case failures only
+one was genuine; it was also flagging
+
+- ISO timestamps the agent echoed from the stored row, because grounding read
+  `title`/`notes`/`due_date`/`priority`/`status` but not `created_at`;
+- bullets naming a tool — *"Use completetask on both tasks"* — because the list
+  extractor cannot tell an instruction from a task title.
+
+Repairing it took the holdout from 31/35 to **35/35**: both holdout failures
+had been false positives, and two "60%" scores had been reported as findings.
+
+**Two procedural lessons from that audit:**
+
+1. **Audit using the training split.** Studying a holdout failure spends the
+   case (ADR-027). Repairing the instrument against training-case transcripts
+   and *then* re-running the holdout keeps it unspent — and is what turned an
+   unreliable 89% into a real 100%.
+2. **Loosening a detector needs the same proof as tightening one.** The first
+   repair added generic verbs (`call`, `use`) to the tool-name exclusion list
+   and blinded the check to *"Call the dentist"*, an ordinary invented task. An
+   existing regression test caught it. Every exclusion must be re-run against
+   the transcript that motivated it **and** the one it might silence.
+
 ## Principles
 
 **Faster must not silently beat better.** Report a profile, not a number.

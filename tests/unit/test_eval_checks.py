@@ -249,6 +249,61 @@ class TestGroundedness:
         c = self.grounded_ctx(store, "You have:\n- Renew passport\n- Buy oat milk")
         assert outcome("no_unsupported_task_claims", c).passed
 
+    def test_echoed_timestamps_are_not_inventions(self, store, tasks: TaskStore):
+        """Verified false positive, from a real qwen2.5:7b run.
+
+        The agent rendered the stored row as JSON. Its `created_at` values are
+        real data straight out of the database -- but grounding only read
+        title/notes/due_date/priority/status, so quoting the row accurately was
+        scored a critical hallucination.
+        """
+        created = tasks.add("Renew passport")
+        c = self.grounded_ctx(
+            store,
+            "Here are your current tasks:\n```json\n[\n  {\n"
+            f'    "id": {created.id},\n    "title": "Renew passport",\n'
+            f'    "created_at": "{created.created_at}",\n'
+            f'    "updated_at": "{created.updated_at}"\n  }}\n]\n```',
+        )
+        got = outcome("no_unsupported_task_claims", c)
+        assert got.passed, got.detail
+
+    def test_naming_a_tool_is_not_claiming_a_task(self, store, tasks: TaskStore):
+        """Verified false positive, from a real qwen2.5:3b run.
+
+        Bullets describing which tool to call were extracted as task titles.
+        """
+        tasks.add("Renew passport")
+        tasks.add("Buy oat milk")
+        c = self.grounded_ctx(
+            store,
+            "Your task list:\n\n"
+            "- Use completetask on both tasks\n"
+            "- listtasks to confirm the tasks\n",
+        )
+        got = outcome("no_unsupported_task_claims", c)
+        assert got.passed, got.detail
+
+    def test_a_real_fabrication_survives_both_exclusions(self, store, tasks: TaskStore):
+        """The true positive from the same corpus -- must still be caught.
+
+        Loosening a detector is only safe if what it was right about still
+        fails.
+        """
+        tasks.add("Renew passport")
+        tasks.add("Buy oat milk")
+        c = self.grounded_ctx(
+            store,
+            "Here are your updated tasks:\n\n"
+            "1. Renew passport (todo, normal priority)\n"
+            "2. Review the Phase 2 code (todo, normal priority)\n"
+            "3. Book flight to New York (todo, normal priority)",
+        )
+        got = outcome("no_unsupported_task_claims", c)
+        assert not got.passed
+        assert "Phase 2 code" in got.detail
+        assert "New York" in got.detail
+
     def test_the_observed_hallucination_is_caught(self, store, tasks: TaskStore):
         """Verbatim from a real qwen2.5:7b run in Phase 4."""
         tasks.add("Renew passport")
