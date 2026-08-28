@@ -114,6 +114,10 @@ class Events:
     TOOL_RESULT = "tool.result"
     ERROR = "error"
     RETRY = "retry"
+    #: A turn produced neither content nor a tool call and the agent nudged the
+    #: model rather than giving up. Traced because a run that needed a nudge is
+    #: not the same as one that did not, and only the trace can tell them apart.
+    EMPTY_RETRY = "model.empty_retry"
     # Delegation. A sub-agent shares its parent's trace, so one file holds a
     # whole nested run; `depth` on these events is what makes the nesting
     # legible when reading it back.

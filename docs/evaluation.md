@@ -27,6 +27,28 @@ is visible.
       task_matching({'title': 'oat milk', ...})   80%
 ```
 
+### How many runs is enough — and what to read instead
+
+Five is often not enough. Measured on **unchanged** code at temperature
+0.2–0.3, `contradiction_is_surfaced` returned 0/5 and 2/5 on the same model;
+raised to `repeat: 15`, two runs of identical code still gave 11/15 and 8/15.
+`completes_the_right_task` on the 3B has spanned 0/5, 4/5, 5/5 and 2/5 across
+four measurements.
+
+Two consequences:
+
+- **Raise `repeat` on a case you are actively trying to fix.** A case may
+  override the suite default; `contradiction_is_surfaced` is `repeat: 15` for
+  exactly this reason.
+- **Judge a fix by the *mechanism*, not the rate.** The rate is noisy; the
+  failure mode is not. "Does any run still create a duplicate?" was answerable
+  at 15 runs (8 of 8 failures before, 0 after) when "did the score rise?" was
+  not. Before claiming a fix worked, name the mechanism that disappeared.
+
+A corollary for reading committed history: a single 100% is one sample, not a
+property. Before treating a drop as a regression, check what that case has
+scored across *every* stored result.
+
 ## Scoring is deterministic
 
 Scores come from the trace and the database, never from a judge model

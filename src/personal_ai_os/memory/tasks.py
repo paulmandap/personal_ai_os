@@ -39,6 +39,14 @@ _STOPWORDS = frozenset(
 _WORD = re.compile(r"[a-z0-9]+")
 
 
+def _fold(word: str) -> str:
+    """Strip one plural/gerund ending. Crude on purpose -- see below."""
+    for suffix in ("ing", "ed", "es", "s"):
+        if len(word) > len(suffix) + 2 and word.endswith(suffix):
+            return word[: -len(suffix)]
+    return word
+
+
 def significant_words(text: str) -> set[str]:
     """Lowercase content words, with a light plural/gerund fold.
 
@@ -46,17 +54,52 @@ def significant_words(text: str) -> set[str]:
     a real stemmer is a dependency and a source of surprises, and the job here
     is only to survive the handful of endings a person naturally varies.
     """
-    words: set[str] = set()
+    return {
+        _fold(raw) for raw in _WORD.findall(text.lower()) if raw not in _STOPWORDS
+    }
+
+
+def leading_word(text: str) -> str | None:
+    """The first content word -- the verb in a "verb object" title."""
     for raw in _WORD.findall(text.lower()):
-        if raw in _STOPWORDS:
-            continue
-        word = raw
-        for suffix in ("ing", "ed", "es", "s"):
-            if len(word) > len(suffix) + 2 and word.endswith(suffix):
-                word = word[: -len(suffix)]
-                break
-        words.add(word)
-    return words
+        if raw not in _STOPWORDS:
+            return _fold(raw)
+    return None
+
+
+def titles_collide(new: str, existing: str) -> bool:
+    """Would creating `new` duplicate a task the user already has?
+
+    Not the same question as `find_by_title`, and the difference is measured.
+    Asked to leave a "Renew passport" task alone, qwen2.5:7b instead created
+    "Apply for passport renewal" -- and forward token coverage scores that at
+    0.33, below `TITLE_MATCH_THRESHOLD`, so the search matcher would miss the
+    very failure this exists to stop.
+
+    Scoring symmetrically instead (either title covering the other) catches it,
+    but flags everything: "Buy milk" against "Buy bread" and "Call mum" against
+    "Call dad" both reach 0.5, because a two-word title is a verb plus an
+    object and the *verb* is what they share.
+
+    So the rule is about **which** word overlaps, not how many:
+
+    - two or more shared content words -- a real duplicate
+    - exactly one, and it is the leading verb of both titles -- not a duplicate,
+      just two errands that start with the same verb
+    - exactly one, and it is anything else -- the shared word is the object,
+      which is the part that identifies a task
+
+    A detector, not a proof. It is meant to catch a model inventing a second
+    copy of a task it was told about, and will miss a genuine duplicate phrased
+    with no words in common.
+    """
+    shared = significant_words(new) & significant_words(existing)
+    if not shared:
+        return False
+    if len(shared) >= 2:
+        return True
+    word = next(iter(shared))
+    return not (word == leading_word(new) == leading_word(existing))
 
 
 def validate_iso_date(value: str | None) -> str | None:
@@ -260,6 +303,19 @@ class TaskStore:
 
         best = max(score for score, _ in scored)
         return [task for score, task in scored if score == best]
+
+    def colliding(self, title: str) -> list[Task]:
+        """Open tasks that `title` would duplicate.
+
+        Open only. A finished "Renew passport" must not block renewing it
+        again next decade -- the same reason `find_by_title` ignores done
+        tasks by default.
+        """
+        return [
+            task
+            for task in self.list(include_done=False, limit=500)
+            if titles_collide(title, task.title)
+        ]
 
     def count(self, *, status: TaskStatus | None = None) -> int:
         if status is None:

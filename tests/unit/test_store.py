@@ -13,6 +13,7 @@ from personal_ai_os.memory.tasks import (
     TaskPriority,
     TaskStatus,
     TaskStore,
+    titles_collide,
 )
 
 
@@ -241,6 +242,93 @@ class TestFindByTitle:
     def test_only_stopwords_matches_nothing(self, seeded: TaskStore):
         """Otherwise 'the task' would match everything equally."""
         assert seeded.find_by_title("the task") == []
+
+
+class TestTitlesCollide:
+    """Would creating this title duplicate a task the user already has?
+
+    A different question from `find_by_title`, and the reason it needs its own
+    rule is measured: forward token coverage scores "Apply for passport
+    renewal" against "Renew passport" at 0.33 and would miss it, while scoring
+    symmetrically flags "Buy milk" against "Buy bread".
+    """
+
+    @pytest.mark.parametrize(
+        "invented",
+        [
+            "Apply for passport renewal",
+            "Get passport renewed",
+            "Get passport",
+            "Apply for passport",
+            "Passport renewal",
+            "Start passport application",
+        ],
+    )
+    def test_rewordings_of_an_existing_task_collide(self, invented: str):
+        assert titles_collide(invented, "Renew passport")
+
+    @pytest.mark.parametrize(
+        ("a", "b"),
+        [
+            ("Buy milk", "Buy bread"),
+            ("Call mum", "Call dad"),
+            ("Call the dentist", "Call mum"),
+            ("Pay rent", "Pay electricity bill"),
+            ("Email Sarah", "Email the landlord"),
+            ("Book flights", "Book hotel"),
+            ("Renew passport", "Renew licence"),
+            ("Clean kitchen", "Clean the car"),
+            ("Submit report", "Submit timesheet"),
+        ],
+    )
+    def test_a_shared_leading_verb_alone_is_not_a_duplicate(self, a: str, b: str):
+        assert not titles_collide(a, b)
+
+    @pytest.mark.parametrize(
+        ("a", "b"),
+        [
+            ("Book dentist appointment", "Renew passport"),
+            ("Buy oat milk", "Renew passport"),
+        ],
+    )
+    def test_unrelated_titles_do_not_collide(self, a: str, b: str):
+        assert not titles_collide(a, b)
+
+    def test_two_shared_content_words_collide(self):
+        assert titles_collide("Buy oat milk again", "Buy oat milk")
+
+    def test_a_shared_word_that_leads_only_one_title_still_collides(self):
+        """The exemption is narrow: it needs the word to lead *both* titles.
+
+        In "Return the call" the word "call" is the object, not the verb, so
+        it carries identifying signal and the pair collides -- unlike
+        "Renew passport" against "Renew licence", where it leads both.
+        """
+        assert titles_collide("Return the call", "Call mum")
+        assert not titles_collide("Renew passport", "Renew licence")
+
+    def test_it_is_symmetric(self):
+        assert titles_collide("Apply for passport renewal", "Renew passport")
+        assert titles_collide("Renew passport", "Apply for passport renewal")
+
+    def test_a_title_of_only_stopwords_collides_with_nothing(self):
+        assert not titles_collide("the task", "Renew passport")
+
+
+class TestColliding:
+    def test_open_tasks_block_a_reworded_copy(self, tasks: TaskStore):
+        tasks.add("Renew passport")
+        found = tasks.colliding("Apply for passport renewal")
+        assert [t.title for t in found] == ["Renew passport"]
+
+    def test_completed_tasks_do_not_block(self, tasks: TaskStore):
+        created = tasks.add("Renew passport")
+        assert created.id is not None
+        tasks.complete(created.id)
+        assert tasks.colliding("Apply for passport renewal") == []
+
+    def test_an_empty_list_collides_with_nothing(self, tasks: TaskStore):
+        assert tasks.colliding("Renew passport") == []
 
 
 class TestCounting:

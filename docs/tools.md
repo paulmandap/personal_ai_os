@@ -162,6 +162,29 @@ Both boundaries now share one validator (`memory/tasks.py::validate_iso_date`).
 The rule is: if a model can get a field wrong, the *schema* must say so, and the
 error must name the fix.
 
+## A tool that creates must resolve its referent too
+
+`complete_task` and `update_task` both resolve a task fuzzily and refuse when
+the match is ambiguous. `add_task` did not — it created unconditionally, and
+that asymmetry was a defect (ADR-030).
+
+Told to leave an existing "Renew passport" task alone, qwen2.5:7b created
+"Apply for passport renewal" instead: it reached for the one tool that never
+asks whether what the user named already exists. `add_task` now refuses a title
+that collides with an **open** task, naming it and its status so the agent can
+answer from the refusal, with `confirm_duplicate: true` as the escape hatch.
+
+Two things worth carrying to the next tool of this kind:
+
+- **The matching rule needed its own design.** Reusing `find_by_title` missed
+  the real failure (0.33, below threshold); scoring symmetrically flagged
+  "Buy milk" against "Buy bread". Titles are verb-plus-object and near-misses
+  share the *verb*, so the rule turns on *which* word overlaps, not how many.
+- **The escape hatch is a risk to measure.** Models emit every field they are
+  shown, so a `confirm_duplicate` the model sets spuriously would defeat the
+  guard entirely. Neither model was observed doing so — but that is a
+  measurement, not a guarantee.
+
 ## Testing
 
 Test `run()` directly with a `ToolContext`; no agent, no model, no registry:

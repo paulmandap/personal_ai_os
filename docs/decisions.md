@@ -821,3 +821,109 @@ The generalisation, which matters more than the transfer itself:
 **Consequences.** Every future multi-write operation needs this check applied.
 The current tool surface has no other atomic pair — but a "pay a bill and mark
 it settled" operation would be one.
+
+---
+
+## ADR-030 — A create tool must resolve its referent
+
+**Date:** 2026-08-28 · **Status:** accepted · **Phase:** 5
+
+**Context, found by `contradiction_is_surfaced`.** Told *"Mark the passport
+task as done — actually no, I haven't started it yet"* with a `Renew passport`
+task already present, qwen2.5:7b read the correction correctly every time and
+then created a **second** passport task: "Apply for passport renewal", "Get
+passport renewed", "Get passport". 16 of 16 failures across four measurements,
+one mechanism.
+
+`PROJECT_STATE.md` had recorded this as "both models act on the first half".
+That was true only of the 3B. The 7B never once did.
+
+Every failing run was one tool call and two iterations: straight to a mutation,
+never a `list_tasks`. The tool surface explains why —
+
+| Tool | Resolves a referent? | On ambiguity |
+|---|---|---|
+| `complete_task` | `find_by_title` | refuses, names candidates |
+| `update_task` | `find_by_title` | refuses, names candidates |
+| `add_task` | **none** | creates unconditionally |
+
+The user said "the passport task", naming something that exists. The model
+reached for the one tool that never asks whether it does.
+
+**Options.**
+1. Prompt the agent to call `list_tasks` before creating. ADR-022's finding
+   says no: an instruction did not stop id-guessing either.
+2. Return near-matches in `add_task`'s output as a warning. Too late — the
+   phantom task exists by then.
+3. Refuse a create that collides with an existing open task.
+
+**Decision.** Option 3. `add_task` refuses when the title collides with an open
+task, naming it *and its current status*, so the refusal hands the agent the
+fact it needs to answer. `confirm_duplicate: true` is the escape hatch,
+described the way `id` is — set it only after a refusal.
+
+**The matching rule is measured, not assumed**, and both obvious rules failed:
+
+| Rule | "Apply for passport renewal" vs "Renew passport" | Verdict |
+|---|---|---|
+| `find_by_title` forward coverage | 0.33 — below threshold | misses the real failure |
+| symmetric coverage ≥ 0.5 | 0.50 — caught | but flags "Buy milk"/"Buy bread" |
+
+A two-word title is a verb plus an object, and pairs like "Call mum"/"Call dad"
+share the *verb*. So the rule is about **which** word overlaps: two or more
+shared content words, or exactly one that is not the leading verb of both.
+
+**Reason.** The generalisation beyond tasks: **a tool that creates must ask
+whether the thing already exists, exactly as a tool that mutates asks which
+thing is meant.** ADR-022 removed id-guessing by letting a model identify a
+task the way a person does; this is the same argument applied to creation,
+where the failure is not picking the wrong referent but inventing a second one.
+
+**Consequences.** Scoped to open tasks — a finished "Renew passport" must not
+block renewing it again, which is also how `find_by_title` behaves. Measured:
+the 7B's duplicate mechanism went from 8 of 8 failures to 0; the 3B's
+contradiction score went 0/15 → 6/15. Neither model was observed setting
+`confirm_duplicate` spuriously, but that remains a thing to watch.
+
+It did **not** make the case pass. With the duplicate route closed, the 7B's
+residual failure is calling `complete_task` and then writing "let's keep it
+marked as todo" — the action and the prose disagree. That is a comprehension
+failure, not an architectural one, and is recorded unfixed.
+
+---
+
+## ADR-031 — An empty turn is a stumble, not a terminus
+
+**Date:** 2026-08-28 · **Status:** accepted · **Phase:** 5
+
+**Context.** ADR-021's `EMPTY_RESPONSE` correctly stopped the harness scoring a
+run that produced nothing as `answered`. But the loop then *ended* the run on
+the first empty turn, spending an eight-iteration budget in one shot. Measured
+on qwen2.5:3b: 10 of 15 delegation runs and 14 of 15 `contradiction_is_surfaced`
+runs died that way, having produced nothing and been given no second chance.
+
+**Options.**
+1. Leave it — an empty turn means the model is lost.
+2. Retry indefinitely until the iteration budget runs out.
+3. Nudge once; fail on a second consecutive empty turn.
+
+**Decision.** Option 3. `MAX_EMPTY_TURNS = 2`. The nudge restates what a turn is
+for — call a tool or answer in words — rather than scolding, because the model
+produced nothing at all and has no error to correct. The counter is
+*consecutive*: any productive turn resets it, so an early stumble does not doom
+a run that recovers. The retry is traced as `model.empty_retry`, because a run
+that needed a nudge is not the same as one that did not.
+
+**Reason.** This is the shape the loop already uses for tool errors: hand the
+observation back and let the model take another turn. Nothing is masked — a
+model that goes silent twice still fails with `EMPTY_RESPONSE`, and the run is
+re-prompted locally, never routed anywhere (ADR-001).
+
+**Consequences.** Honest result: **this did not fix the delegation gap.** The
+3B went 33% → 40%, recovering 1 of 10 empty runs — within noise at that sample
+size. When the 3B goes silent on finance routing it stays silent when nudged.
+The structural attempt CLAUDE.md deferred has now been made and measured; the
+gap is real and survives it.
+
+Where it did help, combined with ADR-030: the 3B's `contradiction_is_surfaced`
+went from 14 of 15 runs producing nothing to 15 of 15 producing an answer.

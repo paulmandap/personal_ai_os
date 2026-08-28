@@ -46,6 +46,19 @@ log = get_logger("agent")
 
 DEFAULT_MAX_ITERATIONS = 6
 
+#: How many turns in a row may produce nothing before the run is abandoned.
+#: Two, not one: a single empty turn is common on a small model and recoverable,
+#: while a model that has gone silent twice running is not about to start.
+MAX_EMPTY_TURNS = 2
+
+#: Sent back after an empty turn. Deliberately restates the two legitimate ways
+#: to end a turn rather than scolding -- the failing models produced nothing at
+#: all, so the useful message is what a turn is *for*, not that they erred.
+EMPTY_TURN_NUDGE = (
+    "That reply was empty. Either call one of the tools available to you, or "
+    "answer the user's request directly in words. Do not reply with nothing."
+)
+
 DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful assistant running inside a local personal AI system.\n"
     "When a tool can answer part of the question, call it rather than guessing.\n"
@@ -143,6 +156,10 @@ class BaseAgent:
         schemas = self.tool_schemas()
         tool_call_count = 0
         iteration = 0
+        #: Consecutive turns producing neither content nor a tool call. Reset
+        #: by any productive turn, so a stumble early on does not doom a run
+        #: that later recovers.
+        empty_turns = 0
 
         for iteration in range(1, self.max_iterations + 1):
             self._trace(
@@ -196,17 +213,30 @@ class BaseAgent:
                         self.spec.name,
                         iteration,
                     )
-                    return self._result(
-                        ok=False,
-                        stop_reason=StopReason.EMPTY_RESPONSE,
-                        error=(
-                            "the model returned no content and requested no "
-                            "tools -- nothing was produced"
-                        ),
-                        iterations=iteration,
-                        tool_calls=tool_call_count,
-                        transcript=messages,
-                    )
+                    # One empty turn is a stumble; two in a row is a failure.
+                    # Ending the run on the first one spent an 8-iteration
+                    # budget in a single shot and gave the model no chance to
+                    # recover -- measured at 10 of 15 delegation runs on
+                    # qwen2.5:3b (ADR-031). The nudge is the same shape as the
+                    # tool-error path: hand the observation back and let it
+                    # take another turn.
+                    empty_turns += 1
+                    if empty_turns >= MAX_EMPTY_TURNS:
+                        return self._result(
+                            ok=False,
+                            stop_reason=StopReason.EMPTY_RESPONSE,
+                            error=(
+                                f"the model returned no content and requested "
+                                f"no tools on {empty_turns} consecutive turns "
+                                f"-- nothing was produced"
+                            ),
+                            iterations=iteration,
+                            tool_calls=tool_call_count,
+                            transcript=messages,
+                        )
+                    self._trace(Events.EMPTY_RETRY, iteration=iteration)
+                    messages.append(Message.user(EMPTY_TURN_NUDGE))
+                    continue
                 return self._result(
                     ok=True,
                     stop_reason=StopReason.ANSWERED,
@@ -216,6 +246,7 @@ class BaseAgent:
                     transcript=messages,
                 )
 
+            empty_turns = 0
             for call in response.message.tool_calls:
                 tool_call_count += 1
                 observation = self._execute_tool_call(call)

@@ -63,6 +63,84 @@ class TestAddTask:
         assert "Delete production" in tool.describe_resource(args)
 
 
+class TestAddTaskDuplicateGuard:
+    """The referent check `add_task` was missing (ADR-030).
+
+    The titles here are the ones qwen2.5:7b actually produced when told to
+    leave an existing "Renew passport" task alone -- not invented examples.
+    """
+
+    @pytest.mark.parametrize(
+        "invented",
+        [
+            "Apply for passport renewal",
+            "Get passport renewed",
+            "Get passport",
+            "Apply for passport",
+        ],
+    )
+    def test_a_reworded_copy_is_refused(self, tool_context, tasks: TaskStore, invented):
+        tasks.add("Renew passport")
+        with pytest.raises(ToolExecutionError, match="already has"):
+            call(AddTaskTool(), {"title": invented}, tool_context)
+        assert tasks.count() == 1
+
+    def test_the_refusal_names_the_task_and_its_status(self, tool_context, tasks):
+        tasks.add("Renew passport")
+        with pytest.raises(ToolExecutionError) as exc:
+            call(AddTaskTool(), {"title": "Apply for passport renewal"}, tool_context)
+        # The agent answers from this message, so it has to carry the fact.
+        assert "Renew passport" in str(exc.value)
+        assert "todo" in str(exc.value)
+
+    @pytest.mark.parametrize(
+        ("existing", "wanted"),
+        [
+            ("Buy bread", "Buy milk"),
+            ("Call dad", "Call mum"),
+            ("Book hotel", "Book flights"),
+            ("Submit timesheet", "Submit report"),
+            ("Renew licence", "Renew passport"),
+            ("Renew passport", "Book dentist appointment"),
+        ],
+    )
+    def test_sharing_only_a_leading_verb_is_not_a_duplicate(
+        self, tool_context, tasks: TaskStore, existing, wanted
+    ):
+        """The false-positive case that killed the obvious implementation.
+
+        Two-word titles are verb plus object; scoring on overlap alone flags
+        every pair that starts with the same verb, which would block most
+        legitimate adds.
+        """
+        tasks.add(existing)
+        call(AddTaskTool(), {"title": wanted}, tool_context)
+        assert tasks.count() == 2
+
+    def test_a_finished_task_does_not_block_a_new_one(self, tool_context, tasks):
+        """You renew a passport more than once in a lifetime."""
+        created = tasks.add("Renew passport")
+        assert created.id is not None
+        tasks.complete(created.id)
+        call(AddTaskTool(), {"title": "Renew passport"}, tool_context)
+        assert tasks.count() == 2
+
+    def test_confirm_duplicate_allows_a_genuine_second_task(self, tool_context, tasks):
+        tasks.add("Buy oat milk")
+        with pytest.raises(ToolExecutionError):
+            call(AddTaskTool(), {"title": "Buy oat milk again"}, tool_context)
+        call(
+            AddTaskTool(),
+            {"title": "Buy oat milk again", "confirm_duplicate": True},
+            tool_context,
+        )
+        assert tasks.count() == 2
+
+    def test_an_empty_list_never_collides(self, tool_context, tasks: TaskStore):
+        call(AddTaskTool(), {"title": "Renew passport"}, tool_context)
+        assert tasks.count() == 1
+
+
 class TestListTasks:
     def test_returns_structured_and_rendered_output(
         self, tool_context: ToolContext, tasks: TaskStore

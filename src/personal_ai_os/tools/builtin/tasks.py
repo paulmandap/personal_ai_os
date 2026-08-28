@@ -51,6 +51,14 @@ class AddTaskInput(ToolInput):
     due_date: str | None = Field(
         default=None, description="Optional ISO date, e.g. '2026-09-07'."
     )
+    confirm_duplicate: bool = Field(
+        default=False,
+        description=(
+            "Leave this false. Set it true ONLY after add_task has already "
+            "refused this title as a duplicate and the user genuinely wants a "
+            "second, separate task."
+        ),
+    )
 
     # Validate at the *input* boundary, not just inside the store. Otherwise a
     # malformed date reaches the model as a generic execution failure instead
@@ -73,7 +81,29 @@ class AddTaskTool(Tool):
         return f'"{args.title}"'
 
     def run(self, args: AddTaskInput, ctx: ToolContext) -> Task:  # type: ignore[override]
-        return _tasks(ctx).add(
+        tasks = _tasks(ctx)
+
+        # The referent check the other mutating tools already have. Measured:
+        # told to leave a "Renew passport" task alone, qwen2.5:7b created
+        # "Apply for passport renewal" instead -- reaching for the one tool
+        # that never asks whether what the user named already exists
+        # (ADR-030). Refusing here names the real task and its status, which
+        # is exactly the fact the agent needs to answer correctly.
+        if not args.confirm_duplicate:
+            clashes = tasks.colliding(args.title)
+            if clashes:
+                existing = ", ".join(
+                    f"{t.title!r} (status {t.status.value})" for t in clashes
+                )
+                raise ToolExecutionError(
+                    f"nothing was created: {args.title!r} looks like a task the "
+                    f"user already has -- {existing}. If they meant that task, "
+                    f"use update_task or complete_task with `find`. If they "
+                    f"genuinely want a second separate task, call add_task "
+                    f"again with confirm_duplicate=true."
+                )
+
+        return tasks.add(
             args.title,
             notes=args.notes,
             priority=args.priority,

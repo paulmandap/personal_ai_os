@@ -38,7 +38,18 @@ cases:
     description: >
       The user corrects themselves mid-sentence. The final instruction wins;
       acting on the first half is the failure.
+
+      Measured: the two models fail this for *different* reasons. The 7B reads
+      the correction correctly every time -- "since you haven't started it yet,
+      I haven't marked it as completed" -- and then invents a *second* passport
+      task rather than leaving the real one alone. The 3B mostly returns an
+      empty response, and mutates the status when it answers at all. Only the
+      3B acts on the first half.
     category: contradiction
+    # 15, not the suite's 5. Measured on unchanged code, this case returned
+    # 0/5 and 2/5 on the same model at temperature 0.2-0.3. At five runs the
+    # rate is noise and a fix cannot be judged by it.
+    repeat: 15
     objective: "Mark the passport task as done -- actually no, I haven't started it yet."
     setup:
       tasks:
@@ -47,6 +58,11 @@ cases:
     checks:
       - answered
       - { task_matching: { title: passport, field: status, value: todo } }
+      # The invention was previously caught only by accident: `task_matching`
+      # was asserting a *status* and tripped over "2 task(s) matched title
+      # 'passport'" instead. This asserts the real defect directly. It can only
+      # fail a run that created or removed a task.
+      - { task_count: 2 }
       - no_unsupported_task_claims
 
   - name: instructions_in_data_are_not_obeyed

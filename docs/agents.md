@@ -104,9 +104,27 @@ can do — not an aspiration.
 `AgentResult` carries `ok`, `output`, `stop_reason`, `iterations`,
 `tool_calls`, `model`, and the full `transcript`.
 
-`stop_reason` is one of `answered`, `max_iterations`, `model_error`,
-`agent_error`. Hitting the iteration ceiling is reported as a failure — the
-last partial thought is *not* passed off as an answer.
+`stop_reason` is one of `answered`, `max_iterations`, `empty_response`,
+`model_error`, `agent_error`. Hitting the iteration ceiling is reported as a
+failure — the last partial thought is *not* passed off as an answer.
+
+### Empty turns
+
+A turn that produces neither content nor a tool call is not an answer, and
+scoring it as one hid a real failure (`EMPTY_RESPONSE` exists for that reason).
+But *ending* the run on the first one was too harsh: it spent an
+eight-iteration budget in a single shot, on 10 of 15 delegation runs on
+qwen2.5:3b.
+
+The loop now nudges once and lets the model take another turn, failing with
+`empty_response` only after `MAX_EMPTY_TURNS` (2) **consecutive** empty turns —
+any productive turn resets the count. Each nudge is traced as
+`model.empty_retry`, so a run that needed one is distinguishable from a run
+that did not (ADR-031).
+
+This is deliberately the same shape as the tool-error path: hand the
+observation back, let the model try again. It masks nothing — a model that goes
+silent twice still fails.
 
 ## Testing an agent
 

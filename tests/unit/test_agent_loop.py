@@ -307,28 +307,88 @@ class TestPermissionGate:
 
 
 class TestEmptyResponse:
-    """An empty turn is not an answer.
+    """An empty turn is a stumble; two in a row is a failure.
 
     Found by the delegation suite: qwen2.5:3b driving the Master returned no
     content and no tool call, and the harness scored it `answered` -- a run
-    that produced literally nothing counted as a success.
+    that produced literally nothing counted as a success. That is why
+    `EMPTY_RESPONSE` exists.
+
+    Ending the run on the *first* empty turn then proved too harsh: it spent an
+    8-iteration budget in one shot, on 10 of 15 delegation runs. The model now
+    gets one nudge (ADR-031), and a run that produces nothing twice still
+    fails.
     """
 
-    def test_empty_content_with_no_tool_calls_is_a_failure(self, tool_context):
-        agent = make_agent([text_response("")], context=tool_context)
+    def test_two_consecutive_empty_turns_are_a_failure(self, tool_context):
+        agent = make_agent(
+            [text_response(""), text_response("")], context=tool_context
+        )
         result = agent.run("do something")
         assert not result.ok
         assert result.stop_reason is StopReason.EMPTY_RESPONSE
         assert "nothing was produced" in (result.error or "")
 
+    def test_one_empty_turn_then_an_answer_succeeds(self, tool_context):
+        """The whole point: a stumble no longer ends the run."""
+        agent = make_agent(
+            [text_response(""), text_response("42")], context=tool_context
+        )
+        result = agent.run("what is the answer?")
+        assert result.ok and result.stop_reason is StopReason.ANSWERED
+        assert result.output == "42"
+
+    def test_the_nudge_is_sent_back_to_the_model(self, tool_context):
+        agent = make_agent(
+            [text_response(""), text_response("ok")], context=tool_context
+        )
+        agent.run("go")
+        last = agent.model.last_messages  # type: ignore[attr-defined]
+        assert any("was empty" in m.content for m in last if m.role is Role.USER)
+
+    def test_the_retry_is_traced(self, tool_context):
+        trace = RunTrace.disabled(agent="test_agent")
+        agent = make_agent(
+            [text_response(""), text_response("ok")],
+            context=tool_context,
+            trace=trace,
+        )
+        agent.run("go")
+        assert [e for e in trace.events if e.type == Events.EMPTY_RETRY]
+
     def test_whitespace_only_is_also_empty(self, tool_context):
-        agent = make_agent([text_response("   \n  ")], context=tool_context)
+        agent = make_agent(
+            [text_response("   \n  "), text_response("  ")], context=tool_context
+        )
         assert agent.run("go").stop_reason is StopReason.EMPTY_RESPONSE
 
     def test_a_real_answer_is_unaffected(self, tool_context):
         agent = make_agent([text_response("42")], context=tool_context)
         result = agent.run("what is the answer?")
         assert result.ok and result.stop_reason is StopReason.ANSWERED
+
+    def test_the_count_is_consecutive_not_cumulative(self, tool_context):
+        """A productive turn between two stumbles must reset the count.
+
+        Otherwise a long run that hiccuped once early would die on an
+        unrelated stumble much later.
+        """
+        registry = ToolRegistry()
+        registry.register(SpyTool())
+        agent = make_agent(
+            [
+                text_response(""),
+                tool_call_response("spy", {"value": "x"}),
+                text_response(""),
+                text_response("done"),
+            ],
+            tools=registry,
+            tool_names=["spy"],
+            context=tool_context,
+            max_iterations=6,
+        )
+        result = agent.run("go")
+        assert result.ok and result.output == "done"
 
 
 class TestFatalFailures:
