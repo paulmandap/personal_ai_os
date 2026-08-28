@@ -152,8 +152,12 @@ class TestShippedSuites:
         cases_dir = Path(__file__).resolve().parents[2] / "evaluations" / "cases"
         return load_suites(cases_dir)
 
-    def test_both_suites_load(self, suites):
-        assert {s.suite for s in suites} == {"embellishment", "tool_calling"}
+    def test_every_shipped_suite_loads(self, suites):
+        """Presence, not an exact set -- adding a suite should not fail a test
+        whose job is to prove the shipped suites parse."""
+        names = {s.suite for s in suites}
+        assert {"embellishment", "hallucination", "tool_calling", "finance"} <= names
+        assert all(s.cases for s in suites)
 
     def test_embellishment_tests_both_directions(self, suites):
         """It must also check that stated values ARE recorded, not only that

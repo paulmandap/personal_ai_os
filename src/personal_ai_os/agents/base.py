@@ -295,7 +295,11 @@ class BaseAgent:
             tool=call.name,
             ok=True,
             result_bytes=len(payload),
-            result_preview=payload[:500],
+            # The full payload, not a preview. Groundedness checks need to know
+            # exactly what a tool returned in order to tell whether the agent
+            # invented a figure; `paios trace` truncates at display time
+            # instead, so the trace holds data and the CLI decides presentation.
+            result=payload,
         )
         return payload
 

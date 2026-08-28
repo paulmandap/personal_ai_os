@@ -203,7 +203,14 @@ class TestShippedManifests:
         return AgentRegistry.from_dir(repo_agents, tools=tool_registry)
 
     def test_every_shipped_manifest_loads(self, shipped):
-        assert shipped.names() == ["master", "ping", "task_agent"]
+        assert shipped.names() == ["finance", "master", "ping", "task_agent"]
+
+    def test_finance_declares_write_but_not_spend_money(self, shipped):
+        """These tools record facts about money; none of them move any."""
+        spec = shipped.get("finance")
+        assert PermissionLevel.WRITE in spec.permissions
+        assert PermissionLevel.SPEND_MONEY not in spec.permissions
+        assert "affordability_check" in spec.tools
 
     def test_ping_resolves_to_its_class(self, shipped):
         spec = shipped.get("ping")

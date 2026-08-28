@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, model_validator
 
 from personal_ai_os.core.errors import (
     PathNotAllowedError,
@@ -127,6 +127,40 @@ def resolve_within_roots(candidate: str | Path, roots: list[Path]) -> Path:
 
 
 # --- Tool ------------------------------------------------------------------
+
+
+class ToolInput(BaseModel):
+    """Base for every tool's input model.
+
+    Models routinely emit *all* the fields they were shown, using ``null`` for
+    the ones they have no value for -- ``{"description": null, "occurred_on":
+    null, ...}``. Pydantic rejects ``null`` for a ``str`` field with a default
+    of ``""``, which is technically correct and practically useless: the call
+    was well-formed in every way that matters.
+
+    Observed cost of not doing this: a finance agent's `add_transaction` failed
+    on every attempt because it passed `description: null`, and the agent then
+    told the user it had recorded the spending anyway.
+
+    So an explicit null on an optional field is treated as "not supplied", and
+    the field's default applies. A null on a *required* field still errors,
+    because there the model really has omitted something.
+    """
+
+    @model_validator(mode="before")
+    @classmethod
+    def _null_means_omitted(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        return {
+            key: value
+            for key, value in data.items()
+            if not (
+                value is None
+                and (field := cls.model_fields.get(key)) is not None
+                and not field.is_required()
+            )
+        }
 
 
 class Tool(ABC):

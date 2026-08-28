@@ -9,7 +9,13 @@ from __future__ import annotations
 import pytest
 
 from personal_ai_os.agents.base import AgentResult, StopReason
-from personal_ai_os.evaluation.checks import RunContext, known_checks, run_check
+from personal_ai_os.core.types import Message
+from personal_ai_os.evaluation.checks import (
+    RunContext,
+    claimed_items,
+    known_checks,
+    run_check,
+)
 from personal_ai_os.memory.tasks import TaskStatus, TaskStore
 from personal_ai_os.observability.trace import Events, TraceEvent
 
@@ -160,6 +166,200 @@ class TestRecovery:
             events=[event(Events.TOOL_RESULT, tool="x", ok=False, error="boom")],
         )
         assert not outcome("recovered_after_error", c).passed
+
+
+class TestClaimExtraction:
+    def test_finds_markdown_bullets(self):
+        items = claimed_items("Here are your tasks:\n- Renew passport\n* Buy oat milk")
+        assert "Renew passport" in items and "Buy oat milk" in items
+
+    def test_finds_numbered_lines(self):
+        assert "Renew passport" in claimed_items("1. Renew passport\n2. Buy oat milk")
+
+    def test_finds_json_titles(self):
+        """The shape the observed hallucination actually took."""
+        text = '```json\n[{"id": 2, "title": "Schedule dentist appointment"}]\n```'
+        assert "Schedule dentist appointment" in claimed_items(text)
+
+    def test_strips_status_decoration(self):
+        assert "Buy oat milk" in claimed_items("- **Buy oat milk** (Completed)")
+
+    def test_strips_leading_ids(self):
+        assert "Renew passport" in claimed_items("- #3 Renew passport")
+
+    def test_deduplicates(self):
+        items = claimed_items('- Buy oat milk\n- Buy oat milk\n"Buy oat milk"')
+        assert items.count("Buy oat milk") == 1
+
+
+class TestGroundedness:
+    """Deterministic hallucination detection (ADR-025)."""
+
+    def grounded_ctx(self, store, output: str, objective: str = "What is on my list?"):
+        res = result(output=output)
+        res.transcript = [Message.user(objective)]
+        return ctx(res=res, store=store)
+
+    def test_reporting_real_tasks_passes(self, store, tasks: TaskStore):
+        tasks.add("Renew passport")
+        tasks.add("Buy oat milk")
+        c = self.grounded_ctx(store, "You have:\n- Renew passport\n- Buy oat milk")
+        assert outcome("no_unsupported_task_claims", c).passed
+
+    def test_the_observed_hallucination_is_caught(self, store, tasks: TaskStore):
+        """Verbatim from a real qwen2.5:7b run in Phase 4."""
+        tasks.add("Renew passport")
+        tasks.add("Buy oat milk")
+        tasks.add("Submit thesis draft")
+        output = (
+            'I have marked the task "Renew passport" as done. Here are your '
+            "current tasks:\n\n```json\n[\n  {\n    \"id\": 2,\n"
+            '    "title": "Schedule dentist appointment",\n    "status": "todo"\n'
+            "  }\n]\n```"
+        )
+        got = outcome("no_unsupported_task_claims", self.grounded_ctx(store, output))
+        assert not got.passed
+        assert "Schedule dentist appointment" in got.detail
+
+    def test_completed_decoration_still_counts_as_grounded(self, store, tasks):
+        tasks.add("Buy oat milk")
+        c = self.grounded_ctx(store, "- Buy oat milk (Completed)")
+        assert outcome("no_unsupported_task_claims", c).passed
+
+    def test_meta_commentary_is_not_flagged(self, store, tasks: TaskStore):
+        """'You have 3 tasks' must not read as a task called that."""
+        tasks.add("Renew passport")
+        c = self.grounded_ctx(
+            store, "You have 3 tasks currently pending.\n- Renew passport"
+        )
+        assert outcome("no_unsupported_task_claims", c).passed
+
+    def test_an_honest_empty_answer_passes(self, store):
+        c = self.grounded_ctx(store, "You have no tasks on your list right now.")
+        assert outcome("no_unsupported_task_claims", c).passed
+
+    def test_inventing_from_an_empty_database_is_caught(self, store):
+        """Nothing real to anchor to, so anything stated is fabricated."""
+        c = self.grounded_ctx(store, "- Buy groceries\n- Call the dentist")
+        got = outcome("no_unsupported_task_claims", c)
+        assert not got.passed
+        assert "Buy groceries" in got.detail
+
+    def test_repeating_the_users_own_words_is_not_invention(self, store):
+        """Echoing the request back before a tool returns is fine."""
+        c = self.grounded_ctx(
+            store,
+            '- Buy oat milk',
+            objective="Add a task to buy oat milk.",
+        )
+        assert outcome("no_unsupported_task_claims", c).passed
+
+    def test_single_word_claims_are_skipped(self, store, tasks: TaskStore):
+        """Too little signal to judge; flagging them would be noise."""
+        tasks.add("Renew passport")
+        c = self.grounded_ctx(store, "- Renew passport\n- Groceries")
+        assert outcome("no_unsupported_task_claims", c).passed
+
+    def test_padding_a_short_list_is_caught(self, store, tasks: TaskStore):
+        tasks.add("Renew passport")
+        c = self.grounded_ctx(
+            store,
+            "- Renew passport\n- Water the plants\n- Book flight tickets",
+        )
+        got = outcome("no_unsupported_task_claims", c)
+        assert not got.passed
+        assert "Water the plants" in got.detail
+
+    def test_threshold_is_configurable(self, store, tasks: TaskStore):
+        tasks.add("Renew passport")
+        c = self.grounded_ctx(store, "- Renew driving licence")
+        # "renew" is grounded, "driving"/"licence" are not -> 1/3 supported.
+        assert outcome("no_unsupported_task_claims", c, threshold=0.3).passed
+        assert not outcome("no_unsupported_task_claims", c, threshold=0.5).passed
+
+    def test_reports_clearly_without_a_store(self):
+        got = outcome("no_unsupported_task_claims", ctx())
+        assert not got.passed and "no store" in got.detail
+
+
+class TestGroundednessFalsePositives:
+    """Regressions from the detector's first version.
+
+    Both of these were flagged as hallucinations on a real run when the agent
+    had behaved correctly. A detector that cries wolf is worse than none -- it
+    would have reported a 55% hallucination rate that did not exist.
+    """
+
+    def grounded_ctx(self, store, output: str, objective: str = "What is on my list?"):
+        res = result(output=output)
+        res.transcript = [Message.user(objective)]
+        return ctx(res=res, store=store)
+
+    def test_apostrophes_do_not_create_phantom_claims(self):
+        """"couldn't find a task titled" once yielded "t find a task titled"."""
+        items = claimed_items('I couldn\'t find a task titled "dentist appointment".')
+        assert not any("t find" in i for i in items), items
+        assert "dentist appointment" in items
+
+    def test_a_real_due_date_is_not_an_invention(self, store, tasks: TaskStore):
+        """Grounding on titles alone made stored dates look fabricated."""
+        tasks.add("Renew passport", due_date="2026-09-07")
+        c = self.grounded_ctx(store, "1. **Renew passport** - Due on 2026-09-07")
+        assert outcome("no_unsupported_task_claims", c).passed
+
+    def test_a_real_priority_is_not_an_invention(self, store, tasks: TaskStore):
+        from personal_ai_os.memory.tasks import TaskPriority
+
+        tasks.add("Submit thesis draft", priority=TaskPriority.HIGH)
+        c = self.grounded_ctx(store, "1. **Submit thesis draft** - High priority")
+        assert outcome("no_unsupported_task_claims", c).passed
+
+    def test_a_correctly_reported_list_passes_verbatim(self, store, tasks: TaskStore):
+        """The exact output of a real, correct qwen2.5:7b run."""
+        from personal_ai_os.memory.tasks import TaskPriority
+
+        tasks.add("Renew passport", due_date="2026-09-07")
+        tasks.add("Buy oat milk")
+        tasks.add("Submit thesis draft", priority=TaskPriority.HIGH)
+        output = (
+            "Here are your current tasks:\n\n"
+            "1. **Submit thesis draft** - High priority (not due yet)\n"
+            "2. **Renew passport** - Due on 2026-09-07\n"
+            "3. **Buy oat milk** (not due yet)\n\n"
+            "Let me know if you need help with any of these!"
+        )
+        got = outcome("no_unsupported_task_claims", self.grounded_ctx(store, output))
+        assert got.passed, got.detail
+
+    def test_a_correct_refusal_passes_verbatim(self, store, tasks: TaskStore):
+        """Also from a real run -- the agent declined honestly and was flagged.
+
+        Naming a thing in order to say it does *not* exist is the opposite of
+        inventing it. Here the name is grounded because the user supplied it,
+        which is why the transcript is part of the grounding set.
+        """
+        tasks.add("Renew passport")
+        tasks.add("Buy oat milk")
+        output = (
+            'I couldn\'t find a task titled "dentist appointment" in your list. '
+            'The open tasks are "Renew passport" and "Buy oat milk". '
+            "Could you please confirm which task you completed?"
+        )
+        c = self.grounded_ctx(
+            store, output, objective="I finished the dentist appointment task."
+        )
+        got = outcome("no_unsupported_task_claims", c)
+        assert got.passed, got.detail
+
+    def test_it_still_catches_a_real_invention_after_the_fixes(self, store, tasks):
+        """The loosening must not have blinded it."""
+        tasks.add("Renew passport", due_date="2026-09-07")
+        c = self.grounded_ctx(
+            store, "1. **Renew passport** - Due on 2026-09-07\n2. **Call the dentist**"
+        )
+        got = outcome("no_unsupported_task_claims", c)
+        assert not got.passed
+        assert "Call the dentist" in got.detail
 
 
 class TestStoreChecks:

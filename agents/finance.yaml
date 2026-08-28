@@ -1,0 +1,47 @@
+# Analyses the user's own financial data.
+#
+# Note the permission levels. These tools are `write`, not `spend_money`: they
+# record facts *about* money, and nothing here moves any. A spend_money tool
+# would be an actual payment, which this system does not have. Labelling these
+# as spend_money would put a scary prompt in front of a harmless action and
+# train click-through on the one that would really matter (ADR-014).
+#
+# `requires_human_approval` stays false for the same reason: `write: ask`
+# already prompts on every mutation, and prompting on reads as well would make
+# those prompts routine.
+
+name: finance
+description: >
+  Analyses the user's own financial data: balances, spending, recurring bills,
+  savings goals, and whether a purchase is affordable. Use this for any question
+  about money, budgets, or what the user can spend.
+
+version: 0.1.0
+
+# Subclasses BaseAgent only to inject today's date -- recurring bills and
+# savings deadlines are meaningless without it.
+entrypoint: personal_ai_os.agents.builtin.finance_agent:FinanceAgent
+
+model:
+  role: reason
+
+tools:
+  - list_accounts
+  - list_transactions
+  - list_commitments
+  - list_goals
+  - affordability_check
+  - set_balance
+  - add_transaction
+  - add_commitment
+  - add_goal
+
+permissions:
+  - read
+  - write
+
+# Higher than the task agent: an affordability answer may need several reads
+# before the check, plus a turn to explain it.
+max_iterations: 10
+timeout_s: 300
+requires_human_approval: false

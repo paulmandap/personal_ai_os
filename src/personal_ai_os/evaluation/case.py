@@ -81,6 +81,32 @@ class TaskSeed(BaseModel):
     status: TaskStatus = TaskStatus.TODO
 
 
+class AccountSeed(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    amount: str
+    currency: str = "PHP"
+
+
+class CommitmentSeed(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    amount: str
+    day_of_month: int = Field(ge=1, le=31)
+    category: str = "bills"
+
+
+class GoalSeed(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    target: str
+    saved: str = "0"
+    target_date: str | None = None
+
+
 class Setup(BaseModel):
     """Seed state, created fresh in each repetition's isolated workspace."""
 
@@ -88,6 +114,9 @@ class Setup(BaseModel):
 
     tasks: list[TaskSeed] = Field(default_factory=list)
     files: dict[str, str] = Field(default_factory=dict)
+    accounts: list[AccountSeed] = Field(default_factory=list)
+    commitments: list[CommitmentSeed] = Field(default_factory=list)
+    goals: list[GoalSeed] = Field(default_factory=list)
 
 
 class EvalCase(BaseModel):

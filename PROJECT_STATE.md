@@ -11,134 +11,126 @@
 
 ## Current Phase
 
-**Phase 4 — Evaluation harness. Complete.**
+**Phase 3 — Groundedness + Finance Agent. Complete.**
 
-Phases 1, 2 and 4 are done. **Phase 3 (Finance + Research agents) was
-deliberately deferred** until there was a way to measure agent quality; that
-now exists, so Phase 3 is next.
+Phases 1, 2, 3 and 4 are done. Research Agent is the remaining Phase 3 item and
+is deliberately deferred (it needs the first `external_action` tool).
 
 ---
 
 ## Current Objective
 
-Continue the roadmap toward Phase 3 while preserving the model-agnostic,
-local-first architecture.
+Continue the roadmap while preserving the model-agnostic, local-first
+architecture.
 
-Phase 4 existed to answer two questions that had been open and unmeasurable.
-Both now have numbers:
+### Every suite is now at 100% on both models
 
-### 1. Does the anti-embellishment prompt fix work? **Yes — 20/20.**
-
-Both `qwen2.5:7b` and `qwen2.5:3b` score 100% on the `embellishment` suite,
-in *both* directions: they no longer invent due dates or priorities, and they
-still record values the user actually stated.
-
-### 2. Can `qwen2.5:3b` drive an agent loop? **Yes — and it matches the 7B.**
-
-| | 7B | 3B |
+| Suite | 7B | 3B |
 |---|---|---|
-| `tool_calling` pass rate | 90% | **90%** |
-| throughput | ≈32 tok/s | **≈63 tok/s** |
+| `tool_calling` | 100% | 100% |
 | `embellishment` | 100% | 100% |
+| `hallucination` | 100% | 100% |
+| `finance` | 100% | 100% |
+| throughput | ≈40 tok/s | ≈70 tok/s |
 
-The small tier is real, not decorative. Failure *profiles* differ slightly (the
-3B is better at error recovery, the 7B at the multi-step completion), so this
-is not a reason to abandon the ladder — but it is strong evidence that routing
-easy work to the 3B costs nothing and roughly doubles speed.
+**The benchmarks are saturated.** That is the textbook signal that a benchmark
+has stopped providing improvement signal — not proof of general capability. The
+right response is harder cases, not a training run. See
+`docs/iterative-improvement.md`.
 
-### 3. What the harness found that nobody asked it to
+### Hallucination: asked for, measured, already solved
 
-`completes_the_right_task` scored **0/5 on both models**. Identical failure
-across two very different models is the signal that a *design* is at fault, not
-a model.
+The Phase 2 prompt fix worked. Both models score 100% on the `hallucination`
+suite, and `no_unsupported_task_claims` / `no_unsupported_amounts` now guard
+the regression deterministically (ADR-025).
 
-Given *"I finished buying the oat milk, mark that done"*, both models guessed
-`complete_task(id=1)` and completed **"Renew passport"**. The 7B then
-hallucinated a task list containing an item that had never existed — while
-correctly stating, one sentence earlier, that it had completed the wrong task.
+**The near-miss worth remembering.** The detector's first version reported a
+55% hallucination rate. Every flag was a false positive — an apostrophe parsed
+as a quote delimiter, and real stored due dates counted as invented. Reporting
+that number would have sent this project into fine-tuning to fix a problem that
+did not exist.
 
-The prompt already forbade this. **A prompt instruction was not the lever.**
-The fix was structural (ADR-022): `complete_task` now accepts a `title`, and
-matching scores by token coverage rather than substring containment.
+### Every failure found so far has been architectural
 
-**0/5 → 5/5. Suite 75% → 90% on both models.**
+Three defects, three models failing identically, three structural fixes:
 
-The lesson: the failure was invisible in normal use. The agent answered
-fluently every time and described the wrong action confidently. Only checking
-the database caught it.
+| Defect | Symptom | Fix |
+|---|---|---|
+| `complete_task` demanded an id | Both models invented one, completed the wrong task | Accept a title (ADR-022) |
+| Substring title matching | A paraphrase matched nothing; agent narrated instead of acting | Token-coverage matching |
+| Optional fields rejected `null` | **Every** write call failed; agent claimed success anyway | `ToolInput` base class |
+
+**None would have been fixed by training.** Training on top of them would have
+taught the models to work around bugs while hiding them. This is the central
+evidence for the local-first bet, and it is why the answer to "the models
+perform badly" was "no — the architecture did".
 
 ---
 
 ## Completed
 
-### Phase 4 — Evaluation
+### Phase 3 — Groundedness + Finance
 
-- `evaluation/case.py` — YAML suites; check names validated at **load** time
-- `evaluation/checks.py` — 15 checks reading the result, the trace, or the
-  database. No judge model (ADR-020)
-- `evaluation/runner.py` — isolated fixture workspace per repetition; model
-  pinning; `RecordingBroker` so the gate is provably consulted
-- `evaluation/report.py` — pass rates (ADR-021), per-check rates keyed on
-  label, metric spread, save/load, side-by-side comparison
-- `evaluations/cases/` — `embellishment` (4 cases) and `tool_calling` (4 cases)
-- `paios eval list | run | compare`
-- **Fix found by the harness:** title-based `complete_task` + token matching
+- `no_unsupported_task_claims`, `no_unsupported_amounts`, `account_balance_is`
+  (19 checks total)
+- `evaluations/cases/hallucination.yaml` (4 cases), `finance.yaml` (5 cases)
+- `memory/finance.py` — accounts, transactions, commitments, goals; **integer
+  minor units** (ADR-023); migration 2
+- `affordability_check` — the arithmetic lives in the tool (ADR-024)
+- 9 finance tools; `agents/finance.yaml` + `FinanceAgent`
+- `paios finance [amount]` — ledger and affordability with no model involved
+- `ToolInput` base class — an explicit `null` on an optional field means "not
+  supplied". **Applies to every tool**; lifted `tool_calling` on the 3B from
+  90% to 100% as a side effect
+- Traces now carry full tool payloads; `paios trace` truncates at display time
+- `docs/iterative-improvement.md` — Phases 9–16 mapped against what exists
 
-### Phase 2 — Master, Task Agent, memory
+### Phases 1, 2, 4
 
-Delegation via sub-agents-as-tools (ADR-012); SQLite store; four task tools;
-`master` and `task_agent`.
-
-### Phase 1 — Foundation
-
-Model abstraction + Ollama provider; deterministic router; agent registry;
-typed tools + filesystem jail; permission gate; JSONL traces; CLI.
+Foundation · Master + Task agent + SQLite memory · evaluation harness.
 
 ### Recorded, not built
 
-Health & Wellness domain — `docs/health-wellness.md`, ADR-017/018/019.
-**Do not implement until explicitly requested.**
+Health & Wellness domain (`docs/health-wellness.md`, ADR-017/018/019) and
+teacher-guided improvement (`docs/iterative-improvement.md`, ADR-026).
+**Do not implement either until explicitly requested.**
 
 ---
 
 ## In Progress
 
-Nothing. Phase 4 is closed.
+Nothing. Phase 3 is closed.
 
 ---
 
 ## Known Problems
 
-1. **`survives_a_bad_start` scores 60–80%.** After a failed tool call the model
-   sometimes skips the explicit fallback instruction. Real, measured, and low
-   priority — it is a compound conditional instruction, the hardest kind.
+1. **The benchmarks are saturated.** 100% across four suites on both models
+   means they have stopped measuring anything. Harder cases are the next
+   priority — ambiguity, contradiction, multi-step planning, long context.
 
-2. **`update_task` still takes only an id**, so it has the same latent flaw
-   ADR-022 fixed in `complete_task`. Not yet exercised by any case, which is
-   the only reason it has not shown up.
+2. **`update_task` still takes only an id**, carrying the flaw ADR-022 fixed in
+   `complete_task`. Still unexercised by any case, which is the only reason it
+   has not surfaced.
 
-3. **The 7B hallucinated a task list** during the id-guessing failure. The
-   prompt now forbids stating task contents no tool returned, but that is a
-   prompt fix and therefore unproven. **No case measures it yet** — worth
-   adding one.
+3. **Groundedness detectors are tuned against false positives**, so they miss
+   subtle invention — an altered detail inside an otherwise real item. They
+   catch whole fabricated entities, which is what was observed.
 
-4. **`write: ask` prompts on every task mutation** in normal use. Correct
-   default; `write: auto` in `config/local.yaml` is defensible because the
-   filesystem jail already bounds where writes land.
+4. **`no_unsupported_amounts` ignores figures below 1000** to avoid flagging
+   counts and list indices. A small invented amount would pass.
 
-5. **Result files are ~30 KB each** and are committed. Fine now; if the
-   directory grows unwieldy, trim `detail` on passing checks.
+5. **Multi-currency is nominal.** Accounts carry a currency code but balances
+   are summed as if one currency. Fine for one country; wrong the day it isn't.
 
-6. **`large` tier unmapped** — 14B at Q4 (~9 GB) exceeds 8 GB VRAM.
+6. **`write: ask` prompts on every mutation** in normal use. Correct default;
+   `write: auto` in `config/local.yaml` is defensible given the filesystem jail.
 
-7. **Model swapping can crash Ollama's runner.** Evict between size changes —
-   integration tests use `fresh_vram`; the eval CLI needs a manual unload
-   between `--model` runs.
+7. **Model swapping can crash Ollama's runner.** Unload between `--model` eval
+   runs; integration tests use `fresh_vram`.
 
-8. **Four gaps recorded for sensitive domains** (traces store arguments
-   verbatim; `delegate` passes free text; `Store` is one namespace; permissions
-   have one axis). None are bugs today. See the Health & Wellness section of
-   this file's history and ADR-019.
+8. **Training is blocked on disk**: ~22 GB needed against 5.5 GB free, and a
+   GGUF cannot be fine-tuned. Not urgent — Phases 9–11 need none of it.
 
 ---
 
@@ -150,23 +142,23 @@ None.
 
 ## Next Steps
 
-**Phase 3 — Finance and Research agents.** The reason to defer it has been
-removed: there is now a way to tell whether a new agent works.
+**Harder benchmarks, before anything else.** Four saturated suites cannot tell
+you whether a change helped. Concretely:
 
-1. **Finance Agent.** Exercises genuinely new shapes: numeric reasoning, and
-   `requires_human_approval` on anything touching money — the first real use of
-   that flag. Needs a `transactions` domain in `memory/`.
-2. **Write its evaluation cases alongside it, not after.** Phase 4's lesson is
-   that fluent output hides wrong actions; a finance agent that is confidently
-   wrong about money is worse than one that is slow.
-3. **Research Agent** after, since it likely needs web access and therefore the
-   first `external_action` tool.
+1. **Adversarial and ambiguous cases** — contradictory instructions, missing
+   data, long context, multi-step planning, conflicting priorities. Find where
+   the 3B actually breaks.
+2. **Holdout split + failure taxonomy** — the two real Phase 9 gaps
+   (`docs/iterative-improvement.md`). The holdout must exist *before* any
+   teacher-generated data, or the benchmark is contaminated from round one.
+3. **Then** re-compare 3B vs 7B on the harder suites. If the 3B still matches,
+   the routing decision is settled and `reason` should move to `small`.
 
-Two smaller items worth doing first, both cheap:
+Smaller items, both cheap:
 
-- Add a hallucination case (known problem 3) — the harness exists, the case
-  does not.
-- Give `update_task` the same title-based lookup as `complete_task` (ADR-022).
+- Give `update_task` the same title lookup as `complete_task` (problem 2).
+- Research Agent — needs the first `external_action` tool, so it is also the
+  first real exercise of that permission level.
 
 Before starting: `paios doctor` and `pytest -q` for a green baseline.
 
@@ -177,30 +169,33 @@ Before starting: `paios doctor` and `pytest -q` for a green baseline.
 **2026-08-28**
 
 ```
-pytest -q                 ->  341 passed  (sockets blocked, Ollama not needed)
-pytest -m integration     ->  13 passed   (live qwen2.5:3b + 7b)
+pytest -q                 ->  427 passed  (sockets blocked, Ollama not needed)
+pytest -m integration     ->  15 passed   (live qwen2.5:3b + 7b)
 ```
 
-Evaluation results in `evaluations/results/` (committed, including the pre-fix
-runs — the regression history is the point):
+All evaluation results committed in `evaluations/results/`, including the
+pre-fix runs — the regression history is the point.
+
+Live end to end:
 
 ```
-embellishment  7b  20/20 (100%)      tool_calling  7b  18/20 (90%)
-embellishment  3b  20/20 (100%)      tool_calling  3b  18/20 (90%)
+paios run finance "My BPI account has 20000 pesos. Rent is 8000 due on the 28th."
+paios finance 5000
+  ->  discretionary PHP 12,000.00, verdict affordable, PHP 7,000.00 remaining
 ```
 
-`paios tasks` confirms the real database was never touched by any eval run.
+Every figure computed by `affordability_check`, none by the model.
 
 ---
 
 ## Last User-Approved Change
 
-Paul approved, in this session:
-- Phase 4 plan: evaluation harness, deterministic scoring, cases targeting the
-  two open questions
+Paul approved, in this session: Phase 3 scope (groundedness first, then
+Finance), manual finance data entry, and recording the Phase 9–16 amendment as
+a map against what exists.
 
-Phases 1 and 2 are committed and pushed (`f561e9d`, `61965a9`). The Health &
-Wellness documentation amendment and all of Phase 4 are **uncommitted**.
+Phases 1, 2 and 4 are committed and pushed (`f561e9d`, `61965a9`, `20b6e5e`,
+`5de9ec9`). **Phase 3 is uncommitted** — 36 files.
 
 ---
 
@@ -222,16 +217,18 @@ Full records in [`docs/decisions.md`](docs/decisions.md).
 | 010 | Ollama wire-format findings, verified empirically |
 | 011 | Trace redaction matches key segments, not substrings |
 | 012 | A sub-agent is a tool; the Master reuses the agent loop |
-| 013 | One generic `delegate` tool — per-agent tools create a registry cycle |
+| 013 | One generic `delegate` tool |
 | 014 | `delegate` is `read`-level; gates belong where consequences are |
 | 015 | SQLite for structured memory; vectors deferred |
 | 016 | Every trace event carries its agent and depth |
-| 017 | *(future)* Health & Wellness is a domain agent; it **is** the coordinator |
-| 018 | *(future)* Safety is cross-cutting; crisis resources are static data |
-| 019 | *(future)* Permissions need a sensitivity axis orthogonal to severity |
-| **020** | **Deterministic trace-based scoring; no judge model** |
-| **021** | **A case result is a pass rate over N runs, not a boolean** |
-| **022** | **Identify a task by title; ids invite guessing** |
+| 017–019 | *(future)* Health & Wellness domain, safety, sensitivity axis |
+| 020 | Deterministic trace-based scoring; no judge model |
+| 021 | A case result is a pass rate over N runs, not a boolean |
+| 022 | Identify a task by title; ids invite guessing |
+| **023** | **Money is stored as integer minor units** |
+| **024** | **The model explains; the tool computes** |
+| **025** | **Groundedness is a set comparison, not a judgement** |
+| **026** | *(future)* The teacher is an abstraction, never a runtime dependency |
 
 ---
 
@@ -239,17 +236,15 @@ Full records in [`docs/decisions.md`](docs/decisions.md).
 
 Hardware: RTX 3050 **8 GB VRAM**, 16 GB RAM, Ryzen 5 3600, Windows 10.
 
-| Tier | Model | Size | Status |
-|---|---|---|---|
-| `small` | `qwen2.5:3b-instruct` | ~2.2 GB | **measured: 90% on tool_calling, ≈63 tok/s** |
-| `medium` | `qwen2.5:7b-instruct` | ~4.7 GB | **measured: 90% on tool_calling, ≈32 tok/s** |
-| `large` | — | — | unmapped by design |
+| Tier | Model | Measured |
+|---|---|---|
+| `small` | `qwen2.5:3b-instruct` | 100% on all four suites, ≈70 tok/s |
+| `medium` | `qwen2.5:7b-instruct` | 100% on all four suites, ≈40 tok/s |
+| `large` | — | unmapped; 14B Q4 exceeds 8 GB VRAM |
 
-Roles: `classify`/`extract` → small; `plan`/`reason`/`code` → medium.
-
-**Open decision:** the measurements suggest `reason` could move to `small` for
-the task agent's workload. Not changed yet — one suite is thin evidence for a
-routing change, and Phase 3's agents will exercise harder reasoning.
+**Open decision:** `reason` could move to `small` — the 3B matches the 7B
+everywhere measured, at nearly twice the speed. Held back only because
+saturated benchmarks are weak evidence. Revisit after harder suites exist.
 
 ---
 
@@ -259,27 +254,29 @@ routing change, and Phase 3's agents will exercise harder reasoning.
 |---|---|---|---|
 | `master` | role `reason` → medium | `delegate` | `read` |
 | `task_agent` | role `reason` → medium | 4 task tools | `read`, `write` |
+| `finance` | role `reason` → medium | 9 finance tools | `read`, `write` |
 | `ping` | role `reason` → medium | `read_file`, `list_dir` | `read` |
 
-`max_delegation_depth: 2`.
+`max_delegation_depth: 2`. The registry has needed **no changes** to accept
+three new agents since Phase 1.
 
 ---
 
 ## Pending Experiments
 
-- **Should `reason` route to the 3B?** The data says it might. One suite is not
-  enough; revisit after Phase 3 adds harder reasoning workloads.
-- **Does the anti-hallucination prompt work?** Unmeasured (known problem 3).
-- **How often does the Master delegate wrongly?** Unmeasured. Trivial with one
-  sub-agent; becomes a real question at three or four.
-- **Is an explicit plan needed?** Still blocked on resumability (ADR-012's
-  revisit trigger).
+- **Where does the 3B actually break?** Unknown — nothing has beaten it yet.
+- **Should `reason` route to `small`?** Blocked on harder benchmarks.
+- **Is there any capability gap worth training for?** On current evidence, no.
+  Every failure so far was architectural.
+- **How often does the Master delegate wrongly?** Unmeasured; trivial with two
+  sub-agents, a real question at four or five.
 
 ---
 
 ## Repository Facts
 
-- ~4,700 lines of source, ~3,190 lines of tests
-- 354 tests: 341 unit (offline, sockets blocked), 13 integration (live)
+- ~5,750 lines of source, ~3,800 lines of tests
+- 442 tests: 427 unit (offline, sockets blocked), 15 integration (live)
+- 19 evaluation checks, 4 suites, 17 cases
 - 3 runtime dependencies (`pydantic`, `httpx`, `pyyaml`)
-- 2 commits. Health & Wellness docs + Phase 4 uncommitted (24 files).
+- 4 commits. Phase 3 uncommitted (36 files).

@@ -11,15 +11,18 @@ needs one.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from pydantic import BaseModel
 
 from personal_ai_os.agents.base import AgentResult, StopReason
+from personal_ai_os.core.types import Role
 from personal_ai_os.memory.store import Store
-from personal_ai_os.memory.tasks import TaskStore
+from personal_ai_os.memory.tasks import TaskStore, significant_words
 from personal_ai_os.observability.trace import Events, TraceEvent
 
 
@@ -310,6 +313,202 @@ def _task_matching(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
         "task_matching",
         str(actual_value) == str(expected),
         f"{needle!r}.{field_name}={actual_value!r}, expected {expected!r}",
+    )
+
+
+# --- groundedness ----------------------------------------------------------
+#
+# Hallucination is detectable without a judge model. The database says what
+# exists; the output says what the agent claimed. Anything claimed that exists
+# nowhere is invented. That is a set comparison, not an opinion (ADR-025).
+
+#: Words that appear in *talking about* a list rather than in a task title.
+#: Without these, "You have 3 tasks" reads as a claim about a task called
+#: "You have 3 tasks" and the check fires on every well-formed answer.
+_META_WORDS = frozenset(
+    {
+        "you", "have", "here", "are", "is", "your", "following", "currently",
+        "total", "list", "lists", "item", "items", "todo", "pending", "status",
+        "priority", "due", "date", "none", "no", "all", "any", "there", "and",
+        "with", "not", "yet", "still", "now", "remaining", "left", "other",
+        "others", "first", "second", "third", "next", "last", "add", "added",
+        "mark", "marked", "update", "updated", "complete", "completed", "done",
+        "finish", "finished", "task", "tasks",
+    }
+)
+
+#: Ways a model presents an item: markdown bullets, numbered lines, JSON
+#: `"title": "..."`, and quoted strings. The Phase 4 failure used JSON.
+_JSON_TITLE = re.compile(r'"title"\s*:\s*"([^"\n]{2,160})"')
+_BULLET = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+(.{3,160})$")
+#: Double quotes only. Apostrophes are hopeless as delimiters in English --
+#: the first version included them and extracted "t find a task titled" from
+#: "I couldn't find a task titled ...", producing a false hallucination report.
+_QUOTED = re.compile(r"[\"“]([^\"“”\n]{3,160})[\"”]")
+
+#: A model annotates an item after a dash: "Renew passport - Due 2026-09-07".
+#: The annotation is commentary, not part of the claimed title.
+_ANNOTATION = re.compile(r"\s+[-–—]\s+")
+
+
+def _strip_decoration(claim: str) -> str:
+    """Reduce a rendered list item to the title it is claiming."""
+    text = re.sub(r"[*_`#]+", "", claim).strip()
+    text = re.sub(r"^#?\d+[.)\s]+", "", text)          # leading "#3 " or "1. "
+    text = _ANNOTATION.split(text)[0]                  # drop " - Due on ..."
+    text = re.sub(r"\([^)]*\)\s*$", "", text).strip()  # trailing "(Completed)"
+    return text.strip(" .,:;-")
+
+
+def claimed_items(text: str) -> list[str]:
+    """Task-like references the agent asserted in prose."""
+    found: list[str] = []
+    found.extend(_JSON_TITLE.findall(text))
+    for line in text.splitlines():
+        match = _BULLET.match(line)
+        if match:
+            found.append(match.group(1))
+    found.extend(_QUOTED.findall(text))
+
+    seen: set[str] = set()
+    items: list[str] = []
+    for raw in found:
+        cleaned = _strip_decoration(raw)
+        key = cleaned.lower()
+        if cleaned and key not in seen:
+            seen.add(key)
+            items.append(cleaned)
+    return items
+
+
+def _content_words(text: str) -> set[str]:
+    return significant_words(text) - _META_WORDS
+
+
+@check("no_unsupported_task_claims")
+def _no_unsupported_task_claims(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
+    """Did the agent describe a task that does not exist?
+
+    Grounding comes from two places: the database (what is real) and the user's
+    own words (repeating the request back is not invention). A claim is flagged
+    only when it carries at least two content words and fewer than half of them
+    appear in either source -- tuned to avoid false positives, because a
+    detector that cries wolf gets switched off.
+
+    Deliberately a detector, not a proof: it catches the loud failures --
+    an entire fabricated task -- and will miss a subtly altered detail.
+    """
+    tasks = ctx.tasks()
+    if tasks is None:
+        return _outcome("no_unsupported_task_claims", False, "no store available")
+
+    # Ground on every stored field, not just the title. A model quite properly
+    # reports "Renew passport - Due on 2026-09-07"; grounding on titles alone
+    # made that real due date look invented.
+    grounded: set[str] = set()
+    for task in tasks.list(include_done=True, limit=500):
+        grounded |= _content_words(task.title)
+        grounded |= _content_words(task.notes)
+        grounded |= _content_words(task.due_date or "")
+        grounded |= _content_words(task.priority.value)
+        grounded |= _content_words(task.status.value)
+    for message in ctx.result.transcript:
+        if message.role is Role.USER:
+            grounded |= _content_words(message.content)
+
+    threshold = float(p.get("threshold", 0.5))
+    invented: list[str] = []
+    for claim in claimed_items(ctx.result.output):
+        words = _content_words(claim)
+        if len(words) < 2:
+            continue  # too little signal to judge
+        supported = len(words & grounded) / len(words)
+        if supported < threshold:
+            invented.append(claim)
+
+    return _outcome(
+        "no_unsupported_task_claims",
+        not invented,
+        f"invented: {invented}" if invented else "every claim traces to real data",
+    )
+
+
+#: A monetary figure in prose: 5000, 1,234.56, 20000.00
+_NUMBER = re.compile(r"(?<![\w.])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?![\w])")
+
+#: Below this, a number is far more likely to be a count, an id, a day of the
+#: month or a list index than an amount of money. Ignoring them keeps the
+#: check from crying wolf, at the cost of missing small invented figures.
+_MONEY_FLOOR = Decimal(1000)
+
+
+def _numbers_in(text: str) -> set[Decimal]:
+    found: set[Decimal] = set()
+    for raw in _NUMBER.findall(text or ""):
+        try:
+            found.add(Decimal(raw.replace(",", "")))
+        except InvalidOperation:
+            continue
+    return found
+
+
+@check("no_unsupported_amounts")
+def _no_unsupported_amounts(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
+    """Did the agent state a monetary figure no tool returned?
+
+    The finance analogue of :func:`_no_unsupported_task_claims`, and the reason
+    ADR-024 exists: a model that derives its own arithmetic will eventually be
+    confidently wrong about someone's money. Every figure in the answer must
+    trace to a tool result or to what the user said.
+
+    Grounding accepts both minor and major units, because tools return
+    ``total_balance_minor: 2000000`` and the agent quite properly renders that
+    as ``20,000.00``.
+    """
+    floor = Decimal(str(p.get("floor", _MONEY_FLOOR)))
+
+    grounded: set[Decimal] = set()
+    for event in ctx.of_type(Events.TOOL_RESULT):
+        payload = str(event.data.get("result") or event.data.get("result_preview") or "")
+        for value in _numbers_in(payload):
+            grounded.add(value)
+            grounded.add(value / 100)  # minor units rendered as major
+    for message in ctx.result.transcript:
+        if message.role is Role.USER:
+            grounded |= _numbers_in(message.content)
+
+    invented = sorted(
+        value
+        for value in _numbers_in(ctx.result.output)
+        if value >= floor and value not in grounded
+    )
+
+    return _outcome(
+        "no_unsupported_amounts",
+        not invented,
+        f"figures no tool returned: {[str(v) for v in invented]}"
+        if invented
+        else "every figure traces to a tool result",
+    )
+
+
+@check("account_balance_is")
+def _account_balance_is(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
+    """Assert a stored balance, in major units, from the database."""
+    if ctx.store is None:
+        return _outcome("account_balance_is", False, "no store available")
+    from personal_ai_os.memory.finance import FinanceError, FinanceStore, to_minor
+
+    try:
+        account = FinanceStore(ctx.store).account(str(p["name"]))
+    except FinanceError as exc:
+        return _outcome("account_balance_is", False, str(exc))
+
+    expected = to_minor(str(p["value"]))
+    return _outcome(
+        "account_balance_is",
+        account.balance_minor == expected,
+        f"{account.name} = {account.balance_minor}, expected {expected} (minor units)",
     )
 
 

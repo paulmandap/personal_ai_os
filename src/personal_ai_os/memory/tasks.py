@@ -39,7 +39,7 @@ _STOPWORDS = frozenset(
 _WORD = re.compile(r"[a-z0-9]+")
 
 
-def _significant_words(text: str) -> set[str]:
+def significant_words(text: str) -> set[str]:
     """Lowercase content words, with a light plural/gerund fold.
 
     The fold is what lets "buying" match "Buy". It is deliberately crude --
@@ -242,13 +242,13 @@ class TaskStore:
         nothing reaches the threshold.
         """
         candidates = self.list(include_done=include_done, limit=500)
-        terms = _significant_words(needle)
+        terms = significant_words(needle)
         if not terms:
             return []
 
         scored: list[tuple[float, Task]] = []
         for task in candidates:
-            title_words = _significant_words(task.title)
+            title_words = significant_words(task.title)
             if not title_words:
                 continue
             covered = len(terms & title_words) / len(terms)

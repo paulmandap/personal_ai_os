@@ -610,3 +610,119 @@ similar tasks is refused rather than resolved by guessing.
 flaw; it is simply not yet exercised by a case. The general rule this
 establishes: **when an argument names something the user never said, expect a
 model to invent it.**
+
+---
+
+## ADR-023 — Money is stored as integer minor units
+
+**Date:** 2026-08-28 · **Status:** accepted · **Phase:** 3
+
+**Decision.** Every monetary value is an `INTEGER` count of minor units
+(centavos). No `REAL` column, no `float` in any signature. Conversion happens
+only at the edges, via `to_minor` / `format_minor`, using `Decimal`.
+`to_minor` **refuses a float outright**.
+
+**Reason.** Binary floating point cannot represent `0.10`. A ledger built on
+floats drifts, and a personal finance system that is quietly wrong about money
+is worse than one that refuses to run. The cost of this decision now is a
+conversion helper; the cost of reversing it later is a migration of every
+stored amount plus an unknown quantity of already-wrong data.
+
+**The tolerant boundary.** Models emit bare JSON numbers for amounts
+constantly, and JSON `1234.56` arrives in Python as a float. Rejecting that
+would be pedantic; carrying it inward would defeat the decision. So tool inputs
+stringify at the boundary — `str(1234.56)` is `'1234.56'`, Python's shortest
+round-trip form — and `to_minor` parses it with `Decimal`. **Strict core,
+tolerant edge.**
+
+**Consequences.** Amounts read awkwardly in raw SQL (`2000000` is PHP 20,000).
+Acceptable: `format_minor` exists, and the alternative is silent error.
+
+---
+
+## ADR-024 — The model explains; the tool computes
+
+**Date:** 2026-08-28 · **Status:** accepted · **Phase:** 3
+
+**Context.** *"Can I afford this?"* needs balance, minus committed expenses,
+minus savings reserve, compared against a price. A language model can do that
+arithmetic. It should not.
+
+**Decision.** `affordability_check` computes every figure in Python and returns
+the components, the discretionary amount *and* the verdict. The agent's job is
+to explain what it was given. The prompt says so explicitly, and
+`no_unsupported_amounts` enforces it: every number in the answer must trace to
+a tool result or to the user's own words.
+
+**Reason.** Arithmetic is the one thing here that has a single correct answer
+and no need for a model at all — the numbers are in a database. Letting a model
+derive them adds a failure mode with no upside, in the domain where being
+confidently wrong costs the most. This generalises: **whenever a value can be
+computed deterministically, compute it and hand it over.**
+
+**Consequences.** New financial questions need new tools rather than cleverer
+prompting. That is the trade being made deliberately: fewer emergent
+capabilities, no invented numbers.
+
+---
+
+## ADR-025 — Groundedness is a set comparison, not a judgement
+
+**Date:** 2026-08-28 · **Status:** accepted · **Phase:** 3
+
+**Context.** In Phase 4 the 7B invented a task list containing an item that had
+never existed. A prompt rule was added; nothing measured whether it worked.
+
+**Decision.** Detect hallucination deterministically. The database says what
+exists and the transcript says what the user asked; anything the output claims
+outside both was invented. `no_unsupported_task_claims` and
+`no_unsupported_amounts` implement this for the two domains. No judge model
+(consistent with ADR-020).
+
+**Result.** Both models score **100%** — the Phase 2 prompt fix did work. Worth
+stating plainly: the answer to "solve hallucinations" turned out to be "prove
+they are already solved, and keep proving it".
+
+**The lesson that cost the most.** The detector's first version reported a 55%
+hallucination rate. Every flag was a false positive: an apostrophe in
+"couldn't" was parsed as a quote delimiter, and a task's *real* stored due date
+counted as invented because grounding used only titles. Had that number been
+reported, the obvious next step would have been fine-tuning a model to fix a
+problem that did not exist.
+
+**So:** verify a detector against real transcripts before believing its number.
+A detector that cries wolf is worse than no detector — it manufactures work,
+and the work is aimed at the wrong thing. Both false positives are now
+regression tests using the verbatim output that triggered them.
+
+**Consequences.** Deliberately tuned to avoid false positives, so it misses
+subtle invention — an altered detail inside an otherwise real item. It catches
+whole fabricated entities, which is what was actually observed.
+
+---
+
+## ADR-026 — The teacher is an abstraction, never a runtime dependency
+
+**Date:** 2026-08-28 · **Status:** accepted (architecture only) · **Phase:** future
+
+**Context.** A teacher-guided improvement programme (Phases 9–16) would use a
+stronger model to critique local agents and generate training data. During
+development that teacher would be Claude Code.
+
+**Decision.** The teacher is a protocol — `evaluate`, `critique`,
+`generate_reference`, `create_adversarial_case` — with no implementation in the
+runtime. Everything it produces (benchmarks, datasets, critiques, the model
+registry) is written to versioned files that remain usable without it. No
+Anthropic SDK, no API key, no cloud call path. Ever.
+
+**Reason.** This is ADR-001 applied to training rather than inference. A
+training pipeline that stops working when the teacher goes away is the same
+trap as a runtime that does — worse, because it would have shaped the local
+models around a critic that no longer exists.
+
+**Consequences.** Teacher output is *data*, produced manually through Claude
+Code and committed. Slower than an API loop, and it survives September 7.
+Phases 12–16 are additionally blocked on hardware: ~22 GB of disk for the
+training stack and trainable weights against 5.5 GB free, and a GGUF cannot be
+fine-tuned — the quantized models on this machine are inference artefacts. See
+`docs/iterative-improvement.md`.

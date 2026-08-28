@@ -1,4 +1,4 @@
-"""Delegation -- running a sub-agent as a tool.
+﻿"""Delegation -- running a sub-agent as a tool.
 
 This is the whole Master Agent mechanism (ADR-012). Because a sub-agent is
 reached through the ordinary tool interface, delegation inherits the permission
@@ -20,10 +20,10 @@ from pydantic import BaseModel, Field
 
 from personal_ai_os.core.errors import AgentNotFoundError, ToolExecutionError
 from personal_ai_os.permissions.types import PermissionLevel
-from personal_ai_os.tools.base import Tool, ToolContext
+from personal_ai_os.tools.base import Tool, ToolContext, ToolInput
 
 
-class DelegateInput(BaseModel):
+class DelegateInput(ToolInput):
     agent: str = Field(
         description=(
             "Name of the agent to hand this work to. Must be one of the agents "

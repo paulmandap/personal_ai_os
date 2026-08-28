@@ -15,25 +15,30 @@ fallback.
 
 ## Status
 
-**Phases 1, 2 and 4 complete.** See [`PROJECT_STATE.md`](PROJECT_STATE.md).
+**Phases 1–4 complete.** See [`PROJECT_STATE.md`](PROJECT_STATE.md).
 
 Working today: the model abstraction and Ollama provider, a deterministic model
 router, an agent registry driven by YAML manifests, typed tools with a
 filesystem jail, a permission gate, SQLite persistence, delegation between
-agents, JSONL run tracing, an evaluation harness, and a CLI.
+agents, a personal finance domain, JSONL run tracing, an evaluation harness,
+and a CLI.
 
-Three agents: `master` (delegates), `task_agent` (manages a real task list),
-and `ping` (verifies the machine works).
+Four agents: `master` (delegates), `task_agent`, `finance`, and `ping`.
 
-Measured, not assumed:
+Measured, not assumed — four evaluation suites, five runs each, both models:
 
-| | 7B | 3B |
+| Suite | 7B | 3B |
 |---|---|---|
-| tool-calling pass rate | 90% | **90%** |
-| throughput | ≈32 tok/s | **≈63 tok/s** |
+| tool calling | 100% | 100% |
+| embellishment | 100% | 100% |
+| hallucination | 100% | 100% |
+| finance | 100% | 100% |
+| throughput | ≈40 tok/s | **≈70 tok/s** |
 
-The small model matches the large one on these workloads at twice the speed —
-which is the kind of claim this project exists to be able to make.
+The 3B matches the 7B everywhere measured, at nearly twice the speed — the kind
+of claim this project exists to be able to make. (These suites are now
+*saturated*, which means they have stopped measuring anything. Harder ones are
+the next job.)
 
 ## Requirements
 
@@ -181,8 +186,8 @@ using a tool whose permission level it did not declare — so that
 ## Testing
 
 ```powershell
-pytest -q                 # 341 unit tests — pass with Ollama STOPPED
-pytest -m integration     # 13 live tests against real local models
+pytest -q                 # 427 unit tests — pass with Ollama STOPPED
+pytest -m integration     # 15 live tests against real local models
 ```
 
 The unit suite blocks network sockets outright. That is deliberate: if these
@@ -199,7 +204,9 @@ tests ever need a model server, the model has quietly become the architecture.
 | [model-routing.md](docs/model-routing.md) | The local model ladder |
 | [memory.md](docs/memory.md) | SQLite persistence, and why not vectors |
 | [evaluation.md](docs/evaluation.md) | Measuring agent behaviour, and what it found |
+| [finance.md](docs/finance.md) | Money representation, and the arithmetic boundary |
 | [health-wellness.md](docs/health-wellness.md) | Future domain — recorded, **not implemented** |
+| [iterative-improvement.md](docs/iterative-improvement.md) | Teacher/student training — mapped against what exists |
 | [development-workflow.md](docs/development-workflow.md) | Day-to-day process |
 | [decisions.md](docs/decisions.md) | Architecture decision records |
 

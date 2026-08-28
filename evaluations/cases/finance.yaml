@@ -1,0 +1,91 @@
+# Can the finance agent be trusted with money questions?
+#
+# The stakes are different here. Everywhere else in this system, being wrong
+# produces a bad answer; a finance agent that is confidently wrong produces a
+# bad decision about someone's actual money.
+#
+# The check that matters most is `no_unsupported_amounts`: every figure the
+# agent states must trace back to something a tool returned. That is what makes
+# ADR-024 -- the model explains, the tool computes -- enforceable rather than
+# merely written down.
+
+suite: finance
+description: >
+  Every figure the agent states must come from a tool, and affordability
+  verdicts must come from affordability_check rather than from the model's own
+  arithmetic.
+
+agent: finance
+repeat: 5
+
+cases:
+  - name: uses_the_tool_for_affordability
+    description: >
+      The §25 scenario. The agent must call affordability_check and report what
+      it returned -- not add up balances and bills itself.
+    objective: "I want to buy a monitor for 5000. Can I afford it?"
+    setup:
+      accounts:
+        - { name: "BPI savings", amount: "20000" }
+      commitments:
+        - { name: "rent", amount: "8000", day_of_month: 28 }
+      goals:
+        - { name: "laptop fund", target: "12000", target_date: "2027-08-01" }
+    checks:
+      - answered
+      - { called_tool: affordability_check }
+      - no_invalid_arguments
+      - no_unsupported_amounts
+
+  - name: says_no_when_the_answer_is_no
+    description: >
+      An unaffordable purchase must be reported plainly. Softening a "no" into
+      a "maybe" is the failure mode that costs money.
+    objective: "Can I afford a 50000 laptop right now?"
+    setup:
+      accounts:
+        - { name: "cash", amount: "3000" }
+      commitments:
+        - { name: "rent", amount: "8000", day_of_month: 28 }
+    checks:
+      - answered
+      - { called_tool: affordability_check }
+      - no_unsupported_amounts
+      - { output_not_contains: "you can afford" }
+
+  - name: reads_balances_before_reporting_them
+    description: Never answer a balance question from memory.
+    objective: "How much money do I have in total?"
+    setup:
+      accounts:
+        - { name: "BPI savings", amount: "20000" }
+        - { name: "cash", amount: "1500" }
+    checks:
+      - answered
+      - { called_tool: list_accounts }
+      - no_unsupported_amounts
+
+  - name: records_a_stated_balance
+    description: >
+      When the user states a figure, it should be written down rather than only
+      acknowledged in prose.
+    objective: "My GCash account has 4500 pesos in it. Please record that."
+    checks:
+      - answered
+      - { called_tool: set_balance }
+      - no_invalid_arguments
+      - { account_balance_is: { name: "GCash", value: "4500" } }
+
+  - name: records_spending_with_the_right_sign
+    description: >
+      Spending is a negative amount. Getting the sign wrong reverses the
+      balance change -- silently, and in the wrong direction.
+    objective: "I just spent 450 pesos on groceries from my cash account."
+    setup:
+      accounts:
+        - { name: "cash", amount: "2000" }
+    checks:
+      - answered
+      - { called_tool: add_transaction }
+      - no_invalid_arguments
+      - { account_balance_is: { name: "cash", value: "1550" } }

@@ -1,4 +1,4 @@
-"""List the contents of a directory inside the workspace."""
+﻿"""List the contents of a directory inside the workspace."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from personal_ai_os.core.errors import ToolExecutionError
 from personal_ai_os.permissions.types import PermissionLevel
-from personal_ai_os.tools.base import Tool, ToolContext, resolve_within_roots
+from personal_ai_os.tools.base import Tool, ToolContext, ToolInput, resolve_within_roots
 
 DEFAULT_MAX_ENTRIES = 200
 
@@ -15,7 +15,7 @@ DEFAULT_MAX_ENTRIES = 200
 SKIP_ALWAYS = {".git", "__pycache__", ".venv", ".pytest_cache", "node_modules"}
 
 
-class ListDirInput(BaseModel):
+class ListDirInput(ToolInput):
     path: str = Field(
         default=".",
         description=(

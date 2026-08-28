@@ -1,4 +1,4 @@
-"""Task tools -- the first tools that persist something.
+﻿"""Task tools -- the first tools that persist something.
 
 These are also the first tools at `write` level, so they are the first real
 exercise of the permission system's `ask` path.
@@ -23,7 +23,7 @@ from personal_ai_os.memory.tasks import (
     validate_iso_date,
 )
 from personal_ai_os.permissions.types import PermissionLevel
-from personal_ai_os.tools.base import Tool, ToolContext
+from personal_ai_os.tools.base import Tool, ToolContext, ToolInput
 
 
 def _tasks(ctx: ToolContext) -> TaskStore:
@@ -38,7 +38,7 @@ def _tasks(ctx: ToolContext) -> TaskStore:
 # --- add -------------------------------------------------------------------
 
 
-class AddTaskInput(BaseModel):
+class AddTaskInput(ToolInput):
     title: str = Field(
         min_length=1,
         max_length=500,
@@ -84,7 +84,7 @@ class AddTaskTool(Tool):
 # --- list ------------------------------------------------------------------
 
 
-class ListTasksInput(BaseModel):
+class ListTasksInput(ToolInput):
     status: TaskStatus | None = Field(
         default=None,
         description=(
@@ -132,7 +132,7 @@ class ListTasksTool(Tool):
 # --- update ----------------------------------------------------------------
 
 
-class UpdateTaskInput(BaseModel):
+class UpdateTaskInput(ToolInput):
     id: int = Field(description="The task's numeric id, from list_tasks.")
     title: str | None = Field(default=None, description="New title.")
     notes: str | None = Field(default=None, description="New notes.")
@@ -180,7 +180,7 @@ class UpdateTaskTool(Tool):
 # --- complete --------------------------------------------------------------
 
 
-class CompleteTaskInput(BaseModel):
+class CompleteTaskInput(ToolInput):
     """Identify the task by title or by id -- exactly one.
 
     ``title`` exists because it is the handle the user actually gives ("I

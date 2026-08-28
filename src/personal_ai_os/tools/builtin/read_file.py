@@ -1,4 +1,4 @@
-"""Read a text file from inside the workspace."""
+﻿"""Read a text file from inside the workspace."""
 
 from __future__ import annotations
 
@@ -6,12 +6,12 @@ from pydantic import BaseModel, Field
 
 from personal_ai_os.core.errors import ToolExecutionError
 from personal_ai_os.permissions.types import PermissionLevel
-from personal_ai_os.tools.base import Tool, ToolContext, resolve_within_roots
+from personal_ai_os.tools.base import Tool, ToolContext, ToolInput, resolve_within_roots
 
 DEFAULT_MAX_BYTES = 64_000
 
 
-class ReadFileInput(BaseModel):
+class ReadFileInput(ToolInput):
     path: str = Field(
         description=(
             "Path to the file to read. Relative paths are resolved against the "

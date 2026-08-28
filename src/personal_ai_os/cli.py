@@ -266,6 +266,55 @@ def cmd_tasks(args: argparse.Namespace) -> int:
         runtime.close()
 
 
+# --- finance ---------------------------------------------------------------
+
+
+def cmd_finance(args: argparse.Namespace) -> int:
+    """Inspect the ledger with no model in the loop.
+
+    Useful on its own, and the way to check that a figure an agent quoted is
+    actually what the database holds.
+    """
+    from personal_ai_os.memory.finance import FinanceStore, format_minor
+
+    runtime = Runtime.build(workspace_root=args.workspace, configure_logging=False)
+    try:
+        finance = FinanceStore(runtime.store)
+
+        if args.amount:
+            result = finance.affordability(args.amount)
+            print(result.summary())
+            print(f"\n  {result.explanation}")
+            return 0 if result.verdict.value != "not_affordable" else 1
+
+        accounts = finance.accounts()
+        currency = accounts[0].currency if accounts else "PHP"
+
+        print("\n  ACCOUNTS")
+        for account in accounts or []:
+            print(f"    {account.summary()}")
+        if not accounts:
+            print("    (none)")
+        else:
+            print(f"    {'total':<20} {format_minor(finance.total_balance_minor(), currency)}")
+
+        print("\n  RECURRING")
+        for commitment in finance.commitments() or []:
+            print(f"    {commitment.summary(currency)}")
+        if not finance.commitments():
+            print("    (none)")
+
+        print("\n  GOALS")
+        for goal in finance.goals() or []:
+            print(f"    {goal.summary(currency)}")
+        if not finance.goals():
+            print("    (none)")
+        print()
+        return 0
+    finally:
+        runtime.close()
+
+
 # --- eval ------------------------------------------------------------------
 
 
@@ -423,6 +472,15 @@ def build_parser() -> argparse.ArgumentParser:
     done_p = tasks_sub.add_parser("done", help="mark a task complete")
     done_p.add_argument("id", type=int)
     done_p.set_defaults(func=cmd_tasks, task_command="done")
+
+    finance_p = sub.add_parser("finance", help="inspect the ledger, no model involved")
+    finance_p.add_argument(
+        "amount",
+        nargs="?",
+        default=None,
+        help="optional: check whether this amount is affordable, e.g. 5000",
+    )
+    finance_p.set_defaults(func=cmd_finance)
 
     eval_p = sub.add_parser("eval", help="measure how well agents actually perform")
     eval_p.set_defaults(func=cmd_eval, eval_command="list")

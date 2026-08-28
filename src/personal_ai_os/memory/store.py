@@ -55,6 +55,48 @@ MIGRATIONS: list[tuple[int, str]] = [
         CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due_date);
         """,
     ),
+    (
+        2,
+        # Money is stored as INTEGER minor units (centavos), never REAL.
+        # Binary floating point cannot represent 0.10, and a finance system
+        # that drifts by fractions of a peso is worse than one that refuses
+        # to run. See docs/decisions.md ADR-023.
+        """
+        CREATE TABLE IF NOT EXISTS accounts (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            name          TEXT NOT NULL UNIQUE,
+            currency      TEXT NOT NULL DEFAULT 'PHP',
+            balance_minor INTEGER NOT NULL DEFAULT 0,
+            updated_at    TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS transactions (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id   INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            occurred_on  TEXT NOT NULL,
+            amount_minor INTEGER NOT NULL,
+            category     TEXT NOT NULL DEFAULT 'uncategorised',
+            description  TEXT NOT NULL DEFAULT '',
+            created_at   TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS commitments (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL,
+            amount_minor INTEGER NOT NULL,
+            day_of_month INTEGER NOT NULL,
+            category     TEXT NOT NULL DEFAULT 'bills',
+            active       INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE TABLE IF NOT EXISTS goals (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL,
+            target_minor INTEGER NOT NULL,
+            saved_minor  INTEGER NOT NULL DEFAULT 0,
+            target_date  TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_txn_account ON transactions(account_id);
+        CREATE INDEX IF NOT EXISTS idx_txn_date ON transactions(occurred_on);
+        """,
+    ),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else 0

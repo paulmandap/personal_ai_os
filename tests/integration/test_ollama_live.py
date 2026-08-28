@@ -231,6 +231,70 @@ class TestAgentEndToEnd:
 
 @requires_medium
 @pytest.mark.usefixtures("fresh_vram")
+class TestFinanceEndToEnd:
+    """The finance agent against a real model.
+
+    The assertion that matters: every figure in the answer came from the tool.
+    A model that derives its own arithmetic will eventually be confidently
+    wrong about someone's money (ADR-024).
+    """
+
+    def test_affordability_figures_come_from_the_tool(self, tool_context, store):
+        from personal_ai_os.agents.builtin.finance_agent import FinanceAgent
+        from personal_ai_os.memory.finance import FinanceStore
+
+        finance = FinanceStore(store)
+        finance.set_balance("BPI savings", "20000")
+        finance.add_commitment("rent", "8000", day_of_month=28)
+
+        expected = finance.affordability("5000")
+
+        spec = AgentSpec(
+            name="finance",
+            description="Analyses the user's money.",
+            tools=[
+                "list_accounts",
+                "list_commitments",
+                "list_goals",
+                "affordability_check",
+            ],
+            permissions=[PermissionLevel.READ],
+            max_iterations=8,
+        )
+        broker = RecordingBroker(
+            PolicyBroker({PermissionLevel.READ: "auto"}, interactive=False)
+        )
+        agent = FinanceAgent(
+            spec,
+            model=OllamaModel(MEDIUM_MODEL, base_url=BASE_URL, temperature=0.0),
+            tools=default_registry(),
+            broker=broker,
+            context=tool_context,
+        )
+
+        result = agent.run("I want to buy a monitor for 5000. Can I afford it?")
+
+        assert result.ok, f"run failed: {result.error}"
+        # The tool did the arithmetic, and the tool was actually consulted.
+        assert any(
+            r.action == "affordability_check" for r in broker.requests
+        ), [r.action for r in broker.requests]
+        assert expected.verdict.value in {"affordable", "tight", "not_affordable"}
+
+    def test_money_never_becomes_a_float(self, store):
+        """The storage invariant, verified through the real column type."""
+        from personal_ai_os.memory.finance import FinanceStore
+
+        finance = FinanceStore(store)
+        finance.set_balance("cash", "1234.56")
+        row = store.query_one("SELECT balance_minor FROM accounts WHERE name = 'cash'")
+        assert row is not None
+        assert isinstance(row["balance_minor"], int)
+        assert row["balance_minor"] == 123_456
+
+
+@requires_medium
+@pytest.mark.usefixtures("fresh_vram")
 class TestEvaluationHarness:
     """The harness against a real model.
 

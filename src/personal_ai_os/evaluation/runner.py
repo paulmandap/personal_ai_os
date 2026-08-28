@@ -32,6 +32,7 @@ from personal_ai_os.evaluation.report import (
     SuiteResult,
     utc_stamp,
 )
+from personal_ai_os.memory.finance import FinanceStore
 from personal_ai_os.memory.store import Store
 from personal_ai_os.memory.tasks import TaskStore
 from personal_ai_os.observability.logging import get_logger
@@ -138,6 +139,26 @@ class EvalRunner:
                 )
                 if seed.status.value != "todo" and created.id is not None:
                     tasks.update(created.id, status=seed.status)
+
+            finance = FinanceStore(store)
+            for account in case.setup.accounts:
+                finance.set_balance(
+                    account.name, account.amount, currency=account.currency
+                )
+            for commitment in case.setup.commitments:
+                finance.add_commitment(
+                    commitment.name,
+                    commitment.amount,
+                    commitment.day_of_month,
+                    category=commitment.category,
+                )
+            for goal in case.setup.goals:
+                finance.add_goal(
+                    goal.name,
+                    goal.target,
+                    saved=goal.saved,
+                    target_date=goal.target_date,
+                )
 
             try:
                 yield settings, store

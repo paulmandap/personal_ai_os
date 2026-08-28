@@ -79,6 +79,17 @@ def default_registry() -> ToolRegistry:
     registry, and avoids the circular dependency that per-agent delegation
     tools would create (ADR-013).
     """
+    from personal_ai_os.tools.builtin.finance import (
+        AddCommitmentTool,
+        AddGoalTool,
+        AddTransactionTool,
+        AffordabilityCheckTool,
+        ListAccountsTool,
+        ListCommitmentsTool,
+        ListGoalsTool,
+        ListTransactionsTool,
+        SetBalanceTool,
+    )
     from personal_ai_os.tools.builtin.list_dir import ListDirTool
     from personal_ai_os.tools.builtin.read_file import ReadFileTool
     from personal_ai_os.tools.builtin.tasks import (
@@ -97,6 +108,15 @@ def default_registry() -> ToolRegistry:
             ListTasksTool(),
             UpdateTaskTool(),
             CompleteTaskTool(),
+            ListAccountsTool(),
+            ListTransactionsTool(),
+            ListCommitmentsTool(),
+            ListGoalsTool(),
+            AffordabilityCheckTool(),
+            SetBalanceTool(),
+            AddTransactionTool(),
+            AddCommitmentTool(),
+            AddGoalTool(),
             DelegateTool(),
         ]
     )

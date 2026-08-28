@@ -112,6 +112,9 @@ nothing.
 | `task_count` / `task_field_is` / `task_field_absent` | the database |
 | `task_matching: {title, field, value}` | the database, by title |
 | `task_title_contains` | the database |
+| `no_unsupported_task_claims` | output vs. database + transcript |
+| `no_unsupported_amounts` | output vs. tool results + transcript |
+| `account_balance_is: {name, value}` | the database |
 
 The store-reading checks matter most. For embellishment the question is not
 what the model *said* it did but what actually landed in the database — and
@@ -183,6 +186,40 @@ terms**, which handles the paraphrase while keeping genuine ambiguity ambiguous.
 The lesson worth keeping: the failure was invisible in normal use — the agent
 answered fluently every time, and its answer described the wrong action
 confidently. Only checking the database caught it.
+
+## Groundedness: hallucination as a set comparison
+
+Hallucination is detectable without a judge (ADR-025). The database says what
+exists, the transcript says what the user asked, and anything the output claims
+outside both was invented.
+
+`no_unsupported_task_claims` extracts claimed items from the answer — markdown
+bullets, quoted strings, `"title"` fields inside emitted JSON — and matches
+them against real data using the same token-coverage matcher as
+`find_by_title`. `no_unsupported_amounts` does the same for money, accepting
+both minor and major units because a tool returns `2000000` and the agent
+properly renders `20,000.00`.
+
+**Result: both models score 100%.** The Phase 2 anti-embellishment prompt fix
+did work; there is now a regression test proving it.
+
+### The lesson that cost the most
+
+The detector's first version reported a **55% hallucination rate**. Every flag
+was a false positive:
+
+- an apostrophe in *"couldn't"* was parsed as an opening quote, extracting the
+  phantom claim `"t find a task titled"`;
+- a task's **real** stored due date counted as invented, because grounding used
+  only titles and not the other stored fields.
+
+Had that number been reported, the obvious next step would have been training a
+model to fix a problem that did not exist.
+
+**Verify a detector against real transcripts before believing its number.** A
+detector that cries wolf is worse than none — it manufactures work, aimed at
+the wrong thing. Both false positives are now regression tests using the
+verbatim output that triggered them.
 
 ## Principles
 

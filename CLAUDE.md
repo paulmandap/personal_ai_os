@@ -116,7 +116,7 @@ protect nothing trains the user to click through the ones that matter.
 src/personal_ai_os/
   core/          types, AgentModel ABC, errors      <- contracts
   models/        ollama, fake, registry, router
-  memory/        store (SQLite), tasks              <- persistence
+  memory/        store (SQLite), tasks, finance     <- persistence
   tools/         base (+ path jail), registry, delegate, builtin/
   permissions/   levels, brokers                    <- the gate
   agents/        spec, registry, base loop, builtin/{ping,master,task_agent}
@@ -143,6 +143,7 @@ paios models                  # the ladder + availability
 paios agents                  # registered agents
 paios run master "..."        # delegate an objective
 paios tasks                   # the task list, no model involved
+paios finance [amount]        # the ledger, or an affordability check
 paios trace <run_id> -v       # replay a run, sub-agents indented
 paios eval run <suite>        # measure agent behaviour
 paios eval compare a.json b.json
@@ -167,9 +168,32 @@ it fluently. Only checking the database caught it.
 - **A prompt fix is unproven until measured.** If a fix cannot be measured, say
   so rather than calling it done.
 - **Identical failure across two different models means the design is wrong,
-  not the model** (ADR-022). Reach for structure before prompt wording.
+  not the model** (ADR-022). Reach for structure before prompt wording. Every
+  failure found so far has been architectural; none would have been fixed by
+  training.
 - **When an argument names something the user never said, expect a model to
   invent it.**
+- **Models emit every field they are shown, using `null` for the unknown ones.**
+  Optional fields must accept that — `ToolInput` handles it. Rejecting a null
+  once broke every write call in the system.
+- **Verify a detector before believing its number.** A groundedness check's
+  first version reported a 55% hallucination rate that was entirely false
+  positives. A detector that cries wolf manufactures work aimed at the wrong
+  thing.
+- **100% across every suite means the benchmark is saturated**, not that the
+  system is finished. Write harder cases rather than celebrating.
+
+## Money
+
+`finance` and `memory/finance.py` follow two rules that are not negotiable:
+
+- **Integer minor units, never floats** (ADR-023). `to_minor` refuses a float.
+  The boundary stringifies what models emit; the core stays strict.
+- **The model explains; the tool computes** (ADR-024). `affordability_check`
+  does the arithmetic and returns its working. Never let a model derive a
+  figure that a database can produce.
+- These tools are `write`, not `spend_money` — they record facts about money;
+  nothing moves any.
 
 ## Conventions
 

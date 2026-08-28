@@ -87,6 +87,69 @@ class TestToolSchema:
         assert props["max_bytes"]["description"]
 
 
+class TestNullsFromModels:
+    """Models emit every field they are shown, using null for the unknown ones.
+
+    Regression: `add_transaction` failed on *every* attempt because the model
+    passed `description: null` -- and the agent then told the user it had
+    recorded the spending anyway. An explicit null on an optional field means
+    "not supplied", not "invalid".
+    """
+
+    def test_null_on_an_optional_field_uses_the_default(self):
+        from personal_ai_os.tools.builtin.tasks import AddTaskTool
+
+        args = AddTaskTool().validate_input(
+            {"title": "Buy milk", "notes": None, "due_date": None, "priority": None}
+        )
+        assert args.notes == ""
+        assert args.due_date is None
+        assert args.priority is not None  # the enum default applied
+
+    def test_the_exact_call_that_used_to_fail_now_validates(self):
+        from personal_ai_os.tools.builtin.finance import AddTransactionTool
+
+        args = AddTransactionTool().validate_input(
+            {
+                "category": "groceries",
+                "description": None,
+                "occurred_on": None,
+                "account": "cash",
+                "amount": "-450.00",
+            }
+        )
+        assert args.description == ""
+        assert args.occurred_on is None
+        assert args.amount == "-450.00"
+
+    def test_null_on_a_required_field_still_errors(self):
+        """There the model really has omitted something."""
+        from personal_ai_os.tools.builtin.tasks import AddTaskTool
+
+        with pytest.raises(ToolInputError, match="title"):
+            AddTaskTool().validate_input({"title": None})
+
+    def test_every_registered_tool_tolerates_all_nulls(self):
+        """Whatever the tool, a null-filled optional set must not be fatal."""
+        from personal_ai_os.core.errors import ToolInputError as TIE
+
+        for tool in default_registry().all():
+            optional = {
+                name: None
+                for name, field in tool.Input.model_fields.items()
+                if not field.is_required()
+            }
+            if not optional:
+                continue
+            try:
+                tool.validate_input(optional)
+            except TIE as exc:
+                # Only a missing *required* field may complain here.
+                assert "required" in str(exc).lower() or "exactly one" in str(exc), (
+                    f"{tool.name} rejected nulls on optional fields: {exc}"
+                )
+
+
 class TestInputValidation:
     def test_missing_required_field_is_a_tool_input_error(self):
         with pytest.raises(ToolInputError, match="path"):
@@ -186,15 +249,24 @@ class TestTimeoutGuard:
 
 class TestToolRegistry:
     def test_default_registry_has_the_builtins(self):
-        assert default_registry().names() == [
-            "add_task",
-            "complete_task",
-            "delegate",
-            "list_dir",
-            "list_tasks",
-            "read_file",
-            "update_task",
-        ]
+        """Asserts presence, not an exact list.
+
+        An exact list churns every time a tool is added and tells you nothing
+        about whether the registry works.
+        """
+        names = set(default_registry().names())
+        assert {"read_file", "list_dir"} <= names            # filesystem
+        assert {"add_task", "list_tasks", "complete_task", "update_task"} <= names
+        assert {"list_accounts", "affordability_check", "set_balance"} <= names
+        assert "delegate" in names
+
+    def test_every_registered_tool_produces_a_valid_schema(self):
+        """A tool the model cannot be shown is a tool that does not exist."""
+        for tool in default_registry().all():
+            schema = tool.schema()
+            assert schema.name == tool.name
+            assert schema.description.strip()
+            assert schema.parameters.get("type") == "object"
 
     def test_unknown_tool_lists_what_is_available(self):
         with pytest.raises(ToolNotFoundError, match="read_file"):
