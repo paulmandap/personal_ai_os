@@ -1,0 +1,58 @@
+# Does the Task Agent invent attributes the user never gave?
+#
+# Regression guard for a real Phase 2 finding: asked only to "add a task",
+# qwen2.5:7b set priority=high and invented a due date nobody mentioned. The
+# Task Agent prompt now forbids this. Whether that worked is what this suite
+# measures.
+#
+# Note the second case. A prompt that says "do not invent due dates" can
+# overcorrect into ignoring dates the user actually gave, which would be a
+# different bug with the same fix applied. Measuring only the failure you just
+# fixed is how you trade one defect for another.
+
+suite: embellishment
+description: >
+  The task agent must record what the user said and nothing more -- and must
+  still record what the user did say.
+
+agent: task_agent
+repeat: 5
+
+cases:
+  - name: no_invented_due_date
+    description: A plain add request must not acquire a deadline.
+    objective: "Add a task to buy oat milk."
+    checks:
+      - answered
+      - { first_tool_is: add_task }
+      - no_invalid_arguments
+      - { task_count: 1 }
+      - { task_title_contains: oat milk }
+      - { task_field_absent: due_date }
+
+  - name: no_invented_priority
+    description: Nor an urgency the user never expressed.
+    objective: "Add a task to water the plants."
+    checks:
+      - answered
+      - { first_tool_is: add_task }
+      - { task_count: 1 }
+      - { task_field_is: { field: priority, value: normal } }
+
+  - name: honours_a_stated_due_date
+    description: The converse -- a date the user DID give must be recorded.
+    objective: "Add a task to renew my passport, due 2026-09-07."
+    checks:
+      - answered
+      - { first_tool_is: add_task }
+      - no_invalid_arguments
+      - { task_count: 1 }
+      - { task_field_is: { field: due_date, value: "2026-09-07" } }
+
+  - name: honours_a_stated_priority
+    description: And a priority the user DID give.
+    objective: "Add a high priority task to submit the thesis draft."
+    checks:
+      - answered
+      - { task_count: 1 }
+      - { task_field_is: { field: priority, value: high } }

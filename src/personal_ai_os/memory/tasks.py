@@ -7,6 +7,7 @@ nothing above it has to know SQL exists.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from datetime import date
 from enum import Enum
@@ -20,6 +21,42 @@ from personal_ai_os.memory.store import Store
 
 class TaskNotFoundError(PersonalAIOSError):
     """No task with that id. Recoverable: reported back to the model."""
+
+
+#: At least half the search terms must appear in the title.
+TITLE_MATCH_THRESHOLD = 0.5
+
+#: Words carrying no identifying signal. Kept deliberately short -- an
+#: aggressive list would strip words that actually distinguish two tasks.
+_STOPWORDS = frozenset(
+    {
+        "a", "an", "the", "my", "our", "your", "this", "that", "these", "those",
+        "to", "for", "of", "on", "in", "at", "and", "or", "it", "is", "was",
+        "please", "task", "item", "one", "done", "finished", "complete",
+    }
+)
+
+_WORD = re.compile(r"[a-z0-9]+")
+
+
+def _significant_words(text: str) -> set[str]:
+    """Lowercase content words, with a light plural/gerund fold.
+
+    The fold is what lets "buying" match "Buy". It is deliberately crude --
+    a real stemmer is a dependency and a source of surprises, and the job here
+    is only to survive the handful of endings a person naturally varies.
+    """
+    words: set[str] = set()
+    for raw in _WORD.findall(text.lower()):
+        if raw in _STOPWORDS:
+            continue
+        word = raw
+        for suffix in ("ing", "ed", "es", "s"):
+            if len(word) > len(suffix) + 2 and word.endswith(suffix):
+                word = word[: -len(suffix)]
+                break
+        words.add(word)
+    return words
 
 
 def validate_iso_date(value: str | None) -> str | None:
@@ -182,6 +219,47 @@ class TaskStore:
             tuple(params),
         )
         return [Task.from_row(r) for r in rows]
+
+    def find_by_title(self, needle: str, *, include_done: bool = False) -> list[Task]:
+        """Find tasks by what someone *called* them, not by exact substring.
+
+        Exists because a title is the handle a person actually has. Requiring
+        an integer id the user never mentioned is what pushes a model into
+        guessing one.
+
+        Matching is token coverage, not substring containment: the score is the
+        fraction of the *search terms* that appear in the title. Measured
+        reason — a model asked to complete "the oat milk one" searched for
+        ``"buying the oat milk"``, which contains no task title as a substring
+        and matched nothing, while obviously meaning "Buy oat milk".
+
+        Scoring on the search terms rather than the title keeps genuine
+        ambiguity ambiguous: "oat milk" covers both "Buy oat milk" and "Buy oat
+        milk again" completely, so both tie and the caller is told to be more
+        specific rather than a winner being invented.
+
+        Returns the best-scoring tasks, or several when they tie. Empty when
+        nothing reaches the threshold.
+        """
+        candidates = self.list(include_done=include_done, limit=500)
+        terms = _significant_words(needle)
+        if not terms:
+            return []
+
+        scored: list[tuple[float, Task]] = []
+        for task in candidates:
+            title_words = _significant_words(task.title)
+            if not title_words:
+                continue
+            covered = len(terms & title_words) / len(terms)
+            if covered >= TITLE_MATCH_THRESHOLD:
+                scored.append((covered, task))
+
+        if not scored:
+            return []
+
+        best = max(score for score, _ in scored)
+        return [task for score, task in scored if score == best]
 
     def count(self, *, status: TaskStatus | None = None) -> int:
         if status is None:

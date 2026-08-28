@@ -266,6 +266,82 @@ def cmd_tasks(args: argparse.Namespace) -> int:
         runtime.close()
 
 
+# --- eval ------------------------------------------------------------------
+
+
+def _eval_dirs(workspace: Path | None) -> tuple[Path, Path, Path]:
+    settings = load_settings(workspace)
+    root = settings.workspace_root
+    return root, root / "evaluations" / "cases", root / "evaluations" / "results"
+
+
+def cmd_eval(args: argparse.Namespace) -> int:
+    from personal_ai_os.evaluation.case import load_suites
+    from personal_ai_os.evaluation.report import SuiteResult, compare, render
+    from personal_ai_os.evaluation.runner import EvalRunner
+
+    root, cases_dir, results_dir = _eval_dirs(args.workspace)
+
+    if args.eval_command == "compare":
+        left = SuiteResult.load(Path(args.left))
+        right = SuiteResult.load(Path(args.right))
+        if left.suite != right.suite:
+            print(
+                f"warning: comparing different suites "
+                f"({left.suite} vs {right.suite})",
+                file=sys.stderr,
+            )
+        print(compare(left, right))
+        return 0
+
+    suites = load_suites(cases_dir)
+    if not suites:
+        print(f"no evaluation suites in {cases_dir}")
+        return 1
+
+    if args.eval_command == "list":
+        for suite in suites:
+            print(f"\n  {suite.suite}  ({len(suite.cases)} cases, "
+                  f"{suite.total_runs()} runs)")
+            if suite.description:
+                print(f"    {suite.description.strip()}")
+            for case in suite.cases:
+                checks = ", ".join(c.describe() for c in case.checks)
+                print(f"      {case.name:<28} x{case.repeat}  [{checks}]")
+        print()
+        return 0
+
+    # run
+    selected = [s for s in suites if not args.suite or s.suite == args.suite]
+    if not selected:
+        known = ", ".join(s.suite for s in suites)
+        print(f"no suite named {args.suite!r}. Available: {known}", file=sys.stderr)
+        return 1
+
+    runner = EvalRunner(repo_root=root, model=args.model, repeat=args.repeat)
+    failures = 0
+
+    for suite in selected:
+        total = sum(args.repeat or c.repeat for c in suite.cases)
+        print(f"\nrunning {suite.suite}: {len(suite.cases)} cases, {total} runs")
+        if args.model:
+            print(f"pinned model: {args.model}")
+        print("this calls a local model repeatedly and will take a while.\n")
+
+        result = runner.run_suite(suite)
+        print(render(result))
+
+        if not args.no_save:
+            path = result.save(results_dir)
+            print(f"\n  saved: {path.relative_to(root)}")
+        if result.pass_rate < 1.0:
+            failures += 1
+
+    # A non-zero exit means "something did not pass", which is a measurement,
+    # not a broken harness. Both are useful; they are just different questions.
+    return 1 if failures else 0
+
+
 # --- trace -----------------------------------------------------------------
 
 
@@ -347,6 +423,29 @@ def build_parser() -> argparse.ArgumentParser:
     done_p = tasks_sub.add_parser("done", help="mark a task complete")
     done_p.add_argument("id", type=int)
     done_p.set_defaults(func=cmd_tasks, task_command="done")
+
+    eval_p = sub.add_parser("eval", help="measure how well agents actually perform")
+    eval_p.set_defaults(func=cmd_eval, eval_command="list")
+    eval_sub = eval_p.add_subparsers(dest="eval_command")
+
+    eval_list = eval_sub.add_parser("list", help="show available suites and cases")
+    eval_list.set_defaults(func=cmd_eval, eval_command="list")
+
+    eval_run = eval_sub.add_parser("run", help="run a suite and score it")
+    eval_run.add_argument("suite", nargs="?", default=None, help="omit to run all")
+    eval_run.add_argument(
+        "--model", default=None, help="pin every tier to this model, e.g. qwen2.5:3b-instruct"
+    )
+    eval_run.add_argument(
+        "--repeat", type=int, default=None, help="override each case's repeat count"
+    )
+    eval_run.add_argument("--no-save", action="store_true", help="do not write a result file")
+    eval_run.set_defaults(func=cmd_eval, eval_command="run")
+
+    eval_cmp = eval_sub.add_parser("compare", help="compare two saved results")
+    eval_cmp.add_argument("left")
+    eval_cmp.add_argument("right")
+    eval_cmp.set_defaults(func=cmd_eval, eval_command="compare")
 
     trace_p = sub.add_parser("trace", help="replay a recorded run")
     trace_p.add_argument("run_id", nargs="?", default="latest")

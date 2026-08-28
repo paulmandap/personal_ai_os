@@ -54,6 +54,7 @@ class Runtime:
         broker: PermissionBroker | None = None,
         tools: ToolRegistry | None = None,
         store: Store | None = None,
+        models: ModelRegistry | None = None,
         configure_logging: bool = True,
     ) -> Runtime:
         cfg = settings or load_settings(workspace_root)
@@ -61,7 +62,9 @@ class Runtime:
             setup_logging(cfg.observability.log_level)
 
         tool_registry = tools or default_registry()
-        model_registry = ModelRegistry(cfg.models)
+        # Injectable so the evaluation harness can drive a whole runtime from a
+        # ScriptedModel and prove itself correct with Ollama stopped.
+        model_registry = models or ModelRegistry(cfg.models)
 
         # Connect eagerly: a broken database should surface at startup, not
         # midway through an agent run that has already prompted the user.
@@ -222,25 +225,38 @@ class Runtime:
 
     # --- top-level runs ----------------------------------------------------
 
-    def run_agent(self, name: str, objective: str) -> AgentResult:
-        """Run one agent under a fresh trace."""
+    def run_agent(
+        self, name: str, objective: str, *, trace: RunTrace | None = None
+    ) -> AgentResult:
+        """Run one agent.
+
+        Creates and owns a trace by default. A caller may supply its own --
+        the evaluation harness does, so it can score the events afterwards
+        without reading the file back off disk.
+        """
+        if trace is not None:
+            return self._run_traced(name, objective, trace)
+
         with RunTrace.create(
             agent=name,
             runs_dir=self.runs_dir,
             enabled=self.settings.observability.trace_enabled,
             redact_keys=self.settings.observability.redact_keys,
-        ) as trace:
-            agent = self.create_agent(name, trace=trace)
-            result = agent.run(objective)
-            trace.event(
-                "run.result",
-                ok=result.ok,
-                stop_reason=result.stop_reason.value,
-                iterations=result.iterations,
-                tool_calls=result.tool_calls,
-                model=result.model,
-            )
-            return result
+        ) as owned:
+            return self._run_traced(name, objective, owned)
+
+    def _run_traced(self, name: str, objective: str, trace: RunTrace) -> AgentResult:
+        agent = self.create_agent(name, trace=trace)
+        result = agent.run(objective)
+        trace.event(
+            "run.result",
+            ok=result.ok,
+            stop_reason=result.stop_reason.value,
+            iterations=result.iterations,
+            tool_calls=result.tool_calls,
+            model=result.model,
+        )
+        return result
 
     def close(self) -> None:
         self.models.close()

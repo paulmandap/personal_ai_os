@@ -179,6 +179,71 @@ class TestListing:
         tasks.add("urgent", priority=TaskPriority.HIGH)
         assert tasks.list(limit=1)[0].title == "urgent"
 
+class TestFindByTitle:
+    """Matching a task by what someone *called* it.
+
+    Driven by a measured failure: a model asked to complete "the oat milk one"
+    searched for "buying the oat milk", which contains no title as a substring
+    and matched nothing.
+    """
+
+    @pytest.fixture
+    def seeded(self, tasks: TaskStore) -> TaskStore:
+        tasks.add("Renew passport")
+        tasks.add("Buy oat milk")
+        tasks.add("Submit thesis draft")
+        return tasks
+
+    def test_exact_title_matches(self, seeded: TaskStore):
+        assert [t.title for t in seeded.find_by_title("Buy oat milk")] == ["Buy oat milk"]
+
+    def test_partial_title_matches(self, seeded: TaskStore):
+        assert [t.title for t in seeded.find_by_title("oat milk")] == ["Buy oat milk"]
+
+    def test_a_paraphrase_matches(self, seeded: TaskStore):
+        """The exact string that failed against substring matching."""
+        found = seeded.find_by_title("buying the oat milk")
+        assert [t.title for t in found] == ["Buy oat milk"]
+
+    def test_gerund_folds_to_stem(self, seeded: TaskStore):
+        assert [t.title for t in seeded.find_by_title("renewing my passport")] == [
+            "Renew passport"
+        ]
+
+    def test_stopwords_do_not_dilute_the_score(self, seeded: TaskStore):
+        assert [t.title for t in seeded.find_by_title("the thesis draft")] == [
+            "Submit thesis draft"
+        ]
+
+    def test_unrelated_words_match_nothing(self, seeded: TaskStore):
+        assert seeded.find_by_title("dentist appointment") == []
+
+    def test_a_genuine_tie_returns_both(self, tasks: TaskStore):
+        """Ambiguity must stay ambiguous rather than picking a winner."""
+        tasks.add("Buy oat milk")
+        tasks.add("Buy oat milk again")
+        assert len(tasks.find_by_title("oat milk")) == 2
+
+    def test_a_more_specific_search_breaks_the_tie(self, tasks: TaskStore):
+        tasks.add("Buy oat milk")
+        tasks.add("Buy oat milk again")
+        assert [t.title for t in tasks.find_by_title("oat milk again")] == [
+            "Buy oat milk again"
+        ]
+
+    def test_completed_tasks_are_excluded_by_default(self, seeded: TaskStore):
+        milk = seeded.find_by_title("oat milk")[0]
+        assert milk.id is not None
+        seeded.complete(milk.id)
+        assert seeded.find_by_title("oat milk") == []
+        assert len(seeded.find_by_title("oat milk", include_done=True)) == 1
+
+    def test_only_stopwords_matches_nothing(self, seeded: TaskStore):
+        """Otherwise 'the task' would match everything equally."""
+        assert seeded.find_by_title("the task") == []
+
+
+class TestCounting:
     def test_count_by_status(self, tasks: TaskStore):
         tasks.add("a")
         done = tasks.add("b")

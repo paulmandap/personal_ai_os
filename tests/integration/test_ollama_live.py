@@ -12,6 +12,7 @@ be translating to a dialect nobody speaks any more.
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
 import httpx
 import pytest
@@ -22,6 +23,7 @@ from personal_ai_os.agents.builtin.task_agent import TaskAgent
 from personal_ai_os.agents.spec import AgentSpec
 from personal_ai_os.core.errors import ToolExecutionError
 from personal_ai_os.core.types import FinishReason, Message, ToolSchema
+from personal_ai_os.evaluation.case import CheckSpec
 from personal_ai_os.memory.tasks import TaskStore
 from personal_ai_os.models.ollama import OllamaModel
 from personal_ai_os.observability.trace import RunTrace
@@ -225,6 +227,64 @@ class TestAgentEndToEnd:
         # It may answer or exhaust its turns; it must not raise, and it must
         # never have executed the denied tool.
         assert result.stop_reason in {StopReason.ANSWERED, StopReason.MAX_ITERATIONS}
+
+
+@requires_medium
+@pytest.mark.usefixtures("fresh_vram")
+class TestEvaluationHarness:
+    """The harness against a real model.
+
+    Asserts that a scored result comes back -- deliberately *not* what the
+    score is. The score is the measurement; fixing it in a test would turn a
+    finding into a fixture and quietly stop it from ever telling us anything.
+    """
+
+    def test_runs_a_case_end_to_end_and_scores_it(self):
+        from personal_ai_os.evaluation.case import EvalCase
+        from personal_ai_os.evaluation.runner import EvalRunner
+
+        repo_root = Path(__file__).resolve().parents[2]
+        case = EvalCase(
+            name="live_add",
+            agent="task_agent",
+            objective="Add a task to buy oat milk.",
+            repeat=1,
+            checks=[
+                CheckSpec.parse("answered"),
+                CheckSpec.parse({"task_count": 1}),
+            ],
+        )
+
+        result = EvalRunner(repo_root=repo_root, model=MEDIUM_MODEL).run_case(case)
+
+        assert result.total == 1
+        assert len(result.runs[0].checks) == 2
+        assert result.runs[0].stop_reason != "harness_error", result.runs[0].error
+        assert 0.0 <= result.pass_rate <= 1.0
+        # Metrics must actually be populated, or the numbers mean nothing.
+        assert result.runs[0].metrics.iterations >= 1
+        assert result.runs[0].metrics.tokens_per_second
+
+    def test_evaluation_never_touches_the_real_database(self):
+        """The fixture workspace is the whole reason this is safe to run."""
+        from personal_ai_os.evaluation.case import EvalCase
+        from personal_ai_os.evaluation.runner import EvalRunner
+
+        repo_root = Path(__file__).resolve().parents[2]
+        real_db = repo_root / "data" / "paios.db"
+        before = real_db.stat().st_mtime if real_db.exists() else None
+
+        case = EvalCase(
+            name="live_isolation",
+            agent="task_agent",
+            objective="Add a task to test isolation.",
+            repeat=1,
+            checks=[CheckSpec.parse("answered")],
+        )
+        EvalRunner(repo_root=repo_root, model=MEDIUM_MODEL).run_case(case)
+
+        after = real_db.stat().st_mtime if real_db.exists() else None
+        assert before == after
 
 
 @requires_medium

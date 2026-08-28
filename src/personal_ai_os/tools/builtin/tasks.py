@@ -11,7 +11,7 @@ two-argument call whose second argument must match an enum exactly.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from personal_ai_os.core.errors import ToolExecutionError
 from personal_ai_os.memory.tasks import (
@@ -181,22 +181,77 @@ class UpdateTaskTool(Tool):
 
 
 class CompleteTaskInput(BaseModel):
-    id: int = Field(description="The task's numeric id, from list_tasks.")
+    """Identify the task by title or by id -- exactly one.
+
+    ``title`` exists because it is the handle the user actually gives ("I
+    finished the oat milk one"). Measured behaviour: when only ``id`` was
+    accepted, both qwen2.5:3b and 7b guessed an id rather than calling
+    list_tasks first, and completed the wrong task. Removing the need to know
+    an id removes the failure, which a prompt instruction did not.
+    """
+
+    title: str | None = Field(
+        default=None,
+        description=(
+            "Words from the task's title, e.g. 'oat milk'. Prefer this - "
+            "use it whenever the user names the task rather than a number."
+        ),
+    )
+    id: int | None = Field(
+        default=None,
+        description="The task's numeric id. Only use an id you saw in list_tasks output.",
+    )
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> CompleteTaskInput:
+        if (self.title is None) == (self.id is None):
+            raise ValueError(
+                "give exactly one of 'title' or 'id' -- title is usually what you want"
+            )
+        return self
 
 
 class CompleteTaskTool(Tool):
     name = "complete_task"
-    description = "Mark a task as done. Use this when the user says they finished something."
+    description = (
+        "Mark a task as done. Use this when the user says they finished "
+        "something. Identify the task by its title unless you already know its id."
+    )
     Input = CompleteTaskInput
     Output = Task
     permission = PermissionLevel.WRITE
     timeout_s = 10.0
 
     def describe_resource(self, args: CompleteTaskInput) -> str:  # type: ignore[override]
-        return f"task #{args.id}"
+        return f"task #{args.id}" if args.id is not None else f'"{args.title}"'
 
     def run(self, args: CompleteTaskInput, ctx: ToolContext) -> Task:  # type: ignore[override]
-        try:
-            return _tasks(ctx).complete(args.id)
-        except TaskNotFoundError as exc:
-            raise ToolExecutionError(f"{exc}. Use list_tasks to see valid ids.") from exc
+        tasks = _tasks(ctx)
+
+        if args.id is not None:
+            try:
+                return tasks.complete(args.id)
+            except TaskNotFoundError as exc:
+                raise ToolExecutionError(
+                    f"{exc}. Call complete_task with a title instead, or "
+                    f"list_tasks to see valid ids."
+                ) from exc
+
+        matches = tasks.find_by_title(str(args.title))
+        if not matches:
+            open_titles = [t.title for t in tasks.list(limit=20)]
+            raise ToolExecutionError(
+                f"no open task matches {args.title!r}. Open tasks: "
+                f"{open_titles or 'none'}"
+            )
+        if len(matches) > 1:
+            # Ambiguity is recoverable: name the candidates and let the model
+            # pick, rather than silently completing whichever sorted first.
+            raise ToolExecutionError(
+                f"{len(matches)} open tasks match {args.title!r}: "
+                f"{[t.title for t in matches]}. Use a more specific title, or "
+                f"an id from list_tasks."
+            )
+
+        assert matches[0].id is not None
+        return tasks.complete(matches[0].id)

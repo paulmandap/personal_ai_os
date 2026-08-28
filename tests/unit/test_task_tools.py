@@ -110,6 +110,63 @@ class TestUpdateAndComplete:
         with pytest.raises(ToolExecutionError, match="list_tasks"):
             call(CompleteTaskTool(), {"id": 999}, tool_context)
 
+
+class TestCompleteByTitle:
+    """Measured behaviour drove this: given only an `id` parameter, both the 3B
+    and the 7B guessed an id instead of calling list_tasks, and completed the
+    wrong task. Accepting a title removes the need to know an id at all."""
+
+    def test_completes_the_task_named(self, tool_context, tasks: TaskStore):
+        tasks.add("Renew passport")
+        tasks.add("Buy oat milk")
+        result = call(CompleteTaskTool(), {"title": "oat milk"}, tool_context)
+        assert result.title == "Buy oat milk"
+        assert result.status is TaskStatus.DONE
+
+    def test_title_match_is_case_insensitive_and_partial(self, tool_context, tasks):
+        tasks.add("Buy Oat Milk Today")
+        assert call(CompleteTaskTool(), {"title": "oat milk"}, tool_context).status is TaskStatus.DONE
+
+    def test_the_other_tasks_are_left_alone(self, tool_context, tasks: TaskStore):
+        tasks.add("Renew passport")
+        tasks.add("Buy oat milk")
+        call(CompleteTaskTool(), {"title": "oat milk"}, tool_context)
+        still_open = [t.title for t in tasks.list()]
+        assert still_open == ["Renew passport"]
+
+    def test_no_match_lists_the_open_tasks(self, tool_context, tasks: TaskStore):
+        tasks.add("Renew passport")
+        with pytest.raises(ToolExecutionError, match="Renew passport"):
+            call(CompleteTaskTool(), {"title": "dentist"}, tool_context)
+
+    def test_ambiguity_is_refused_rather_than_guessed(self, tool_context, tasks):
+        """Completing whichever sorted first would be silently wrong."""
+        tasks.add("Buy oat milk")
+        tasks.add("Buy oat milk again")
+        with pytest.raises(ToolExecutionError, match="2 open tasks match"):
+            call(CompleteTaskTool(), {"title": "oat milk"}, tool_context)
+        assert len(tasks.list()) == 2
+
+    def test_already_completed_tasks_are_not_matched(self, tool_context, tasks):
+        done = tasks.add("Buy oat milk")
+        assert done.id is not None
+        tasks.complete(done.id)
+        with pytest.raises(ToolExecutionError, match="no open task matches"):
+            call(CompleteTaskTool(), {"title": "oat milk"}, tool_context)
+
+    def test_neither_argument_is_a_validation_error(self, tool_context):
+        with pytest.raises(ToolInputError, match="exactly one"):
+            CompleteTaskTool().validate_input({})
+
+    def test_both_arguments_is_a_validation_error(self, tool_context):
+        with pytest.raises(ToolInputError, match="exactly one"):
+            CompleteTaskTool().validate_input({"id": 1, "title": "x"})
+
+    def test_approval_prompt_shows_the_title(self, tool_context):
+        tool = CompleteTaskTool()
+        args = tool.validate_input({"title": "oat milk"})
+        assert "oat milk" in tool.describe_resource(args)
+
     def test_update_unknown_id_also_recovers(self, tool_context):
         with pytest.raises(ToolExecutionError, match="list_tasks"):
             call(UpdateTaskTool(), {"id": 999, "title": "x"}, tool_context)

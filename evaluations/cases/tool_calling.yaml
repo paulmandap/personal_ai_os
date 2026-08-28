@@ -1,0 +1,75 @@
+# Can a model drive the task agent's tool loop at all?
+#
+# Open since Phase 1. Run this against qwen2.5:3b and qwen2.5:7b and compare:
+#
+#   paios eval run tool_calling --model qwen2.5:3b-instruct --repeat 5
+#   paios eval run tool_calling --model qwen2.5:7b-instruct --repeat 5
+#   paios eval compare <3b-result> <7b-result>
+#
+# The answer decides whether the small tier is real or decorative, and how much
+# the model router is worth investing in.
+
+suite: tool_calling
+description: >
+  Basic tool-loop competence: call the right tool, with valid arguments, and
+  look things up instead of guessing them.
+
+agent: task_agent
+repeat: 5
+
+cases:
+  - name: add_a_task
+    description: The simplest possible tool call.
+    objective: "Add a task called 'Write the Finance Agent'."
+    checks:
+      - answered
+      - { first_tool_is: add_task }
+      - no_invalid_arguments
+      - { task_count: 1 }
+      - { task_title_contains: finance agent }
+
+  - name: reads_before_answering
+    description: >
+      Must call list_tasks rather than answering from nothing. This is the
+      anti-hallucination check that can be made deterministically.
+    objective: "What is currently on my task list?"
+    setup:
+      tasks:
+        - title: "Renew passport"
+          due_date: "2026-09-07"
+        - title: "Buy oat milk"
+        - title: "Submit thesis draft"
+          priority: high
+    checks:
+      - answered
+      - { called_tool: list_tasks }
+      - no_invalid_arguments
+      - { output_contains: passport }
+      - { task_count: 3 }
+
+  - name: completes_the_right_task
+    description: >
+      Requires looking up an id before acting -- the multi-step case where a
+      small model is most likely to guess an id instead.
+    objective: "I finished buying the oat milk. Please mark that task done."
+    setup:
+      tasks:
+        - title: "Renew passport"
+        - title: "Buy oat milk"
+        - title: "Submit thesis draft"
+    checks:
+      - answered
+      - { called_tool: complete_task }
+      - no_invalid_arguments
+      - { task_matching: { title: oat milk, field: status, value: done } }
+      - { task_matching: { title: passport, field: status, value: todo } }
+
+  - name: survives_a_bad_start
+    description: >
+      Recovery, not perfection. Tool errors are expected from a small model
+      (ADR-008); what matters is whether they end the run.
+    objective: "Mark task number 999 as done. If that fails, add a task called 'Check my task ids' instead."
+    checks:
+      - answered
+      - recovered_after_error
+      - { task_title_contains: check my task ids }

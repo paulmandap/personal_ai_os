@@ -15,16 +15,25 @@ fallback.
 
 ## Status
 
-**Phase 2 (Master Agent, Task Agent, Memory) — complete.** See
-[`PROJECT_STATE.md`](PROJECT_STATE.md).
+**Phases 1, 2 and 4 complete.** See [`PROJECT_STATE.md`](PROJECT_STATE.md).
 
 Working today: the model abstraction and Ollama provider, a deterministic model
 router, an agent registry driven by YAML manifests, typed tools with a
 filesystem jail, a permission gate, SQLite persistence, delegation between
-agents, JSONL run tracing, and a CLI.
+agents, JSONL run tracing, an evaluation harness, and a CLI.
 
 Three agents: `master` (delegates), `task_agent` (manages a real task list),
 and `ping` (verifies the machine works).
+
+Measured, not assumed:
+
+| | 7B | 3B |
+|---|---|---|
+| tool-calling pass rate | 90% | **90%** |
+| throughput | ≈32 tok/s | **≈63 tok/s** |
+
+The small model matches the large one on these workloads at twice the speed —
+which is the kind of claim this project exists to be able to make.
 
 ## Requirements
 
@@ -92,6 +101,31 @@ paios tasks      # the task list, with no model involved
 paios tasks add "Something" --priority high --due 2026-09-07
 ```
 
+## Measuring it
+
+`pytest` says the code is correct. `paios eval` says the agent behaves well.
+
+```powershell
+paios eval run tool_calling --model qwen2.5:3b-instruct --repeat 5
+```
+
+```
+  CASE                         PASS      RATE         ITER  TOK/S
+  add_a_task                   5/5       ##########  100%   2.0   64.9
+  reads_before_answering       5/5       ##########  100%   2.0   63.4
+  completes_the_right_task     4/5       ########..   80%   2.0   56.3
+  survives_a_bad_start         4/5       ########..   80%   3.2   66.5
+```
+
+A result is a **pass rate over N runs**, not a boolean — local models are
+stochastic, and one run cannot distinguish reliable from lucky.
+
+Within an hour of existing, the harness found a defect every unit test passed
+through: asked to complete "the oat milk task", **both models guessed a task id
+and completed the wrong one**, then described it fluently. Only checking the
+database caught it. The fix was structural, and the case went 0/5 → 5/5. See
+[evaluation.md](docs/evaluation.md).
+
 ## How it fits together
 
 ```
@@ -147,8 +181,8 @@ using a tool whose permission level it did not declare — so that
 ## Testing
 
 ```powershell
-pytest -q                 # 239 unit tests — pass with Ollama STOPPED
-pytest -m integration     # 11 live tests against real local models
+pytest -q                 # 341 unit tests — pass with Ollama STOPPED
+pytest -m integration     # 13 live tests against real local models
 ```
 
 The unit suite blocks network sockets outright. That is deliberate: if these
@@ -164,7 +198,8 @@ tests ever need a model server, the model has quietly become the architecture.
 | [permissions.md](docs/permissions.md) | The authorisation model |
 | [model-routing.md](docs/model-routing.md) | The local model ladder |
 | [memory.md](docs/memory.md) | SQLite persistence, and why not vectors |
-| [evaluation.md](docs/evaluation.md) | Planned (Phase 4) |
+| [evaluation.md](docs/evaluation.md) | Measuring agent behaviour, and what it found |
+| [health-wellness.md](docs/health-wellness.md) | Future domain — recorded, **not implemented** |
 | [development-workflow.md](docs/development-workflow.md) | Day-to-day process |
 | [decisions.md](docs/decisions.md) | Architecture decision records |
 
