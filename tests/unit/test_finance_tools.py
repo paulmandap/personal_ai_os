@@ -84,6 +84,33 @@ class TestWrites:
         )
         assert finance.account("cash").balance_minor == 75_000
 
+    def test_it_returns_the_balance_it_produced(self, tool_context, finance):
+        """ADR-032: the tool reports the state it created.
+
+        Without this the closing balance after a spend was a figure no tool
+        returned, so the only way for the agent to state one was the
+        arithmetic its own prompt forbids.
+        """
+        finance.set_balance("cash", "3000")
+        result = call(
+            AddTransactionTool(),
+            {"account": "cash", "amount": "-500", "category": "transport"},
+            tool_context,
+        )
+        assert result.account.balance_minor == 250_000
+        assert result.transaction.amount_minor == -50_000
+        # The rendered figure is what a small model actually reads.
+        assert "2,500.00" in result.summary
+
+    def test_the_unknown_account_error_names_the_recovery(self, tool_context, finance):
+        """Naming the problem is not enough; the model needs the route back."""
+        with pytest.raises(ToolExecutionError, match="set_balance"):
+            call(
+                AddTransactionTool(),
+                {"account": "cash", "amount": "-500"},
+                tool_context,
+            )
+
     def test_transaction_on_an_unknown_account_lists_the_known_ones(
         self, tool_context, finance
     ):

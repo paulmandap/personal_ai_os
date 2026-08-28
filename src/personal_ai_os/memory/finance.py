@@ -252,9 +252,15 @@ class FinanceStore:
                     f"({[a.name for a in matches]}). Say which one."
                 )
 
+        # Name the recovery, not just the problem. A model that has been told
+        # a balance and reaches for add_transaction first gets the account
+        # ordering wrong; without this it has no route back inside its
+        # iteration budget (same reasoning as ADR-030's refusals).
         raise FinanceError(
             f"no account named {name!r}. Known accounts: "
-            f"{[a.name for a in candidates]}"
+            f"{[a.name for a in candidates]}. If the user has just told you "
+            f"this account's balance, call set_balance first to create it, "
+            f"then record the transaction."
         )
 
     def transfer(
@@ -348,11 +354,18 @@ class FinanceStore:
         occurred_on: str | None = None,
         category: str = "uncategorised",
         description: str = "",
-    ) -> Transaction:
+    ) -> tuple[Transaction, Account]:
         """Record a transaction and move the account balance by the same amount.
 
         Both writes happen in one transaction: a ledger where the entry landed
         but the balance did not is worse than no ledger.
+
+        Returns the resulting **account** as well as the record, so a caller can
+        report the balance this produced instead of working it out. Measured:
+        without it, every run of `two_writes_in_one_request` stated a closing
+        balance no tool had returned -- correct on the branch where the writes
+        happened to land in the right order, wrong on the branch where they did
+        not (ADR-032).
         """
         account = self.account(account_name)
         assert account.id is not None
@@ -389,7 +402,7 @@ class FinanceStore:
                 (minor, utc_iso(), account.id),
             )
             record.id = int(cursor.lastrowid or 0)
-        return record
+        return record, self.account(account_name)
 
     def transactions(self, *, limit: int = 50, category: str | None = None) -> list[Transaction]:
         if category:

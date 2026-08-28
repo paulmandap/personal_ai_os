@@ -118,6 +118,14 @@ class TestTransactions:
         finance.add_transaction("cash", "500")
         assert finance.account("cash").balance_minor == 150_000
 
+    def test_it_returns_the_resulting_account(self, finance: FinanceStore):
+        """The store hands back the balance it produced, not just the record."""
+        finance.set_balance("cash", "3000")
+        record, account = finance.add_transaction("cash", "-500")
+        assert record.amount_minor == -50_000
+        assert account.balance_minor == 250_000
+        assert account.balance_minor == finance.account("cash").balance_minor
+
     def test_ledger_and_balance_move_together(self, finance: FinanceStore):
         """One transaction, or neither -- a ledger that disagrees with the
         balance is worse than no ledger."""

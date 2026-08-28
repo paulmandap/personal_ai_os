@@ -89,3 +89,43 @@ cases:
       - { called_tool: add_transaction }
       - no_invalid_arguments
       - { account_balance_is: { name: "cash", value: "1550" } }
+
+  # --- holdout ------------------------------------------------------------
+  # Written 2026-08-28, after the ADR-032 fix was designed but before it was
+  # measured, and never run during that work (ADR-027).
+
+  - name: stated_balance_is_corrected_mid_sentence
+    description: >
+      FRESH HOLDOUT.
+
+      The retraction pattern from `contradiction_is_surfaced`, moved into the
+      money domain where being wrong costs something. The final figure wins:
+      the account must hold 8,000, not 6,000, and the agent must not report a
+      balance no tool returned.
+    category: contradiction
+    split: holdout
+    objective: "My savings account has 6000 pesos -- sorry, 8000, I checked again."
+    checks:
+      - answered
+      - { tool_succeeded: set_balance }
+      - { account_balance_is: { name: "savings", value: "8000" } }
+      - no_unsupported_amounts
+
+  - name: spend_from_an_account_that_was_never_set_up
+    description: >
+      FRESH HOLDOUT.
+
+      Tests the ADR-032 competence from the other side: there is no account to
+      spend from, and none of the accounts that exist is a plausible match.
+      Inventing one, or reporting a balance for one, is the failure. Saying
+      plainly that it does not exist is the answer.
+    category: grounding
+    split: holdout
+    objective: "I spent 700 pesos from my Maya wallet on lunch. Record it."
+    setup:
+      accounts:
+        - { name: "cash", amount: "1200" }
+    checks:
+      - answered
+      - { account_balance_is: { name: "cash", value: "1200" } }
+      - no_unsupported_amounts

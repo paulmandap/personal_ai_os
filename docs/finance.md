@@ -66,6 +66,31 @@ costs the most.
 `no_unsupported_amounts` in the evaluation suite enforces it: every figure in
 the answer must trace back to a tool result or to the user's own words.
 
+### Forbidding the arithmetic is only half the rule
+
+The other half is that the tools must return the figures that make the ban
+obeyable. `add_transaction` used to return only the transaction record, so
+after *"my balance is 3000, and I spent 500"* there was no tool-returned
+closing balance — and the agent stated 2500 in **every** run, correct only by
+luck. It now returns the resulting account and a rendered summary (ADR-032):
+
+```
+recorded -PHP 500.00 (transport); cash is now PHP 2,500.00
+```
+
+`transfer` already worked this way. The rule for any new write tool: **return
+the state you produced, not just the record of producing it.**
+
+### Guidance goes in the refusal, not the description
+
+`add_transaction` refuses on an unknown account and the *error* names the
+recovery — call `set_balance` first. That sentence was briefly in the tool's
+**description** instead, and it cost three of five transfer runs on
+qwen2.5:3b: a description is read on every turn, and making `set_balance`
+salient led the model to assemble a transfer out of two `set_balance` calls,
+zeroing an account. A description says what a tool does; a refusal says what to
+do about a failure, and only the agent that hit it ever reads one.
+
 ---
 
 ## 3. If two writes must both happen, they are one tool

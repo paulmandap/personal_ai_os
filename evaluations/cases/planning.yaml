@@ -51,13 +51,24 @@ cases:
       both is the failure this catches.
     category: multi_step
     agent: finance
+    # 15, not 5. This case has swung 4/5 and 1/5 on unchanged code, because the
+    # outcome turns on the order the model happens to emit two tool calls in.
+    repeat: 15
     objective: "My cash balance is 3000 pesos. Also record that I spent 500 on transport from it."
     checks:
       - answered
-      - { called_tool: set_balance }
-      - { called_tool: add_transaction }
+      # `tool_succeeded`, not `called_tool`. Measured: the agent called
+      # add_transaction *first*, it failed with "no account named 'cash'", and
+      # `called_tool` still passed -- the case could not tell a recorded
+      # transaction from an attempted one.
+      - { tool_succeeded: set_balance }
+      - { tool_succeeded: add_transaction }
       - no_invalid_arguments
       - { account_balance_is: { name: "cash", value: "2500" } }
+      # The 2500 was invented in every run, including the ones that passed:
+      # set_balance returns 3000 and add_transaction returned only the record,
+      # so no tool ever produced the closing balance (ADR-032).
+      - no_unsupported_amounts
 
   # --- holdout ------------------------------------------------------------
 

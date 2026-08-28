@@ -288,23 +288,48 @@ class AddTransactionInput(ToolInput):
     _check_date = field_validator("occurred_on")(lambda v: validate_iso_date(v))
 
 
+class AddTransactionOutput(BaseModel):
+    """The record, and the balance it produced.
+
+    Returning the resulting account is the point (ADR-032). The prompt tells the
+    agent every figure it states must have come from a tool -- and before this,
+    the closing balance after a spend was a figure no tool returned, so the only
+    way to answer was to do the arithmetic the prompt forbids.
+    """
+
+    transaction: Transaction
+    account: Account
+    summary: str
+
+
 class AddTransactionTool(Tool):
     name = "add_transaction"
+    # Says what the tool does and what it returns -- and deliberately does NOT
+    # tell the model to call set_balance first. That sentence was here for one
+    # measurement and cost 3 of 5 transfer runs on qwen2.5:3b: it made
+    # set_balance salient on every turn, and the 3B started assembling a
+    # transfer out of two set_balance calls, zeroing an account (ADR-029 is
+    # exactly this failure). Guidance for a failure belongs in the refusal,
+    # where only the agent that hit it sees it -- not in a description every
+    # turn reads.
     description = (
         "Record a transaction and adjust the account balance by the same "
-        "amount. Use negative amounts for spending."
+        "amount. Use negative amounts for spending. Returns the account's new "
+        "balance -- quote that figure rather than working one out."
     )
     Input = AddTransactionInput
-    Output = Transaction
+    Output = AddTransactionOutput
     permission = PermissionLevel.WRITE
     timeout_s = 10.0
 
     def describe_resource(self, args: AddTransactionInput) -> str:  # type: ignore[override]
         return f"{args.amount} on {args.account}"
 
-    def run(self, args: AddTransactionInput, ctx: ToolContext) -> Transaction:  # type: ignore[override]
+    def run(  # type: ignore[override]
+        self, args: AddTransactionInput, ctx: ToolContext
+    ) -> AddTransactionOutput:
         try:
-            return _finance(ctx).add_transaction(
+            record, account = _finance(ctx).add_transaction(
                 args.account,
                 args.amount,
                 occurred_on=args.occurred_on,
@@ -313,6 +338,16 @@ class AddTransactionTool(Tool):
             )
         except FinanceError as exc:
             raise ToolExecutionError(str(exc)) from exc
+
+        return AddTransactionOutput(
+            transaction=record,
+            account=account,
+            summary=(
+                f"recorded {format_minor(record.amount_minor, account.currency)} "
+                f"({record.category}); {account.name} is now "
+                f"{format_minor(account.balance_minor, account.currency)}"
+            ),
+        )
 
 
 class TransferInput(ToolInput):

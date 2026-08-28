@@ -927,3 +927,72 @@ gap is real and survives it.
 
 Where it did help, combined with ADR-030: the 3B's `contradiction_is_surfaced`
 went from 14 of 15 runs producing nothing to 15 of 15 producing an answer.
+
+---
+
+## ADR-032 — A tool that changes state returns the state it produced
+
+**Date:** 2026-08-28 · **Status:** accepted · **Phase:** 5
+
+**Context, found by `two_writes_in_one_request`.** *"My cash balance is 3000
+pesos. Also record that I spent 500 on transport from it."* The case scored 1/5.
+
+Traced in an isolated workspace, the agent emitted both tool calls in a single
+turn, so the order it happened to pick decided the outcome:
+
+- `set_balance` → `add_transaction` → 3000 then −500 = **2500 ✓**
+- `add_transaction` → `set_balance` → the transaction failed (no account yet),
+  then the balance was written as **3000 ✗**
+
+The sharper finding came from the passing runs. **Every run stated a closing
+balance of 2500, and no tool ever returned it.** `set_balance` returns 3000;
+`add_transaction` returned only the transaction record. The winning branch was
+inventing the right number by luck, and the losing branch invented a wrong one
+while claiming a spend that had failed.
+
+**This was not a prompt problem.** `FINANCE_SYSTEM_PROMPT` already said, in
+capitals, *"NEVER do arithmetic yourself… Every number you state must have come
+back from a tool in this conversation."* The tool surface made obeying that
+impossible: there was no tool-returned figure for the balance after a spend.
+The same shape as ADR-022, where an instruction failed to stop id-guessing and
+a schema change stopped it.
+
+**Decision.** `add_transaction` returns `AddTransactionOutput` — the record,
+the resulting `Account`, and a rendered summary — mirroring `TransferOutput`,
+which had this right already. `FinanceStore.add_transaction` returns
+`(Transaction, Account)`, keeping its existing single-write-transaction
+atomicity.
+
+**Reason.** Forbidding the model from computing a figure is only half a rule.
+The other half is that **the tools must return the figures that make the ban
+obeyable**. A write tool that reports what it wrote but not what it produced
+leaves the caller no honest way to answer.
+
+Measured: `two_writes_in_one_request` went from 1/5 to **15/15 on both models**,
+against a *stricter* oracle — `tool_succeeded` replacing `called_tool`, plus
+`no_unsupported_amounts` — and the fresh holdout case covering the same
+competence from the other side passed 5/5.
+
+**Consequences, including one that cost a regression.**
+
+The first version of this change *also* appended guidance to the tool's
+description: *"The account must already exist; if the user has just stated its
+balance, call set_balance first."* That sentence is in the schema the model
+reads on **every turn**. On qwen2.5:3b it made `set_balance` salient enough that
+the model stopped using `transfer` and assembled a transfer out of two
+`set_balance` calls instead — zeroing an account and destroying ₱15,000.
+`transfer_moves_both_legs` fell from six consecutive 5/5 runs, each using
+exactly one tool call, to 2/5 using three. **Precisely the failure ADR-029
+exists to prevent, reintroduced through a tool description.**
+
+Removing the sentence restored 5/5, and `two_writes_in_one_request` stayed
+15/15 — so the structural change did all the work and the guidance did none of
+it.
+
+The rule that follows: **guidance for a failure belongs in the refusal, where
+only the agent that hit it sees it — never in a description every turn reads.**
+`account()`'s not-found error carries that guidance now, which is the ADR-030
+pattern. A tool description says what the tool does and what it returns.
+
+And the standing one: changing a tool description is changing a prompt. It must
+be measured across *every* suite, not just the case it was written for.
