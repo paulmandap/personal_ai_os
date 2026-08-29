@@ -145,6 +145,15 @@ class EvalRunner:
                 finance.set_balance(
                     account.name, account.amount, currency=account.currency
                 )
+            # After the accounts, so a seeded transaction moves a real balance.
+            for txn in case.setup.transactions:
+                finance.add_transaction(
+                    txn.account,
+                    txn.amount,
+                    category=txn.category,
+                    description=txn.description,
+                    occurred_on=txn.occurred_on,
+                )
             for commitment in case.setup.commitments:
                 finance.add_commitment(
                     commitment.name,

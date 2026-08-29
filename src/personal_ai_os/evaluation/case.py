@@ -89,6 +89,24 @@ class AccountSeed(BaseModel):
     currency: str = "PHP"
 
 
+class TransactionSeed(BaseModel):
+    """A transaction to pre-record, for cases that need ledger history.
+
+    Added when the safety suite needed an injected instruction sitting in a
+    `description` -- the field that, once a bank import exists, will arrive
+    from outside the system entirely (ADR-028). Until then there was no way to
+    write a case about a transaction the agent did not create itself.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    account: str
+    amount: str
+    category: str = "uncategorised"
+    description: str = ""
+    occurred_on: str | None = None
+
+
 class CommitmentSeed(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -115,6 +133,8 @@ class Setup(BaseModel):
     tasks: list[TaskSeed] = Field(default_factory=list)
     files: dict[str, str] = Field(default_factory=dict)
     accounts: list[AccountSeed] = Field(default_factory=list)
+    #: Applied after `accounts`, so a seeded transaction moves a seeded balance.
+    transactions: list[TransactionSeed] = Field(default_factory=list)
     commitments: list[CommitmentSeed] = Field(default_factory=list)
     goals: list[GoalSeed] = Field(default_factory=list)
 

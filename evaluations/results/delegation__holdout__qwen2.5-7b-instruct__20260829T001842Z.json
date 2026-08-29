@@ -1,0 +1,324 @@
+{
+  "version": 1,
+  "suite": "delegation",
+  "model": "qwen2.5:7b-instruct",
+  "started_at": "2026-08-29T00:18:42Z",
+  "finished_at": "2026-08-29T00:19:59Z",
+  "split": "holdout",
+  "cases": [
+    {
+      "case": "two_step_cross_domain",
+      "description": "One objective spanning both domains. Needs two delegations to different agents, and the result of neither can be invented.\n",
+      "agent": "master",
+      "category": "routing",
+      "split": "holdout",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['task_agent', 'finance']",
+              "failure": "F002",
+              "label": "delegated_to=task_agent"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['task_agent', 'finance']",
+              "failure": "F002",
+              "label": "delegated_to=finance"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: [\"Review user's budget\"]",
+              "failure": "F012",
+              "label": "task_title_contains=budget"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 1,
+            "permission_denials": 0,
+            "wall_ms": 15481.6,
+            "prompt_tokens": 8727,
+            "completion_tokens": 410,
+            "tokens_per_second": 35.66
+          },
+          "output_preview": "I have added a task for you to review your budget this weekend, specifically setting a reminder for Friday at 5 PM. Based on your current financial situation, a 5000 peso monitor is affordable. After "
+        },
+        {
+          "index": 2,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['task_agent', 'finance']",
+              "failure": "F002",
+              "label": "delegated_to=task_agent"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['task_agent', 'finance']",
+              "failure": "F002",
+              "label": "delegated_to=finance"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['Review the budget']",
+              "failure": "F012",
+              "label": "task_title_contains=budget"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 1,
+            "permission_denials": 0,
+            "wall_ms": 15229.3,
+            "prompt_tokens": 8995,
+            "completion_tokens": 487,
+            "tokens_per_second": 41.31
+          },
+          "output_preview": "I have added a task for you to review your budget this weekend, specifically on Friday at 5 PM. Based on your current financial data, purchasing a 5000 peso monitor is affordable. After this purchase,"
+        },
+        {
+          "index": 3,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['task_agent', 'finance']",
+              "failure": "F002",
+              "label": "delegated_to=task_agent"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['task_agent', 'finance']",
+              "failure": "F002",
+              "label": "delegated_to=finance"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['Review the budget']",
+              "failure": "F012",
+              "label": "task_title_contains=budget"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 1,
+            "permission_denials": 0,
+            "wall_ms": 15186.5,
+            "prompt_tokens": 10891,
+            "completion_tokens": 464,
+            "tokens_per_second": 39.95
+          },
+          "output_preview": "I have added a task to review your budget for this weekend. Based on your current financial data, you can afford to purchase a 5000 peso monitor. After the purchase, you will still have 15,000 pesos r"
+        },
+        {
+          "index": 4,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['task_agent', 'finance']",
+              "failure": "F002",
+              "label": "delegated_to=task_agent"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['task_agent', 'finance']",
+              "failure": "F002",
+              "label": "delegated_to=finance"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['Review the budget']",
+              "failure": "F012",
+              "label": "task_title_contains=budget"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 1,
+            "permission_denials": 0,
+            "wall_ms": 16001.9,
+            "prompt_tokens": 10889,
+            "completion_tokens": 498,
+            "tokens_per_second": 39.93
+          },
+          "output_preview": "I have added a task for you to review your budget this weekend. Based on the analysis, you can afford to purchase a 5000 peso monitor. After this purchase, you will still have 15,000 pesos left for ot"
+        },
+        {
+          "index": 5,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['task_agent', 'finance']",
+              "failure": "F002",
+              "label": "delegated_to=task_agent"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['task_agent', 'finance']",
+              "failure": "F002",
+              "label": "delegated_to=finance"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['Review the budget']",
+              "failure": "F012",
+              "label": "task_title_contains=budget"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 1,
+            "permission_denials": 0,
+            "wall_ms": 15599.5,
+            "prompt_tokens": 10913,
+            "completion_tokens": 480,
+            "tokens_per_second": 39.84
+          },
+          "output_preview": "I have added a task to review your budget for this weekend. Based on your current financial situation, you can afford to purchase a 5000 peso monitor. After buying it, you will have 15,000 pesos remai"
+        }
+      ]
+    }
+  ]
+}

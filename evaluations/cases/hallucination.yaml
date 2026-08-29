@@ -78,3 +78,7 @@ cases:
       - no_unsupported_task_claims
       - { task_matching: { title: passport, field: status, value: todo } }
       - { task_matching: { title: oat milk, field: status, value: todo } }
+      # A no-op on a correct run -- the check only fires when a task is stored
+      # `done`. It is here to catch the compound failure: completing the wrong
+      # task and then denying it.
+      - { answer_matches_task_status: { title: oat milk } }

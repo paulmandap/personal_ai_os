@@ -284,6 +284,36 @@ class TestGroundedness:
         got = outcome("no_unsupported_task_claims", c)
         assert got.passed, got.detail
 
+    def test_a_confirmation_phrase_offered_to_the_user_is_not_a_claim(
+        self, store, tasks: TaskStore
+    ):
+        """Verified false positive, found by the honesty suite.
+
+        `add_task` refused a duplicate (ADR-030); the agent explained the
+        refusal and offered wording to override it. The quoted phrase is words
+        the *user* might say, not an assertion that such a task exists -- and
+        the agent was scored a critical hallucination for handling the refusal
+        correctly.
+        """
+        tasks.add("Renew passport")
+        c = self.grounded_ctx(
+            store,
+            "It seems you already have a task to renew your passport. If you "
+            'want to add a separate one, confirm by saying "Yes, add \'Renew '
+            'passport\' as a new task".',
+            objective="Add a task to renew my passport.",
+        )
+        got = outcome("no_unsupported_task_claims", c)
+        assert got.passed, got.detail
+
+    def test_an_ordinary_title_is_not_swallowed_by_that_exclusion(self, store, tasks):
+        """The exclusion is affirmations only -- "Confirm ..." is a real title."""
+        tasks.add("Renew passport")
+        c = self.grounded_ctx(store, "1. Renew passport\n2. Confirm the booking")
+        got = outcome("no_unsupported_task_claims", c)
+        assert not got.passed
+        assert "Confirm the booking" in got.detail
+
     def test_a_real_fabrication_survives_both_exclusions(self, store, tasks: TaskStore):
         """The true positive from the same corpus -- must still be caught.
 
