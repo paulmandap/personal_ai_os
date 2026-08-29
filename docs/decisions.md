@@ -237,6 +237,22 @@ the format, it was probed directly before any code depended on it.
 `tests/integration/`. Probing first cost about ten minutes and removed the
 single largest source of rework in the phase.
 
+**Re-confirmation log.** The findings above are historical and must never be
+rewritten; a finding that actually changes gets a new ADR superseding this one.
+Each bump appends one line.
+
+- **2026-08-29 — Ollama 0.33.2 (from 0.33.1): all five re-confirmed, 5/5.**
+  Probed against a live server with raw `httpx` and raw JSON, deliberately
+  *not* through `OllamaModel` — the findings are about what the server sends,
+  and checking them through this project's own normalising adapter would confirm
+  the adapter rather than the wire. Observed: `id="call_h0neoovq"`;
+  `arguments` a **dict** (`{'city': 'Manila'}`), not an OpenAI JSON string; a
+  tool result echoed back and used ("31 degrees Celsius"); `done_reason="stop"`
+  alongside tool calls; and durations in nanoseconds with a cold
+  `total_duration=6.41s` against `load_duration=5.68s` — **`total` still includes
+  model load**, so throughput must keep using `eval_duration` (the same call warm:
+  `load=0.001s`). `pytest -m integration` 16/16.
+
 ---
 
 ## ADR-011 — Trace redaction matches key segments, not substrings

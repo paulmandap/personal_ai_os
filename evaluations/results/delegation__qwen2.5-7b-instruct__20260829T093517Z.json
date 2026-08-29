@@ -1,0 +1,742 @@
+{
+  "version": 1,
+  "suite": "delegation",
+  "model": "qwen2.5:7b-instruct",
+  "started_at": "2026-08-29T09:35:17Z",
+  "finished_at": "2026-08-29T09:37:51Z",
+  "split": "train+validation",
+  "cases": [
+    {
+      "case": "routes_task_work_to_task_agent",
+      "description": "",
+      "agent": "master",
+      "category": "routing",
+      "split": "train",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['delegate', 'add_task', 'add_task']",
+              "failure": "F003",
+              "label": "called_tool=delegate"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['task_agent']",
+              "failure": "F002",
+              "label": "delegated_to=task_agent"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['Renew passport']",
+              "failure": "F012",
+              "label": "task_title_contains=passport"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 1,
+            "permission_denials": 0,
+            "wall_ms": 10468.8,
+            "prompt_tokens": 5531,
+            "completion_tokens": 282,
+            "tokens_per_second": 40.15
+          },
+          "output_preview": "I've added a task to renew your passport with a reminder set for 2027-02-28. You can check your task list at any time for updates or further details."
+        },
+        {
+          "index": 2,
+          "passed": false,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['delegate', 'add_task', 'add_task', 'add_task', 'add_task', 'add_task', 'add_task', 'add_task', 'add_task']",
+              "failure": "F003",
+              "label": "called_tool=delegate"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['task_agent']",
+              "failure": "F002",
+              "label": "delegated_to=task_agent"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": false,
+              "detail": "titles: []",
+              "failure": "F012",
+              "label": "task_title_contains=passport"
+            },
+            {
+              "name": "task_count",
+              "passed": false,
+              "detail": "0, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 8,
+            "permission_denials": 0,
+            "wall_ms": 19955.0,
+            "prompt_tokens": 14779,
+            "completion_tokens": 701,
+            "tokens_per_second": 42.05
+          },
+          "output_preview": "It seems there was an issue with setting the due date for your passport renewal task. The date provided ('2027-02-29') is not a valid date because February does not have 29 days in a common year. \n\nCo"
+        },
+        {
+          "index": 3,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['delegate', 'add_task', 'add_task', 'add_task', 'add_task', 'add_task', 'add_task', 'add_task', 'add_task', 'delegate', 'add_task']",
+              "failure": "F003",
+              "label": "called_tool=delegate"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['task_agent', 'task_agent']",
+              "failure": "F002",
+              "label": "delegated_to=task_agent"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['Renew passport']",
+              "failure": "F012",
+              "label": "task_title_contains=passport"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            }
+          ],
+          "metrics": {
+            "iterations": 3,
+            "tool_calls": 2,
+            "invalid_arguments": 8,
+            "permission_denials": 0,
+            "wall_ms": 24783.2,
+            "prompt_tokens": 18478,
+            "completion_tokens": 895,
+            "tokens_per_second": 42.27
+          },
+          "output_preview": "I have successfully added the task to renew your passport with a reminder set for September 7, 2026. This task is marked as todo with normal priority."
+        },
+        {
+          "index": 4,
+          "passed": false,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['delegate', 'add_task', 'add_task', 'add_task', 'add_task', 'add_task', 'add_task', 'add_task', 'add_task']",
+              "failure": "F003",
+              "label": "called_tool=delegate"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['task_agent']",
+              "failure": "F002",
+              "label": "delegated_to=task_agent"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": false,
+              "detail": "titles: []",
+              "failure": "F012",
+              "label": "task_title_contains=passport"
+            },
+            {
+              "name": "task_count",
+              "passed": false,
+              "detail": "0, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 8,
+            "permission_denials": 0,
+            "wall_ms": 19780.7,
+            "prompt_tokens": 14755,
+            "completion_tokens": 678,
+            "tokens_per_second": 41.2
+          },
+          "output_preview": "It seems there was an issue with setting the due date for your passport renewal task. The date you provided, February 29th, does not exist in 2027. Please provide a valid date for the reminder, and I "
+        },
+        {
+          "index": 5,
+          "passed": false,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['delegate', 'add_task', 'add_task', 'add_task', 'add_task', 'add_task', 'add_task', 'add_task', 'add_task']",
+              "failure": "F003",
+              "label": "called_tool=delegate"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['task_agent']",
+              "failure": "F002",
+              "label": "delegated_to=task_agent"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": false,
+              "detail": "titles: []",
+              "failure": "F012",
+              "label": "task_title_contains=passport"
+            },
+            {
+              "name": "task_count",
+              "passed": false,
+              "detail": "0, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 8,
+            "permission_denials": 0,
+            "wall_ms": 18533.7,
+            "prompt_tokens": 14683,
+            "completion_tokens": 642,
+            "tokens_per_second": 42.21
+          },
+          "output_preview": "It seems there was an issue setting the due date for your passport renewal task. The date you provided, February 29th, does not exist in a non-leap year. Please provide a valid date, and I will add th"
+        }
+      ]
+    },
+    {
+      "case": "routes_money_work_to_finance",
+      "description": "",
+      "agent": "master",
+      "category": "routing",
+      "split": "train",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['finance']",
+              "failure": "F002",
+              "label": "delegated_to=finance"
+            },
+            {
+              "name": "did_not_call_tool",
+              "passed": true,
+              "detail": "called ['delegate', 'list_accounts']",
+              "failure": "F002",
+              "label": "did_not_call_tool=add_task"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7770.6,
+            "prompt_tokens": 4556,
+            "completion_tokens": 169,
+            "tokens_per_second": 42.81
+          },
+          "output_preview": "You currently have PHP 21,500.00 available in your accounts. This includes PHP 20,000.00 in your BPI savings account and PHP 1,500.00 in cash."
+        },
+        {
+          "index": 2,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['finance']",
+              "failure": "F002",
+              "label": "delegated_to=finance"
+            },
+            {
+              "name": "did_not_call_tool",
+              "passed": true,
+              "detail": "called ['delegate', 'list_accounts']",
+              "failure": "F002",
+              "label": "did_not_call_tool=add_task"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 6677.5,
+            "prompt_tokens": 4546,
+            "completion_tokens": 161,
+            "tokens_per_second": 41.73
+          },
+          "output_preview": "You currently have PHP 21,500.00 available across your accounts, with PHP 20,000.00 in your BPI savings and PHP 1,500.00 in cash."
+        },
+        {
+          "index": 3,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['finance']",
+              "failure": "F002",
+              "label": "delegated_to=finance"
+            },
+            {
+              "name": "did_not_call_tool",
+              "passed": true,
+              "detail": "called ['delegate', 'list_accounts']",
+              "failure": "F002",
+              "label": "did_not_call_tool=add_task"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7015.2,
+            "prompt_tokens": 4549,
+            "completion_tokens": 171,
+            "tokens_per_second": 40.84
+          },
+          "output_preview": "The current balance across all your accounts is PHP 21,500.00. Specifically, your BPI savings account has PHP 20,000.00 and your cash account has PHP 1,500.00."
+        },
+        {
+          "index": 4,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['finance']",
+              "failure": "F002",
+              "label": "delegated_to=finance"
+            },
+            {
+              "name": "did_not_call_tool",
+              "passed": true,
+              "detail": "called ['delegate', 'list_accounts']",
+              "failure": "F002",
+              "label": "did_not_call_tool=add_task"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7310.9,
+            "prompt_tokens": 4549,
+            "completion_tokens": 171,
+            "tokens_per_second": 37.99
+          },
+          "output_preview": "The current balance across all your accounts is PHP 21,500.00. Specifically, your BPI savings account has PHP 20,000.00 and your cash account has PHP 1,500.00."
+        },
+        {
+          "index": 5,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['finance']",
+              "failure": "F002",
+              "label": "delegated_to=finance"
+            },
+            {
+              "name": "did_not_call_tool",
+              "passed": true,
+              "detail": "called ['delegate', 'list_accounts']",
+              "failure": "F002",
+              "label": "did_not_call_tool=add_task"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 6959.1,
+            "prompt_tokens": 4549,
+            "completion_tokens": 171,
+            "tokens_per_second": 40.94
+          },
+          "output_preview": "The current balance across all your accounts is PHP 21,500.00. Specifically, your BPI savings account has PHP 20,000.00 and your cash account has PHP 1,500.00."
+        }
+      ]
+    },
+    {
+      "case": "does_not_route_money_work_to_the_task_agent",
+      "description": "The wrong specialist is the interesting failure: the task agent has no finance tools, so a misroute produces a confident, useless answer.\n",
+      "agent": "master",
+      "category": "routing",
+      "split": "train",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['finance']",
+              "failure": "F002",
+              "label": "delegated_to=finance"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 4887.1,
+            "prompt_tokens": 4403,
+            "completion_tokens": 91,
+            "tokens_per_second": 42.73
+          },
+          "output_preview": "Your current account balance is PHP 4,500.00."
+        },
+        {
+          "index": 2,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['finance']",
+              "failure": "F002",
+              "label": "delegated_to=finance"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 4934.5,
+            "prompt_tokens": 4403,
+            "completion_tokens": 91,
+            "tokens_per_second": 41.79
+          },
+          "output_preview": "Your current account balance is PHP 4,500.00."
+        },
+        {
+          "index": 3,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['finance']",
+              "failure": "F002",
+              "label": "delegated_to=finance"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 4945.2,
+            "prompt_tokens": 4403,
+            "completion_tokens": 91,
+            "tokens_per_second": 41.15
+          },
+          "output_preview": "Your current account balance is PHP 4,500.00."
+        },
+        {
+          "index": 4,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['finance']",
+              "failure": "F002",
+              "label": "delegated_to=finance"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 4941.5,
+            "prompt_tokens": 4403,
+            "completion_tokens": 91,
+            "tokens_per_second": 41.15
+          },
+          "output_preview": "Your current account balance is PHP 4,500.00."
+        },
+        {
+          "index": 5,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "delegated_to",
+              "passed": true,
+              "detail": "delegated to ['finance']",
+              "failure": "F002",
+              "label": "delegated_to=finance"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 4955.4,
+            "prompt_tokens": 4403,
+            "completion_tokens": 91,
+            "tokens_per_second": 40.75
+          },
+          "output_preview": "Your current account balance is PHP 4,500.00."
+        }
+      ]
+    }
+  ]
+}
