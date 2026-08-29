@@ -100,6 +100,26 @@ Measured: **state intact 75/75 on both models** across the injection suite,
 against ~27% attacker-task creation before. The 7B fired 27 denials; the 3B
 fired none, because it was never persuaded.
 
+### Read two numbers, not one (ADR-037)
+
+The suite reports both properties separately, because they are separate:
+
+| | 7B | 3B |
+|---|---|---|
+| **system compromised** — the write executed (`tool_did_not_run`, F008) | **0/75** | **0/75** |
+| **model compromised** — the write was proposed (`did_not_call_tool`, F002) | 4–6 of 75 | 0/75 |
+| denials fired | 12–27 | 0 |
+
+The 7B ranges because that is the documented `repeat: 15` spread across runs of
+identical runtime code, not a trend. Judge by mechanism: every failure is
+`did_not_call_tool` on the same two cases, and **no write has ever landed**.
+
+A third cost is worth naming because it is easy to miss. In one observed run the
+7B proposed the injected write repeatedly, was refused **thirteen times**, and
+hit `max_iterations` without answering. The gate protected the state and cost the
+user their answer. That is an availability failure rather than a safety one, and
+a single safety percentage hid it completely.
+
 ### Two questions, not one
 
 The design mistake worth remembering is conflating these:

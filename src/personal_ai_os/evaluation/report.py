@@ -54,6 +54,27 @@ class RunRecord(BaseModel):
     def failed_checks(self) -> list[CheckOutcome]:
         return [c for c in self.checks if not c.passed]
 
+    def critical_failures(self) -> list[CheckOutcome]:
+        """Failed checks the taxonomy calls defects rather than scores."""
+        return [
+            c
+            for c in self.failed_checks()
+            if c.failure is not None and c.failure.severity == "critical"
+        ]
+
+    @property
+    def defect_free(self) -> bool:
+        """Did this run avoid every *critical* failure?
+
+        Weaker than `passed`, deliberately (ADR-037). `passed` is the conjunction
+        of every check, so it folds together three different properties: the
+        system was compromised, the model was persuaded, and the run stumbled.
+        This isolates the first. A suite reporting 92% passed and 100%
+        defect-free is saying something precise -- the model was talked into
+        proposing writes that never landed -- and one number cannot.
+        """
+        return not self.critical_failures()
+
 
 class CaseResult(BaseModel):
     """All repetitions of one case.
@@ -82,6 +103,24 @@ class CaseResult(BaseModel):
     @property
     def pass_rate(self) -> float:
         return self.passed / self.total if self.total else 0.0
+
+    @property
+    def defect_free(self) -> int:
+        return sum(1 for r in self.runs if r.defect_free)
+
+    @property
+    def defect_free_rate(self) -> float:
+        return self.defect_free / self.total if self.total else 0.0
+
+    @property
+    def denials(self) -> int:
+        """Permission refusals across the repetitions -- the gate's activity.
+
+        Collected since Phase 4 and never displayed. ADR-036 made it worth
+        showing: it is the difference between a model that was never tempted and
+        one that was refused twenty-seven times.
+        """
+        return sum(r.metrics.permission_denials for r in self.runs)
 
     def check_rates(self) -> dict[str, float]:
         """Pass rate per individual check, across repetitions.
@@ -137,6 +176,19 @@ class SuiteResult(BaseModel):
     @property
     def pass_rate(self) -> float:
         return self.passed_runs / self.total_runs if self.total_runs else 0.0
+
+    @property
+    def defect_free_runs(self) -> int:
+        return sum(c.defect_free for c in self.cases)
+
+    @property
+    def defect_free_rate(self) -> float:
+        """Runs with no critical failure. Never lower than `pass_rate`."""
+        return self.defect_free_runs / self.total_runs if self.total_runs else 0.0
+
+    @property
+    def denials(self) -> int:
+        return sum(c.denials for c in self.cases)
 
     def case(self, name: str) -> CaseResult | None:
         return next((c for c in self.cases if c.case == name), None)
@@ -215,20 +267,24 @@ def render(result: SuiteResult) -> str:
         f"split  : {result.split}",
         f"run at : {result.started_at}",
         "",
-        f"  {'CASE':<32} {'PASS':<9} {'RATE':<12} ITER  TOK/S",
+        # 52, not 32: the longest case name in the suites is 50 characters, and
+        # a name that overflows shunts every column right and makes the table
+        # unreadable -- which it had been since the DENY column arrived.
+        f"  {'CASE':<52} {'PASS':<9} {'RATE':<12} ITER  TOK/S  DENY",
     ]
     for case in result.cases:
         mean_iter = case.metric("iterations")
         mean_tps = case.metric("tokens_per_second")
         lines.append(
-            f"  {case.case:<32} {case.passed}/{case.total:<7} "
+            f"  {case.case:<52} {case.passed}/{case.total:<7} "
             f"{_bar(case.pass_rate)} {case.pass_rate:>5.0%}  "
             f"{(mean_iter[0] if mean_iter else 0):>4.1f}  "
-            f"{(mean_tps[0] if mean_tps else 0):>5.1f}"
+            f"{(mean_tps[0] if mean_tps else 0):>5.1f}  "
+            f"{case.denials:>4}"
         )
         for name, rate in case.check_rates().items():
             if rate < 1.0:
-                lines.append(f"      {name:<30} {rate:>5.0%}")
+                lines.append(f"      {name:<50} {rate:>5.0%}")
 
     categories = result.by_category()
     if len(categories) > 1:
@@ -249,11 +305,25 @@ def render(result: SuiteResult) -> str:
                 f"  [{failure.severity}]{marker}"
             )
 
+    # Two verdicts, not one (ADR-037). `overall` is every check; `defect free`
+    # is the critical ones alone. Where they diverge, the run went wrong in a way
+    # that left the stored state correct -- on the safety suite that is exactly
+    # the difference between a persuaded model and a breached system.
     lines += [
         "",
-        f"  overall: {result.passed_runs}/{result.total_runs} runs passed "
+        f"  overall     : {result.passed_runs}/{result.total_runs} runs passed "
         f"({result.pass_rate:.0%})",
+        f"  defect free : {result.defect_free_runs}/{result.total_runs} "
+        f"({result.defect_free_rate:.0%})   <- critical checks only",
+        f"  denials     : {result.denials} across {result.total_runs} runs",
     ]
+    if result.defect_free_runs > result.passed_runs:
+        gap = result.defect_free_runs - result.passed_runs
+        lines.append(
+            f"  read both: {gap} run(s) failed only on non-critical checks -- "
+            "no hallucination, no unsupported claim, no safety violation, and "
+            "the stored state is as the case expects."
+        )
     if result.pass_rate == 1.0 and result.total_runs:
         lines.append(
             "  note: 100% means this suite has stopped measuring anything. "
@@ -297,7 +367,11 @@ def compare(a: SuiteResult, b: SuiteResult) -> str:
 
     lines += [
         "",
-        f"  overall  A {a.pass_rate:.0%}   B {b.pass_rate:.0%}",
+        f"  overall      A {a.pass_rate:.0%}   B {b.pass_rate:.0%}",
+        # A change that adds critical failures while the pass rate holds steady
+        # is the regression this row exists to expose (ADR-037).
+        f"  defect free  A {a.defect_free_rate:.0%}   B {b.defect_free_rate:.0%}",
+        f"  denials      A {a.denials}   B {b.denials}",
         "",
         "  Read both columns. A faster model that fails more checks is a",
         "  regression, however good its throughput looks.",

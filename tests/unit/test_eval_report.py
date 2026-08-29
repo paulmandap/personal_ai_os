@@ -16,6 +16,7 @@ from personal_ai_os.evaluation.report import (
     model_slug,
     render,
 )
+from personal_ai_os.evaluation.taxonomy import Failure
 
 
 def run(index: int, passed: bool, **checks: bool) -> RunRecord:
@@ -116,6 +117,73 @@ class TestStorage:
         s = suite("m", case("a", run(1, True)))
         text = s.save(tmp_path).read_text(encoding="utf-8")
         assert "transcript" not in text
+
+
+class TestTwoVerdicts:
+    """ADR-037: `passed` is every check; `defect_free` is the critical ones."""
+
+    @staticmethod
+    def _run(index: int, **checks: Failure | None) -> RunRecord:
+        """A run whose named checks failed, each with the given failure kind."""
+        return RunRecord(
+            index=index,
+            passed=not checks,
+            stop_reason="answered",
+            checks=[
+                CheckOutcome(name=n, passed=False, failure=f) for n, f in checks.items()
+            ],
+            metrics=RunMetrics(permission_denials=2),
+        )
+
+    def test_a_critical_failure_moves_both_numbers(self):
+        c = case("x", self._run(1, tool_did_not_run=Failure.SAFETY_VIOLATION))
+        assert c.pass_rate == 0.0
+        assert c.defect_free_rate == 0.0
+
+    def test_a_non_critical_failure_moves_only_the_pass_rate(self):
+        """The safety suite's actual shape: persuaded model, intact state."""
+        c = case("x", self._run(1, did_not_call_tool=Failure.WRONG_TOOL))
+        assert c.pass_rate == 0.0
+        assert c.defect_free_rate == 1.0
+
+    def test_defect_free_is_never_below_the_pass_rate(self):
+        s = suite(
+            "m",
+            case(
+                "a",
+                run(1, True),
+                self._run(2, did_not_call_tool=Failure.WRONG_TOOL),
+                self._run(3, task_count=Failure.STATE_MANAGEMENT),
+            ),
+        )
+        assert s.pass_rate == pytest.approx(1 / 3)
+        assert s.defect_free_rate == pytest.approx(2 / 3)
+        assert s.defect_free_rate >= s.pass_rate
+
+    def test_an_unclassified_check_is_not_treated_as_a_defect(self):
+        """`failure` is None only for hand-built outcomes; do not guess."""
+        c = case("x", self._run(1, mystery=None))
+        assert c.defect_free_rate == 1.0
+
+    def test_denials_are_summed_for_display(self):
+        c = case(
+            "x", self._run(1, a=Failure.WRONG_TOOL), self._run(2, b=Failure.WRONG_TOOL)
+        )
+        assert c.denials == 4
+
+    def test_render_reports_both_and_says_they_differ(self):
+        s = suite("m", case("a", run(1, True), self._run(2, dnc=Failure.WRONG_TOOL)))
+        text = render(s)
+        assert "overall" in text and "defect free" in text
+        assert "read both" in text
+
+    def test_compare_exposes_a_critical_regression_behind_a_flat_rate(self):
+        """Same pass rate, different meaning -- the row exists for this."""
+        a = suite("7b", case("a", self._run(1, dnc=Failure.WRONG_TOOL)))
+        b = suite("3b", case("a", self._run(1, tdr=Failure.SAFETY_VIOLATION)))
+        text = compare(a, b)
+        assert a.pass_rate == b.pass_rate
+        assert "defect free  A 100%   B 0%" in text
 
 
 class TestRendering:
