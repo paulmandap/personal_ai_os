@@ -202,3 +202,87 @@ class TestSchemas:
         """Getting the sign wrong reverses a balance change."""
         props = AddTransactionTool().schema().parameters["properties"]
         assert "NEGATIVE" in props["amount"]["description"]
+
+
+class TestRawMinorUnitsNeverReachTheModel:
+    """ADR-040: the model must never see a figure it would have to convert.
+
+    ADR-033 added `summary` so the agent would not have to divide by 100, and
+    left the raw integers in the payload beside it. The agent kept reading them:
+    a captured conversation replayed with only the payload varied reported
+    "PHP 288,000.00" (the raw integer verbatim) or "28,800.00" (mis-scaled)
+    **20 times out of 20** with the integers present, and the correct
+    "PHP 2,880.00" 20 out of 20 with only the formatted summary.
+    """
+
+    #: Every raw money field on every finance record.
+    MINOR_FIELDS = (
+        "amount_minor", "balance_minor", "target_minor", "saved_minor",
+        "requested_minor", "total_balance_minor", "upcoming_commitments_minor",
+        "goal_reserved_minor", "discretionary_minor", "remaining_after_minor",
+    )
+
+    def _seed(self, finance: FinanceStore) -> None:
+        finance.set_balance("cash", "3500")
+        finance.set_balance("savings", "20000")
+        finance.add_transaction("cash", "-120", category="transport")
+        finance.add_commitment("rent", "8000", 5)
+        finance.add_goal("laptop", "50000", saved="1000")
+
+    def _payloads(self, ctx: ToolContext, finance: FinanceStore) -> dict[str, str]:
+        """Serialize every finance tool's output the way the agent loop does.
+
+        `BaseAgent._execute_tool_call` does `output.model_dump_json()` and hands
+        the result to the model verbatim; that is the boundary under test.
+        """
+        self._seed(finance)
+        cases = [
+            (ListAccountsTool(), {}),
+            (ListTransactionsTool(), {}),
+            (ListCommitmentsTool(), {}),
+            (ListGoalsTool(), {}),
+            (AffordabilityCheckTool(), {"amount": "1000"}),
+            (SetBalanceTool(), {"name": "cash", "amount": "3500"}),
+            (AddTransactionTool(), {"account": "cash", "amount": "-500",
+                                    "category": "transport"}),
+            (AddCommitmentTool(), {"name": "internet", "amount": "1500",
+                                   "day_of_month": 9}),
+            (AddGoalTool(), {"name": "phone", "target": "30000"}),
+        ]
+        return {t.name: call(t, a, ctx).model_dump_json() for t, a in cases}
+
+    def test_no_finance_tool_leaks_a_raw_minor_field(self, tool_context, finance):
+        """The invariant, over every tool -- not one hand-picked payload."""
+        for name, payload in self._payloads(tool_context, finance).items():
+            for field in self.MINOR_FIELDS:
+                assert f'"{field}"' not in payload, f"{name} leaked {field}"
+
+    def test_every_payload_still_carries_a_formatted_figure(self, tool_context, finance):
+        """Removing the integer must not remove the information.
+
+        The whole point is substitution, not deletion: if a payload lost its
+        figure entirely the agent would have to invent one, which is worse.
+        """
+        for name, payload in self._payloads(tool_context, finance).items():
+            assert '"summary"' in payload, f"{name} has no formatted summary"
+            assert "PHP" in payload, f"{name} states no currency figure"
+
+    def test_the_exact_defect_payload_is_now_clean(self, tool_context, finance):
+        """The measured case: 3500 seeded, -120, then -500 recorded."""
+        self._seed(finance)
+        payload = call(AddTransactionTool(),
+                       {"account": "cash", "amount": "-500", "category": "transport"},
+                       tool_context).model_dump_json()
+        assert "288000" not in payload      # the integer the model was quoting
+        assert "PHP 2,880.00" in payload    # what it should quote instead
+
+    def test_attribute_access_and_the_ledger_are_untouched(self, tool_context, finance):
+        """`exclude` is a serialization rule, not a state change."""
+        self._seed(finance)
+        call(AddTransactionTool(), {"account": "cash", "amount": "-500",
+                                    "category": "transport"}, tool_context)
+        assert finance.account("cash").balance_minor == 288000
+        assert finance.account("savings").balance_minor == 2_000_000
+        goal = finance.goals()[0]
+        assert goal.target_minor == 5_000_000 and goal.saved_minor == 100_000
+        assert finance.commitments()[0].amount_minor == 800_000

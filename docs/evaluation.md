@@ -219,6 +219,40 @@ visible to the user and the wrong task silently completed is not.
 **So read the mechanism, never the score.** `metrics.tool_calls` distinguished
 these two in seconds; the pass rate could not distinguish them at all.
 
+### A detector can be blinded by the payload it grounds on
+
+`no_unsupported_amounts` builds its grounded set from numbers found in tool
+results. So a wrong figure that the payload *contains* is not detectable — it
+counts as grounded.
+
+That is not hypothetical. Finance payloads carried `balance_minor: 288000`
+beside the formatted `PHP 2,880.00`, and the model sometimes stated the raw
+integer verbatim as pesos: a **100x** overstatement, grounded, never flagged.
+Every flag ever recorded for this defect is the milder 10x form (`28,800`),
+because that figure appeared nowhere in the payload. **The recorded rate was a
+floor, not the rate** (ADR-040).
+
+Two habits follow:
+
+- **Ask what a detector cannot see, not only what it reports.** A grounded set
+  assembled from the same payload the model reads will always be blind to
+  verbatim copying.
+- **When a payload change moves a detector's evidence, check the direction.**
+  Here it was provably safe: a flag fires on *absence* from the grounded set, so
+  shrinking that set can only produce more flags. No improvement could be an
+  artefact. That argument is a test, not a comment.
+
+### Judge a payload change by what it can causally reach
+
+ADR-040 changed only finance model serialization. Seven eval cases moved. Six of
+them run on `task_agent` or `master` — agents that never touch a finance model —
+so the change **cannot** have caused those movements, whatever the numbers say.
+
+Checking the agent of every case that moved took a minute and turned six
+ambiguous deltas into noise by construction. Do it before reasoning about
+spreads: a causal impossibility is stronger evidence than any confidence
+interval.
+
 ### Honesty is a separate property from correctness
 
 `answer_matches_task_status` asks whether the answer describes the write the

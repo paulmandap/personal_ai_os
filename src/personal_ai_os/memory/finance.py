@@ -78,13 +78,38 @@ def format_minor(minor: int, currency: str = "PHP") -> str:
 
 
 # --- records ---------------------------------------------------------------
+#
+# Every `*_minor` field below is `exclude=True`: it stays an ordinary Python
+# attribute and an ordinary database column, and it is **absent from
+# `model_dump_json()`** -- the one path by which a tool's output becomes text
+# the model reads (`BaseAgent._execute_tool_call`). The `summary` computed
+# field carries the same figure, already formatted.
+#
+# **ADR-033 diagnosed this and fixed it additively, which was not enough.** It
+# added `summary` so the agent would not have to convert minor units, and left
+# the raw integers in the payload beside it. The agent kept reading them.
+#
+# Measured (ADR-040): a real failing conversation was captured and replayed
+# through the same model, temperature and tool schemas, varying only the bytes
+# of the tool payload --
+#
+#     raw + formatted (shipped)   20/20 wrong   "PHP 288,000.00" / "28,800.00"
+#     formatted only              20/20 CORRECT "PHP 2,880.00"
+#     raw only                     2/20 wrong, 18/20 refused to state a balance
+#
+# The ledger held 288000 minor units = PHP 2,880.00. The model was emitting the
+# raw integer verbatim (100x) or mis-scaling it (10x). Both stopped when the
+# integer stopped being visible.
+#
+# The rule: **a tool must not show the model a machine representation it would
+# have to convert when a correct human-readable one is already there.**
 
 
 class Account(BaseModel):
     id: int | None = None
     name: str = Field(min_length=1, max_length=100)
     currency: str = "PHP"
-    balance_minor: int = 0
+    balance_minor: int = Field(default=0, exclude=True)
     updated_at: str = ""
 
     @computed_field  # type: ignore[prop-decorator]
@@ -111,7 +136,7 @@ class Transaction(BaseModel):
     account_id: int
     occurred_on: str
     #: Negative is money out, positive is money in.
-    amount_minor: int
+    amount_minor: int = Field(exclude=True)
     category: str = "uncategorised"
     description: str = ""
     created_at: str = ""
@@ -137,7 +162,7 @@ class Commitment(BaseModel):
     id: int | None = None
     name: str = Field(min_length=1, max_length=100)
     #: Positive: the amount owed each month.
-    amount_minor: int = Field(gt=0)
+    amount_minor: int = Field(gt=0, exclude=True)
     day_of_month: int = Field(ge=1, le=31)
     category: str = "bills"
     active: bool = True
@@ -159,8 +184,8 @@ class Commitment(BaseModel):
 class Goal(BaseModel):
     id: int | None = None
     name: str = Field(min_length=1, max_length=100)
-    target_minor: int = Field(gt=0)
-    saved_minor: int = 0
+    target_minor: int = Field(gt=0, exclude=True)
+    saved_minor: int = Field(default=0, exclude=True)
     target_date: str | None = None
 
     _check_date = field_validator("target_date")(lambda v: validate_iso_date(v))
@@ -197,12 +222,12 @@ class Affordability(BaseModel):
     """
 
     currency: str = "PHP"
-    requested_minor: int
-    total_balance_minor: int
-    upcoming_commitments_minor: int
-    goal_reserved_minor: int
-    discretionary_minor: int
-    remaining_after_minor: int
+    requested_minor: int = Field(exclude=True)
+    total_balance_minor: int = Field(exclude=True)
+    upcoming_commitments_minor: int = Field(exclude=True)
+    goal_reserved_minor: int = Field(exclude=True)
+    discretionary_minor: int = Field(exclude=True)
+    remaining_after_minor: int = Field(exclude=True)
     verdict: Verdict
     explanation: str
 

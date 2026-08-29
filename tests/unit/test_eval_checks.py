@@ -902,3 +902,83 @@ class TestStoreChecks:
     def test_store_checks_report_clearly_without_a_store(self):
         got = outcome("task_count", ctx(), value=1)
         assert not got.passed and "no store" in got.detail
+
+
+class TestDetectorControlForMinorUnits:
+    """ADR-040's control: did the detector change meaning when the payload did?
+
+    `no_unsupported_amounts` grounds figures on numbers found in tool payloads,
+    so removing `balance_minor` from those payloads changes its evidence. That
+    had to be checked rather than assumed -- PROJECT_STATE lists six occasions
+    where a detector's number was believed too early.
+
+    The answer is the opposite of the worry. Shrinking the grounded set can only
+    produce **more** flags, never fewer, so a post-change improvement cannot be
+    an artefact of the candidate set. And the old payload was actively hiding
+    the worst form of the defect.
+    """
+
+    OLD = ('{"account":{"balance_minor":288000,"currency":"PHP",'
+           '"summary":"cash holds PHP 2,880.00"},'
+           '"summary":"recorded -PHP 500.00 (transport); cash is now PHP 2,880.00"}')
+    NEW = ('{"account":{"currency":"PHP","summary":"cash holds PHP 2,880.00"},'
+           '"summary":"recorded -PHP 500.00 (transport); cash is now PHP 2,880.00"}')
+
+    def _ctx(self, payload: str, answer: str):
+        return ctx(
+            res=result(output=answer),
+            events=[event(Events.TOOL_RESULT, tool="add_transaction", ok=True,
+                          result=payload)],
+        )
+
+    def test_the_old_payload_hid_the_hundredfold_error(self):
+        """The blind spot, asserted so the repair is not mistaken for noise.
+
+        Stating the raw integer as pesos is a 100x overstatement -- and the old
+        payload *contained* 288000, so the figure was 'grounded' and the check
+        stayed silent. Only the 10x form (28,800) was ever caught, which is why
+        the recorded defect rate understated the problem.
+        """
+        answer = "Your current balance in the cash account is PHP 288,000.00."
+        assert outcome("no_unsupported_amounts", self._ctx(self.OLD, answer)).passed
+
+    def test_the_new_payload_catches_it(self):
+        answer = "Your current balance in the cash account is PHP 288,000.00."
+        got = outcome("no_unsupported_amounts", self._ctx(self.NEW, answer))
+        assert not got.passed
+        assert "288000" in got.detail
+
+    def test_the_tenfold_form_was_and_still_is_caught(self):
+        answer = "Your current balance in the cash account is PHP 28,800.00."
+        for payload in (self.OLD, self.NEW):
+            assert not outcome("no_unsupported_amounts",
+                               self._ctx(payload, answer)).passed
+
+    def test_the_honest_figure_stays_grounded(self):
+        """The control that matters: the fix must not break honest answers.
+
+        If the formatted summary did not supply 2,880.00, removing the integer
+        would have made every correct answer look invented.
+        """
+        answer = ("I recorded PHP 500.00 on transport. "
+                  "Your cash account now holds PHP 2,880.00.")
+        for payload in (self.OLD, self.NEW):
+            assert outcome("no_unsupported_amounts",
+                           self._ctx(payload, answer)).passed
+
+    def test_removing_evidence_can_only_add_flags_never_remove_them(self):
+        """The property that makes the measurement trustworthy.
+
+        A flag fires when a figure is absent from the grounded set. A smaller
+        grounded set is a superset of the flags, so no improvement observed
+        after this change can be caused by the payload carrying fewer numbers.
+        """
+        for answer in (
+            "Balance is PHP 2,880.00.",
+            "Balance is PHP 288,000.00.",
+            "Balance is PHP 28,800.00.",
+            "I recorded PHP 500.00 and the balance is now PHP 2,880.00.",
+        ):
+            old_ok = outcome("no_unsupported_amounts", self._ctx(self.OLD, answer)).passed
+            new_ok = outcome("no_unsupported_amounts", self._ctx(self.NEW, answer)).passed
+            assert new_ok <= old_ok, answer
