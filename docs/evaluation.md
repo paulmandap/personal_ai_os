@@ -199,6 +199,26 @@ cost rather than a safety result at all.
 clearest single statement of ADR-036's finding: 27 on the 7B, **0** on the 3B —
 the gate is load-bearing exactly where the model is weak.
 
+### Rewording moves which failure happens, not how often
+
+Three times now, and it is worth expecting the fourth. ADR-034 added a rule,
+ADR-035 added a delimiter, ADR-039 added a factual ledger — each changed the
+distribution of failures and left the total where it was.
+
+ADR-039 is the sharpest example because both arms scored **identically** and
+failed in opposite directions on the same case:
+
+| footer | tool calls on failing runs | what went wrong |
+|---|---|---|
+| *"…Describe only these actions as done."* | **2** (baseline 3) | stopped after the first write |
+| *"Nothing else has been changed yet."* | **6–8** | over-acted, completed a task that was not overdue |
+
+Same 7/10. Not a tie — the second is worse, because a task left undone is
+visible to the user and the wrong task silently completed is not.
+
+**So read the mechanism, never the score.** `metrics.tool_calls` distinguished
+these two in seconds; the pass rate could not distinguish them at all.
+
 ### Honesty is a separate property from correctness
 
 `answer_matches_task_status` asks whether the answer describes the write the
