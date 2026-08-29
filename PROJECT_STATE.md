@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-08-28
+**Last updated:** 2026-08-29
 **Updated by:** Claude Code (development assistant), reviewed by Paul
 
 > The handoff document. It must be enough for a future local agent — with no
@@ -334,24 +334,27 @@ because after 2026-09-07 there is no conversation to remember them.
    changing a success definition after seeing results is what the security
    review prohibits. Do it next, on purpose.
 2. **Compose the two provenances.** ADR-036 ships authorization provenance
-   alone. Resource provenance catches what it cannot see — an injection echoing
-   the user's verbs — and vice versa. Neither alone is sufficient and the
+   alone; `permissions/grounding.py` holds resource provenance, measured and
+   deliberately not wired. Each catches what the other cannot — an injection
+   echoing the user's verbs passes authorization but fails resource. The
    combination has never been measured. `docs/security.md` names this as the
    gap.
-2. **The 3B completing tasks it was not asked about** (problem 5b) — 5 of 5,
-   and it reports both as done. Check the arguments it passes to
-   `complete_task`; this may share a mechanism with problem 2b.
-3. **Upgrade Ollama to 0.33.2** as its own commit. Deferred twice on purpose so
-   it would not confound a before/after. **Now is the right moment:** the
-   benchmark discriminates again, so a subtle degradation would actually show.
-   Run `pytest -m integration` plus `honesty` and `safety` on both models and
+3. **Upgrade Ollama to 0.33.2** as its own commit. Deferred three times on
+   purpose so it would not confound a before/after. **Now is the right moment:**
+   the benchmark discriminates again, so a subtle degradation would show. Run
+   `pytest -m integration` plus `safety` and `authorization` on both models and
    compare against the table below — ADR-010's wire-format findings need
    re-confirming on every bump.
-4. The residual dishonesty (problem 1) and the withdrawn-request failure (5c).
+4. **The 3B completing tasks it was not asked about** (problem 5b) — 5 of 5, and
+   it reports both as done. Read the arguments it passes to `complete_task`;
+   may share a mechanism with problem 2b.
+5. The residual dishonesty (problem 1) and the withdrawn-request failure (5c).
    No structural fix is obvious for either; both are now measurable, which is
    the precondition for working on them at all.
-5. Then either the Research Agent (first `external_action` tool) — now that
-   `safety` covers the boundary it depends on — or Phase 10.
+6. **The Research Agent** (first `external_action` tool) — still gated. `safety`
+   covers the boundary it depends on, but `docs/security.md` lists four things
+   that must be done first, including composing the provenances and re-measuring
+   rather than assuming any of this transfers to web and email content.
 
 Before starting: `paios doctor` and `pytest -q` for a green baseline.
 
@@ -456,8 +459,8 @@ guard, ADR-031 empty-turn retry), with `confirm_duplicate` as the escape hatch.
 
 Phases 1–5 committed and pushed (`f561e9d`, `61965a9`, `20b6e5e`, `5de9ec9`,
 `cf628df`, `83224ee`, `bfcab5f`, `57a8b7e`, `5482351`, `ce9818a`,
-`450a505`, `949bf89`). ADR-035 is
-**uncommitted**.
+`450a505`, `949bf89`, `603bf3c`,
+`93c4d20`). All pushed; working tree clean.
 
 ---
 
@@ -520,4 +523,4 @@ three new agents since Phase 1.
 - 614 tests: 598 unit (offline, sockets blocked), 16 integration (live)
 - 10 evaluation suites, 52 cases, 10 holdout · 21 checks · 15 failure codes
 - 3 runtime dependencies (`pydantic`, `httpx`, `pyyaml`)
-- 12 commits. ADR-036 is uncommitted.
+- 13 commits, all pushed. Working tree clean at `93c4d20` (ADR-036).
