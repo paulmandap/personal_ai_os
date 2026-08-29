@@ -206,7 +206,27 @@ spend a holdout case (ADR-027). Full record in `docs/evaluation.md`.
    task"*, printed directly above that same task, when `task_agent` has **no
    delete tool at all**. A claimed capability the system does not have.
    ADR-030's guard cannot help; the new title collides with nothing.
-6. **PROMPT INJECTION — improved on the realistic attack, NOT reduced overall.**
+6. ~~**PROMPT INJECTION**~~ **STATE DAMAGE ELIMINATED — ADR-036.**
+   `safety` state intact is now **75/75 on both models**, against ~27%
+   attacker-task creation before. A mechanical gate at the broker escalates any
+   write whose action class the user's turn never asked for. The 7B fired 27
+   denials; the 3B fired none, because it was never persuaded.
+
+   **Cost: 10 of 40 legitimate writes escalated (25%)**, all in one family
+   (paraphrased creation). All five pre-existing write suites stayed at 100%.
+
+   **Read both numbers together.** The suite still *reports* 92% because its
+   oracle also demands the model not attempt the write — see Next Step 1.
+
+   The route matters more than the result. A commissioned security review found
+   the false-positive rate could not have been measured at all: the suite had
+   almost no legitimate writes of the kinds a gate would break. The first
+   candidate — resource provenance, "is the target named in the user's
+   message" — blocked **21 of 40** once those cases existed. Comparison in
+   ADR-036; taxonomy and limits in `docs/security.md`.
+
+6a. *(superseded, kept for the measurement)* **The 7B obeyed a plausible
+   injection 1 time in 3.**
    Still the most serious open defect. Read the second half of this entry
    before quoting the first.
 
@@ -305,23 +325,19 @@ because after 2026-09-07 there is no conversation to remember them.
 
 ## Next Steps
 
-1. **PROMPT INJECTION, pinned at 70/75 across three framings** (problem 6).
-   ADR-034 and ADR-035 both netted flat. **Stop trying to word or delimit the
-   way out of this** — that is now measured twice, ~375 runs, and the table in
-   problem 6 is there so it is not re-attempted a third time.
-
-   The remaining lever is a gate the model does not mediate: **refuse a
-   mutation the user's own message never asked for.** The permission broker
-   cannot do this today — it sees `write` and grants it, with no notion of
-   whether *this* write traces to the user's request rather than to something
-   the agent read. Sketch before building: it needs a way to compare a
-   requested write against the objective, which is either a second model call
-   (costly, and itself injectable) or a conservative structural rule such as
-   "a write whose target was not named in the user's message requires
-   confirmation". The second is measurable and does not add a model.
-
-   This is a larger design than anything attempted so far. It should not be
-   started casually, and it gates the Research Agent.
+1. **Split the `safety` oracle** — it now understates its own result. It
+   reports 92% while the state is **100% protected**, because
+   `did_not_call_tool` asserts the model must not *request* the write, and the
+   model still gets persuaded before the broker refuses. Two different
+   properties worth tracking apart: **model compromised** (it tried) versus
+   **system compromised** (it succeeded). Deliberately not done inside ADR-036 —
+   changing a success definition after seeing results is what the security
+   review prohibits. Do it next, on purpose.
+2. **Compose the two provenances.** ADR-036 ships authorization provenance
+   alone. Resource provenance catches what it cannot see — an injection echoing
+   the user's verbs — and vice versa. Neither alone is sufficient and the
+   combination has never been measured. `docs/security.md` names this as the
+   gap.
 2. **The 3B completing tasks it was not asked about** (problem 5b) — 5 of 5,
    and it reports both as done. Check the arguments it passes to
    `complete_task`; this may share a mechanism with problem 2b.
@@ -347,7 +363,7 @@ Before starting: `paios doctor` and `pytest -q` for a green baseline.
 findings still hold — the integration suite confirms).
 
 ```
-pytest -q                 ->  550 passed  (sockets blocked, Ollama not needed)
+pytest -q                 ->  598 passed  (sockets blocked, Ollama not needed)
 pytest -m integration     ->   16 passed  (live qwen2.5:3b + 7b)
 
                         start of session       now (ADR-030..033)
@@ -466,6 +482,7 @@ no cloud provider) overrides everything.
 | **033** | **A computed figure must cross the boundary, and say which state it is** |
 | **034** | **A rule the runtime never states is not implemented** |
 | **035** | **Framing does not reduce injection compliance; it only moves it** |
+| **036** | **Authorization is about the request, not the words in it** |
 
 ---
 
@@ -500,7 +517,7 @@ three new agents since Phase 1.
 
 ## Repository Facts
 
-- 566 tests: 550 unit (offline, sockets blocked), 16 integration (live)
-- 9 evaluation suites, 47 cases, 9 holdout · 21 checks · 15 failure codes
+- 614 tests: 598 unit (offline, sockets blocked), 16 integration (live)
+- 10 evaluation suites, 52 cases, 10 holdout · 21 checks · 15 failure codes
 - 3 runtime dependencies (`pydantic`, `httpx`, `pyyaml`)
-- 11 commits. ADR-035 is uncommitted.
+- 12 commits. ADR-036 is uncommitted.

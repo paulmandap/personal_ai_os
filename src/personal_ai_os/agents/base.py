@@ -38,7 +38,8 @@ from personal_ai_os.core.types import Message, ToolCall, ToolSchema
 from personal_ai_os.observability.logging import get_logger
 from personal_ai_os.observability.trace import Events, RunTrace
 from personal_ai_os.permissions.broker import PermissionBroker
-from personal_ai_os.permissions.types import PermissionRequest
+from personal_ai_os.permissions.authorization import write_is_authorized
+from personal_ai_os.permissions.types import PermissionLevel, PermissionRequest
 from personal_ai_os.tools.base import ToolContext
 from personal_ai_os.tools.registry import ToolRegistry
 
@@ -311,7 +312,7 @@ class BaseAgent:
             empty_turns = 0
             for call in response.message.tool_calls:
                 tool_call_count += 1
-                observation = self._execute_tool_call(call)
+                observation = self._execute_tool_call(call, objective)
                 messages.append(
                     Message.tool(observation, name=call.name, tool_call_id=call.id)
                 )
@@ -338,7 +339,7 @@ class BaseAgent:
 
     # --- the gate ----------------------------------------------------------
 
-    def _execute_tool_call(self, call: ToolCall) -> str:
+    def _execute_tool_call(self, call: ToolCall, objective: str = "") -> str:
         """Validate, authorise, then run one tool call.
 
         Returns the text handed back to the model. Every early return here is
@@ -372,14 +373,23 @@ class BaseAgent:
             return f"ERROR: {exc}. Correct the arguments and call the tool again."
 
         # 3. The gate. Nothing below this runs without a granted decision.
+        resource = tool.describe_resource(args)
         request = PermissionRequest(
             level=tool.permission,
             action=tool.name,
-            resource=tool.describe_resource(args),
+            resource=resource,
             agent=self.spec.name,
             run_id=self.trace.run_id,
             requires_human_approval=(
-                tool.requires_human_approval or self.spec.requires_human_approval
+                tool.requires_human_approval
+                or self.spec.requires_human_approval
+                # Did the user's turn authorise a write of this KIND at all?
+                # Escalate rather than refuse: the model may have a good reason,
+                # and the human is the one who can tell (ADR-036).
+                or (
+                    tool.permission is PermissionLevel.WRITE
+                    and not write_is_authorized(objective, call.name)
+                )
             ),
         )
         decision = self.broker.request(request)

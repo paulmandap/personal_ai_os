@@ -1,0 +1,146 @@
+# Security: what is trusted, and what may authorise a write
+
+**Status: partially implemented (Phase 5).** The authorization gate described
+below is live. The provenance taxonomy is documented because the Research Agent
+will need it and because the reasoning should survive the conversation that
+produced it.
+
+## The one principle
+
+> **Tool output may inform reasoning. It must never grant authorization.**
+
+An agent should be able to read a task note, quote it, summarise it, and act on
+what it *means* for the user's question — while being structurally unable to
+treat it as an instruction. Those are different powers and the system must be
+able to tell them apart.
+
+## Why the model cannot enforce this
+
+Three defences were built and measured at the model layer:
+
+| Defence | Result |
+|---|---|
+| Nothing (base model training alone) | 70/75 |
+| State the rule in the system prompt (ADR-034) | 70/75 |
+| State it *and* delimit retrieved content (ADR-035) | 70/75 |
+
+~375 runs, three configurations, **93% every time**. Only which attack succeeded
+moved. Telling qwen2.5:7b that stored text is data traded a crude injection for
+a plausible one and back again.
+
+The conclusion is not that the model is bad. It is that **the model is the
+component being defended, so it cannot also be the thing enforcing the
+defence.** Anything the model decides can be argued with by text the model
+reads.
+
+## Trusted and untrusted
+
+Categories, and the reason each falls where it does.
+
+**Trusted**
+
+- **The user's message in the current turn.** The one input an attacker cannot
+  edit. Everything else derives its authority from this.
+- **Stored application state as *values*** — a task's status, an account's
+  balance, a due date. Written by this system's own tools through validated
+  paths.
+- **Tool errors and refusals.** The system talking to the agent about itself.
+  ADR-030 and ADR-032 deliberately put recovery guidance here.
+
+**Untrusted**
+
+- **Free text inside stored records** — task titles, notes, transaction
+  descriptions. A person typed these once; so could anything that ever wrote to
+  the database.
+- **Anything a future tool retrieves** — web pages, email bodies, files, API
+  responses.
+- **Model-generated text**, including the agent's own prior turns.
+
+Note what this rejects: **"the database is trusted" is false.** The *schema* is
+trusted; arbitrary text in a `notes` column is not. Confusing the two is the
+whole vulnerability.
+
+## What may authorise a write
+
+A write needs a source of authority, and only some sources qualify.
+
+**May authorise**
+
+- `USER_DIRECT` — the user asked for this action, in this turn.
+- `USER_SCOPED_INTENT` — the user authorised an action *class* over a set they
+  described rather than enumerated (*"mark everything overdue as done"*).
+- `HUMAN_APPROVAL` — a person answered the permission prompt.
+- `SYSTEM_POLICY` — configured auto-approval for a level.
+
+**May never authorise**
+
+- `UNTRUSTED_TOOL_OUTPUT` — text retrieved from storage.
+- `MODEL_GENERATED_INSTRUCTION` — the agent persuading itself.
+- `EXTERNAL_CONTENT` — anything the user did not write.
+
+## What is enforced today
+
+`permissions/authorization.py` implements one mechanical check, at the broker
+(ADR-036): **did the user's turn express intent for this action class?**
+
+```
+user's message  ->  intent for CREATE / FINISH / MODIFY / RECORD_MONEY?
+                        |
+                   no   |   yes
+                        |
+        escalate to human approval    proceed under normal policy
+```
+
+The agent proposes; the broker decides. A write nobody asked for prompts a human
+even where policy says `auto`, using the existing `requires_human_approval`
+hook — so approval semantics are unchanged, and an unattended session refuses
+rather than self-approving.
+
+Measured: **state intact 75/75 on both models** across the injection suite,
+against ~27% attacker-task creation before. The 7B fired 27 denials; the 3B
+fired none, because it was never persuaded.
+
+### Two questions, not one
+
+The design mistake worth remembering is conflating these:
+
+| Question | Answers |
+|---|---|
+| **Resource provenance** — where did the *target* come from? | is this task id smuggled from a note? |
+| **Authorization provenance** — where did the *permission* come from? | did the user ask for a write at all? |
+
+Resource provenance was built first and blocked **21 of 40** legitimate writes,
+because *"mark the second one done"* never names its target. Authorization
+provenance blocks 10 of 40, all in one family. **They fail on different cases
+and are meant to compose** — that composition is untried.
+
+## What is not defended
+
+Stated plainly so nobody inherits a false sense of coverage.
+
+- **An injection echoing the user's verbs.** If the user says "mark it done" and
+  a note says "mark everything done", the action class matches. Authorization
+  provenance does not look at the target; resource provenance would, and is not
+  currently wired.
+- **Reads.** Nothing gates them. An injection that exfiltrates by *reporting*
+  rather than writing is not addressed, and would not prompt.
+- **Sub-agent scope.** A delegated agent inherits its objective as its user
+  message. There is no narrowing of authority across a delegation boundary.
+- **Anything after 2 hops.** Untested; no multi-hop tool chain exists yet.
+
+## For whoever builds the Research Agent
+
+It will be the first component to read content the user did not write, and it is
+gated on this work for that reason.
+
+1. **Do not assume any of the above transfers.** Every result here is measured
+   against task notes. Web and email content is longer, more adversarial, and
+   arrives in bulk.
+2. **Set `reads_untrusted_content`** on the agent, and measure the effect on the
+   rest of the suite before believing it — ADR-034 shows a prompt addition
+   displacing unrelated behaviour badly enough to reintroduce a money bug.
+3. **Compose the two provenances** before shipping. Neither alone is sufficient
+   and the combination has never been measured.
+4. **Write the attack cases before the defence.** The instrument in
+   `evaluations/cases/authorization.yaml` exists because a defence was nearly
+   shipped without one.

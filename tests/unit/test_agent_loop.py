@@ -48,6 +48,29 @@ class SpyTool(Tool):
         return args
 
 
+class WriteSpy(Tool):
+    """A `write`-level tool whose resource is whatever it was given.
+
+    Exists so the grounding gate can be exercised through the real loop: the
+    gate reads `describe_resource(args)`, so the test needs a tool where that
+    string is under the test's control.
+    """
+
+    # Named after a real write tool so the loop test exercises the real
+    # authorization classification rather than a name nothing recognises.
+    name = "add_task"
+    description = "Writes something."
+    Input = SpyInput
+    Output = SpyInput
+    permission = PermissionLevel.WRITE
+
+    def describe_resource(self, args: SpyInput) -> str:  # type: ignore[override]
+        return args.value
+
+    def run(self, args: SpyInput, ctx: ToolContext) -> SpyInput:  # type: ignore[override]
+        return args
+
+
 def make_agent(
     responses,
     *,
@@ -304,6 +327,70 @@ class TestPermissionGate:
             context=tool_context,
         ).run("read it")
         assert len(prompts) == 1
+
+
+class TestUnauthorizedWritesEscalate:
+    """ADR-036: the gate the model cannot talk its way past.
+
+    `SpyTool` is `DELETE`-level, so these use a policy broker that auto-approves
+    writes -- the point is that an ungrounded write is escalated *past* a
+    permissive policy, exactly as `requires_human_approval` already does for
+    tools that always need a human.
+    """
+
+    def _run(self, tool_context, objective: str, value: str):
+        registry = ToolRegistry()
+        registry.register(WriteSpy())
+        broker = RecordingBroker(
+            PolicyBroker({PermissionLevel.WRITE: "auto"}, interactive=False)
+        )
+        agent = make_agent(
+            [tool_call_response("add_task", {"value": value}), text_response("ok")],
+            tools=registry,
+            tool_names=["add_task"],
+            permissions=[PermissionLevel.WRITE],
+            broker=broker,
+            context=tool_context,
+        )
+        result = agent.run(objective)
+        return result, broker
+
+    def test_a_write_the_user_asked_for_is_auto_approved(self, tool_context):
+        result, broker = self._run(
+            tool_context, "Add a task to renew my passport", "renew passport"
+        )
+        assert broker.decisions[-1].granted
+        assert result.ok
+
+    def test_a_write_the_user_never_mentioned_is_escalated(self, tool_context):
+        """The measured injection: a read-only request, an unrelated write."""
+        result, broker = self._run(
+            tool_context, "What is on my task list?", "Cleanup done"
+        )
+        decision = broker.decisions[-1]
+        assert not decision.granted
+        # Non-interactive downgrades the prompt to a refusal, and the refusal
+        # comes back as an observation the model can report honestly.
+        observation = [m for m in result.transcript if m.role is Role.TOOL][0]
+        assert observation.content.startswith("DENIED:")
+
+    def test_a_read_is_never_escalated(self, tool_context):
+        """Confirmations on reads are the prompts ADR-014 says train click-through."""
+        broker = RecordingBroker(
+            PolicyBroker({PermissionLevel.READ: "auto"}, interactive=False)
+        )
+        agent = make_agent(
+            [
+                tool_call_response("read_file", {"path": "README.md"}),
+                text_response("ok"),
+            ],
+            broker=broker,
+            context=tool_context,
+        )
+        # Nothing in the objective overlaps "README.md".
+        result = agent.run("What is on my task list?")
+        assert broker.decisions[-1].granted
+        assert result.ok
 
 
 class TestContentIsData:
