@@ -22,7 +22,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from personal_ai_os.evaluation.checks import CheckOutcome
 from personal_ai_os.evaluation.taxonomy import Failure, by_severity
 
-RESULT_VERSION = 1
+#: Result-file schema version. Bumped to 2 when `runtime_version` was added
+#: (ADR-041). The distinction it preserves is real: **v1 means the field did not
+#: exist, so the runtime is unknown; v2 with an empty string means the field
+#: existed and the runtime declined to say.** Without the bump those two are the
+#: same empty value -- the exact ambiguity ADR-041 exists to remove.
+RESULT_VERSION = 2
 PREVIEW_CHARS = 200
 
 
@@ -158,6 +163,14 @@ class SuiteResult(BaseModel):
     version: int = RESULT_VERSION
     suite: str
     model: str
+    #: The inference server's version, **observed once at suite initialization**
+    #: -- not a per-run guarantee. A server restarted or upgraded mid-suite would
+    #: not be reflected here (ADR-041).
+    #:
+    #: Empty for results written before this existed (`version: 1`), and for
+    #: providers that report no version, such as the scripted model used by the
+    #: offline tests.
+    runtime_version: str = ""
     started_at: str
     finished_at: str = ""
     #: Which split was run. A result that does not say this cannot be trusted
@@ -264,6 +277,7 @@ def render(result: SuiteResult) -> str:
     lines = [
         f"suite  : {result.suite}",
         f"model  : {result.model}",
+        f"runtime: {result.runtime_version or 'not recorded'}",
         f"split  : {result.split}",
         f"run at : {result.started_at}",
         "",
@@ -337,8 +351,10 @@ def compare(a: SuiteResult, b: SuiteResult) -> str:
     lines = [
         f"suite: {a.suite}",
         "",
-        f"  A = {a.model}   ({a.started_at})",
-        f"  B = {b.model}   ({b.started_at})",
+        f"  A = {a.model}   ({a.started_at})   runtime "
+        f"{a.runtime_version or 'not recorded'}",
+        f"  B = {b.model}   ({b.started_at})   runtime "
+        f"{b.runtime_version or 'not recorded'}",
         "",
         f"  {'CASE':<28} {'A':>8} {'B':>8}   {'DELTA':>8}",
     ]
@@ -376,6 +392,13 @@ def compare(a: SuiteResult, b: SuiteResult) -> str:
         "  Read both columns. A faster model that fails more checks is a",
         "  regression, however good its throughput looks.",
     ]
+    if a.runtime_version != b.runtime_version:
+        lines += [
+            "",
+            f"  NOTE: different inference runtimes ({a.runtime_version or '?'} vs "
+            f"{b.runtime_version or '?'}). Any difference below may be the",
+            "  runtime rather than the change under test -- check before attributing.",
+        ]
     return "\n".join(lines)
 
 

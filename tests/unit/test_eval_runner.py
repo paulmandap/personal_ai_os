@@ -251,3 +251,113 @@ class TestSuiteRun:
         assert result.pass_rate == pytest.approx(0.5)
         assert result.case("good").pass_rate == 1.0
         assert result.case("bad").pass_rate == 0.0
+
+
+class TestRuntimeVersionProvenance:
+    """ADR-041: a result must say which inference runtime produced it.
+
+    The gap this closes: mapping a committed result to an Ollama build was
+    commit-date detective work, and the naive "latest result per suite" selector
+    once picked up runs made under *different application code*, which would
+    have credited their effects to a runtime bump.
+    """
+
+    def _suite(self) -> EvalSuite:
+        return EvalSuite(
+            suite="prov",
+            agent="task_agent",
+            repeat=1,
+            cases=[make_case(checks=["answered"])],
+        )
+
+    def test_the_result_records_a_runtime_version_field(self):
+        runner = EvalRunner(
+            repo_root=REPO_ROOT, runtime_builder=scripted_builder(add_task_then_answer())
+        )
+        result = runner.run_suite(self._suite())
+        # ScriptedModel reports no version, which is the correct answer for it.
+        assert result.runtime_version == ""
+        assert "runtime_version" in result.model_dump()
+
+    def test_it_comes_from_the_runtime_provided_registry(self):
+        """The architectural requirement, asserted rather than assumed.
+
+        `evaluation/` must not import or construct a provider -- the model seam
+        is the project's central rule. The version has to arrive through the
+        registry the injected `runtime_builder` supplied, so a test that hands
+        over a registry reporting a known version must see exactly that value.
+        """
+
+        class VersionedModel(ScriptedModel):
+            def health(self):
+                h = super().health()
+                return h.model_copy(update={"runtime_version": "9.9.9-test"})
+
+        def build(settings: Settings, store: Store, broker: RecordingBroker) -> Runtime:
+            registry = ModelRegistry(
+                settings.models,
+                factory=lambda name, tier, s: VersionedModel(
+                    add_task_then_answer()(), name=name
+                ),
+            )
+            return Runtime.build(
+                settings=settings, store=store, broker=broker, models=registry,
+                configure_logging=False,
+            )
+
+        result = EvalRunner(repo_root=REPO_ROOT, runtime_builder=build).run_suite(
+            self._suite()
+        )
+        assert result.runtime_version == "9.9.9-test"
+
+    def test_it_builds_no_second_provider_and_makes_no_network_call(self, monkeypatch):
+        """Offline-safety, made structural rather than incidental.
+
+        `pytest -q` must pass with Ollama stopped. If `run_suite` constructed its
+        own registry it would build a real `OllamaModel` under
+        `default_factory`, and the socket block in `tests/unit/conftest.py` would
+        fire. Poisoning the default factory proves the runner never reaches for
+        it -- sockets are blocked here anyway, so this asserts the *reason* the
+        suite stays offline, not merely that it does.
+        """
+        import personal_ai_os.models.registry as registry_module
+
+        def explode(*a, **k):  # pragma: no cover - must never be called
+            raise AssertionError(
+                "run_suite constructed a provider via default_factory; the "
+                "runtime's own registry must be used instead (ADR-041)"
+            )
+
+        monkeypatch.setattr(registry_module, "default_factory", explode)
+
+        calls: list[str] = []
+        original = ScriptedModel.health
+
+        def counting_health(self):
+            calls.append(self.name)
+            return original(self)
+
+        monkeypatch.setattr(ScriptedModel, "health", counting_health)
+
+        runner = EvalRunner(
+            repo_root=REPO_ROOT, runtime_builder=scripted_builder(add_task_then_answer())
+        )
+        suite = EvalSuite(
+            suite="prov", agent="task_agent", repeat=3,
+            cases=[make_case(checks=["answered"])],
+        )
+        result = runner.run_suite(suite)
+        assert result.runtime_version == ""
+        # Observed once at suite initialization, not once per repetition.
+        assert len(calls) == 1, f"health() called {len(calls)} times, expected 1"
+
+    def test_it_is_re_observed_for_each_suite(self):
+        """A long session can span a server restart; a stale version is worse
+        than none, so the cache is per suite rather than per runner."""
+        runner = EvalRunner(
+            repo_root=REPO_ROOT, runtime_builder=scripted_builder(add_task_then_answer())
+        )
+        runner.run_suite(self._suite())
+        runner._runtime_version = "stale"
+        result = runner.run_suite(self._suite())
+        assert result.runtime_version == ""

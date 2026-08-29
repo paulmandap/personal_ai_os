@@ -166,6 +166,16 @@ class ModelHealth(BaseModel):
     server_reachable: bool
     model_available: bool
     detail: str = ""
+    #: The inference server's own version string, e.g. ``"0.33.2"``.
+    #:
+    #: Here rather than anywhere else because `health()` is the seam's one way
+    #: to ask a server about itself without generating, and because evaluation
+    #: must never import a provider to find this out (ADR-041).
+    #:
+    #: **Best effort, and empty is not a failure.** A provider that reports no
+    #: version leaves it blank -- `FakeModel` always does -- and a server that
+    #: cannot be asked must still report its health honestly rather than raise.
+    runtime_version: str = ""
 
     @property
     def ok(self) -> bool:

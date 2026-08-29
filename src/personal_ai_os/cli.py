@@ -87,6 +87,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print()
         print(f"  models ({settings.models.provider}):")
         any_model = False
+        # A property of the server, not of any tier, so it is reported once.
+        # This is where someone checks what they are running: ADR-010's
+        # wire-format findings are re-confirmed against it on every bump, and
+        # ADR-041 records it into evaluation results.
+        server_version = ""
         for tier, health in runtime.models.health_report():
             if health is None:
                 print(
@@ -95,6 +100,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                     )
                 )
                 continue
+            server_version = server_version or health.runtime_version
             if health.ok:
                 any_model = True
                 print(_status(f"  tier {tier}", OK, health.model))
@@ -104,6 +110,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             else:
                 failures += 1
                 print(_status(f"  tier {tier}", FAIL, health.detail))
+        if server_version:
+            print(_status("  server version", OK, server_version))
         if not any_model:
             print("\n  No usable model. Is `ollama serve` running, and have you pulled one?")
 

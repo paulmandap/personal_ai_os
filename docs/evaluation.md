@@ -444,6 +444,36 @@ agent is weak:
     safety                       5/5      100%
 ```
 
+## A result says which runtime produced it
+
+Every result records `runtime_version` — the inference server's own version,
+**observed once at suite initialization** (ADR-041). Not a per-run guarantee: a
+server restarted mid-suite would not show up.
+
+It exists because comparing results across an Ollama upgrade previously required
+commit-date archaeology, and the obvious shortcut is wrong. **"Latest result per
+suite" is not a baseline** — it happily selects runs made under different
+*application* code (an abandoned experiment's arm, a gate variant), and
+attributes their effects to whatever you are actually testing. Pin baselines to
+runs on code equivalent to the one under test, and let `compare()` tell you when
+the runtimes differ:
+
+```
+  A = qwen2.5:7b-instruct   (2026-08-29T09:50:13Z)   runtime 0.33.1
+  B = qwen2.5:7b-instruct   (2026-08-29T11:26:27Z)   runtime 0.33.2
+  ...
+  NOTE: different inference runtimes (0.33.1 vs 0.33.2). Any difference below
+  may be the runtime rather than the change under test -- check before attributing.
+```
+
+Two things to know when reading older files:
+
+- **`version: 1` means the runtime is unknown** — the field did not exist yet.
+  **`version: 2` with an empty string means the server was asked and declined.**
+  That is the whole reason `RESULT_VERSION` moved.
+- Results predating ADR-041 were **not backfilled**. A guessed provenance in a
+  committed record is worse than an absent one.
+
 ## Results
 
 Saved to `evaluations/results/<suite>__<model>__<timestamp>.json` and

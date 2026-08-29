@@ -307,3 +307,64 @@ class TestHealth:
         assert not health.server_reachable
         assert not health.ok
         assert "cannot reach" in health.detail
+
+
+class TestRuntimeVersionOnHealth:
+    """ADR-041: the seam's way to ask a server about itself.
+
+    `ModelHealth.runtime_version` exists so `evaluation/` can record which
+    runtime produced a result without importing a provider class.
+    """
+
+    def test_it_defaults_empty_so_other_providers_need_no_change(self):
+        from personal_ai_os.core.types import ModelHealth
+
+        h = ModelHealth(provider="p", model="m", server_reachable=True,
+                        model_available=True)
+        assert h.runtime_version == ""
+
+    def test_the_fake_model_reports_no_version(self):
+        """Correct, not a gap: a scripted model has no server behind it."""
+        from personal_ai_os.models.fake import ScriptedModel
+
+        assert ScriptedModel([]).health().runtime_version == ""
+
+    def test_health_reports_the_server_version(self):
+        """Read from /api/version, alongside the /api/tags reachability check."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/api/version":
+                return httpx.Response(200, json={"version": "0.33.2"})
+            return httpx.Response(
+                200, json={"models": [{"model": "qwen2.5:7b-instruct"}]}
+            )
+
+        health = build_model(handler).health()
+        assert health.ok
+        assert health.runtime_version == "0.33.2"
+
+    def test_a_version_endpoint_that_fails_does_not_make_the_server_unhealthy(self):
+        """Provenance is optional; health is not.
+
+        `health()` is contractually forbidden from raising, and a server that
+        will not name itself is still a working server.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/api/version":
+                return httpx.Response(500, text="nope")
+            return httpx.Response(
+                200, json={"models": [{"model": "qwen2.5:7b-instruct"}]}
+            )
+
+        health = build_model(handler).health()
+        assert health.ok
+        assert health.runtime_version == ""
+
+    def test_an_unreachable_server_reports_no_version_and_does_not_raise(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("refused")
+
+        health = build_model(handler).health()
+        assert not health.server_reachable
+        assert health.runtime_version == ""

@@ -441,12 +441,13 @@ because after 2026-09-07 there is no conversation to remember them.
    regression** — full record in *Last Successful Test*. Two findings to carry
    forward:
 
-   - **Result files record no Ollama version.** `version: 1` in a result is
-     `RESULT_VERSION`, the *schema* version. Mapping a result to a runtime relies
-     on this document plus commit dates. That worked here, but capturing the
-     runtime version in `SuiteResult` would make the next bump auditable without
-     detective work. **Not changed here** — that is an application change, and
-     this was a controlled dependency experiment.
+   - ~~**Result files record no Ollama version.**~~ **FIXED — ADR-041.**
+     `SuiteResult.runtime_version` now records the server version, captured
+     through `ModelHealth` so `evaluation/` never imports a provider.
+     `RESULT_VERSION` is 2: **v1 means the runtime is unknown, v2 with an empty
+     string means the server declined to say.** `compare()` warns when two
+     results came from different runtimes. **Results written before this stay
+     version-less** — backfilling was rejected as guessed provenance.
    - **"Latest run per suite" is the wrong baseline selector**, and it nearly
      produced a false result. It picks up ADR-039's ledger arms and ADR-036's
      gate variants — *different application code* — which would have credited
@@ -768,6 +769,7 @@ no cloud provider) overrides everything.
 | **038** | **The echo injection compromises the answer, not the store — composing the provenances would not have caught it** |
 | **039** | *(rejected)* **Stating the agent's own actions back to it fixes the echo dishonesty and breaks multi-turn writes** |
 | **040** | **A tool must not show the model a figure it would have to convert** |
+| **041** | **A result must say which runtime produced it** |
 
 ---
 
@@ -802,12 +804,12 @@ three new agents since Phase 1.
 
 ## Repository Facts
 
-- 648 tests: 632 unit (offline, sockets blocked), 16 integration (live)
+- 662 tests: 646 unit (offline, sockets blocked), 16 integration (live)
 - 10 evaluation suites, 55 cases, 11 holdout · 23 checks · 15 failure codes
   (F008 `SAFETY_VIOLATION` is in use as of ADR-037; it had none before)
 - 3 runtime dependencies (`pydantic`, `httpx`, `pyyaml`)
-- 20 commits. Last pushed: `da1d7e5` (Ollama 0.33.2 verification). ADR-040 is
-  uncommitted working tree: one serialization change in `memory/finance.py`,
-  nine new tests, docs, and the before/after result files.
+- 21 commits. Last pushed: ADR-040 (`fix: a tool must not show the model a
+  figure it would have to convert`). ADR-041 is uncommitted working tree:
+  `runtime_version` through the model seam, 14 new tests, docs.
 - `stash@{0}` holds ADR-039's reverted action-ledger. Paul's to keep or drop;
   ADR-039 records the code's shape either way.

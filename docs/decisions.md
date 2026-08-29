@@ -1866,3 +1866,101 @@ strings.
 - **A residual arithmetic defect remains** (`2380.00`), unrelated to minor units.
 - `Goal.remaining_minor` is a plain `@property`, never serialized, so it needed
   no change — noted so a future reader does not think it was missed.
+
+---
+
+## ADR-041 — A result must say which runtime produced it
+
+**Date:** 2026-08-29 · **Status:** accepted · **Phase:** 5 (overflow)
+
+**Context.** Verifying the Ollama 0.33.2 bump required mapping committed results
+to the runtime that produced them, and **result files recorded no such thing**.
+The `version: 1` field is `RESULT_VERSION` — the *schema* version — which is easy
+to mistake for the runtime's.
+
+That gap nearly produced a false finding. The obvious "latest result per suite"
+baseline selector picked up ADR-039's ledger arms and ADR-036's gate variants,
+which were produced by **different application code**; comparing against them
+would have credited their effects to the runtime bump. It was caught by hand,
+by noticing the timestamps sat inside an experiment window.
+
+**Decision.** `ModelHealth` gains `runtime_version`, the provider fills it in,
+and `EvalRunner` records it into `SuiteResult`.
+
+```
+  AgentModel.health() -> ModelHealth          <- the seam, provider-agnostic
+        |                        |
+   OllamaModel              FakeModel
+   GET /api/version         "" (no server)
+        |
+        v
+  EvalRunner (via runtime.models) -> SuiteResult.runtime_version -> result file
+```
+
+**Why `ModelHealth` and not a direct HTTP call.** CLAUDE.md's central rule is
+that everything reaches models through `AgentModel`, and **no evaluation, agent,
+tool or memory component may import a provider class**. `health()` is already the
+seam's one way to ask a server about itself without generating, and its contract
+— *must not raise* — is exactly right for provenance. A failed `/api/version`
+leaves the field empty and never turns a working server unhealthy.
+
+**Why the runner reads it from `runtime.models` rather than building a registry.**
+Two reasons, and the second is binding:
+
+1. `evaluation/` must not construct a provider.
+2. **`pytest -q` must pass with Ollama stopped**, and `tests/unit/conftest.py`
+   blocks sockets. A registry built inside `run_suite` would construct a real
+   `OllamaModel` under `default_factory` and hit a blocked socket. Going through
+   the runtime that the injected `runtime_builder` already supplied means the
+   test's scripted registry decides what gets built. **Offline-safety is
+   structural, not incidental**, and a test asserts it by poisoning
+   `default_factory` and requiring the suite to still pass.
+
+**`RESULT_VERSION` 1 → 2, and the reason is not cosmetic.** The constant is
+written but never read, so its only job is to record schema evolution — and here
+it carries a real distinction:
+
+| | meaning |
+|---|---|
+| `version: 1` | the field did not exist; **the runtime is unknown** |
+| `version: 2`, `runtime_version: ""` | the field existed; **the server declined to say** |
+
+Without the bump those are the same empty value — the exact ambiguity this ADR
+exists to remove. Old results still load, asserted against a real committed v1
+file.
+
+**Semantics, stated precisely because the name overpromises.**
+`runtime_version` is *the server version observed once at suite initialization*.
+It is **not a per-run guarantee**: a server restarted or upgraded mid-suite would
+not be reflected. It is re-observed for each suite rather than cached for the
+runner's lifetime, because a long session can span a restart and a stale version
+is worse than none.
+
+**Also surfaced where people look.** `compare()` prints both runtimes and warns
+explicitly when they differ — the case that nearly caused the false attribution —
+and `paios doctor` reports the server version, which is where someone checks what
+they are running before re-confirming ADR-010.
+
+**Verified.** 646 unit tests pass with Ollama stopped; one live run confirms
+`runtime: 0.33.2` end to end. **No regression sweep**: CLAUDE.md's
+"measure across every suite" rule fires on prompt, tool-schema and
+tool-description changes because those alter what the model reads. This alters
+what the result file records, `health()` is never called during a run, and no
+model-facing surface moves.
+
+**Limits.**
+
+- **It does not fix the past.** Every existing result stays version-less; the
+  mapping for those remains commit-date reasoning, documented in PROJECT_STATE.
+  Backfilling was rejected — a guessed provenance in a committed record is worse
+  than an absent one.
+- **Suite-level, not run-level**, as above.
+- **Self-declared.** The value is whatever the server reports about itself:
+  provenance, not proof of what code ran.
+- **`""` remains ambiguous within v2** — "unreachable" and "provider reports no
+  version" render identically. `FakeModel` is deliberately the second.
+- **`RESULT_VERSION` has still never been exercised.** Nothing reads it; the bump
+  is a marker for a migration that may never be written.
+- **Model digests are deliberately not recorded.** `/api/tags` carries them and
+  they would pin the weights as well as the runtime — but that is a second
+  provenance field with its own design questions. Future work.

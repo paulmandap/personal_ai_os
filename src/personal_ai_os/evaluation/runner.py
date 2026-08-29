@@ -84,6 +84,9 @@ class EvalRunner:
         self.model = model
         self.repeat = repeat
         self._build_runtime = runtime_builder
+        #: Server version observed at suite initialization, from the first
+        #: runtime built. Reset per suite by `run_suite` (ADR-041).
+        self._runtime_version: str | None = None
 
     # --- isolation ---------------------------------------------------------
 
@@ -182,6 +185,8 @@ class EvalRunner:
                 PolicyBroker(settings.permissions.policy, interactive=False)
             )
             runtime = self._build_runtime(settings, store, broker)
+            if self._runtime_version is None:
+                self._runtime_version = self._observe_runtime_version(runtime)
             trace = RunTrace.disabled(agent=case.agent)
 
             started = time.perf_counter()
@@ -238,16 +243,52 @@ class EvalRunner:
         self, suite: EvalSuite, *, splits: tuple[Split, ...] = DEFAULT_SPLITS
     ) -> SuiteResult:
         started = utc_stamp()
+        # Re-observed per suite rather than cached for the runner's lifetime: a
+        # long session could span a server restart, and a stale version is worse
+        # than none (ADR-041).
+        self._runtime_version = None
         selected = suite.select(splits)
         cases = [self.run_case(c) for c in selected]
         return SuiteResult(
             suite=suite.suite,
             model=self.model or self._resolved_model_label(),
+            runtime_version=self._runtime_version or "",
             started_at=started,
             finished_at=utc_stamp(),
             split="+".join(splits),
             cases=cases,
         )
+
+    def _observe_runtime_version(self, runtime: Runtime) -> str:
+        """Which inference server produced this result (ADR-041).
+
+        **Read from the runtime the repetition already built**, never by
+        constructing a model here. Two reasons, and the second is the binding
+        one:
+
+        1. `evaluation/` must not import a provider class -- the model seam is
+           the project's central architectural rule -- and `ModelHealth` is the
+           seam's own way to ask a server about itself without generating.
+        2. `pytest -q` must pass with Ollama stopped, and `tests/unit/conftest.py`
+           blocks sockets. Building a registry here would construct a real
+           `OllamaModel` under the default factory and hit a blocked socket.
+           Going through `runtime.models` means the injected `runtime_builder`
+           decides what gets built, so the offline tests resolve a `FakeModel`
+           that reports no version. Offline-safety is structural, not incidental.
+
+        Never raises: provenance is optional, and a suite must not fail because a
+        server would not name itself.
+        """
+        try:
+            registry = runtime.models
+            if self.model:
+                model = registry.get_named(self.model)
+            else:
+                tier = registry.role_tier("reason") or registry.settings.default_tier
+                model = registry.get_tier(tier)
+            return model.health().runtime_version
+        except PersonalAIOSError:
+            return ""
 
     def _resolved_model_label(self) -> str:
         """What to record when no explicit model was pinned."""

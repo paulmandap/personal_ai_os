@@ -283,7 +283,27 @@ class OllamaModel(AgentModel):
             server_reachable=True,
             model_available=available,
             detail="" if available else f"not installed; run: ollama pull {self.name}",
+            runtime_version=self._server_version(),
         )
+
+    def _server_version(self) -> str:
+        """The server's own version, or ``""`` if it will not say.
+
+        Separate from the `/api/tags` call above because a version is provenance,
+        not health: failing to read it must never turn a working server into an
+        unhealthy one. Every exception is swallowed for that reason -- `health()`
+        is contractually forbidden from raising.
+
+        ADR-010's findings are re-confirmed against this value on every bump, and
+        ADR-041 records it into evaluation results so a stored result says which
+        runtime produced it.
+        """
+        try:
+            response = self._client.get(f"{self.base_url}/api/version", timeout=5.0)
+            response.raise_for_status()
+            return str(response.json().get("version") or "")
+        except Exception:  # provenance is optional; health is not
+            return ""
 
     def close(self) -> None:
         self._client.close()

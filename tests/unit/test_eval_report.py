@@ -220,3 +220,52 @@ class TestRendering:
         b = suite("y", case("only_in_b", run(1, True)))
         text = compare(a, b)
         assert "only_in_a" in text and "only_in_b" in text
+
+
+class TestRuntimeVersionProvenance:
+    """ADR-041: which inference runtime produced this result?"""
+
+    def test_it_round_trips(self, tmp_path: Path):
+        s = suite("m", case("a", run(1, True)))
+        s.runtime_version = "0.33.2"
+        loaded = SuiteResult.load(s.save(tmp_path))
+        assert loaded.runtime_version == "0.33.2"
+        assert loaded.version == 2
+
+    def test_a_v1_result_with_no_such_field_still_loads(self):
+        """Backward compatibility, asserted against a real committed result.
+
+        Every result written before ADR-041 lacks the field. They must keep
+        loading, and must be distinguishable from a v2 result whose server would
+        not name itself -- v1 means "unknown", v2 with "" means "asked, no
+        answer". That distinction is the whole reason RESULT_VERSION moved.
+        """
+        results = sorted(Path("evaluations/results").glob("*.json"))
+        older = [p for p in results if '"version": 1' in p.read_text(encoding="utf-8")]
+        assert older, "expected committed v1 results to exist"
+        loaded = SuiteResult.load(older[0])
+        assert loaded.version == 1
+        assert loaded.runtime_version == ""
+        assert loaded.total_runs > 0
+
+    def test_render_shows_it_and_says_so_when_absent(self):
+        s = suite("m", case("a", run(1, True)))
+        assert "not recorded" in render(s)
+        s.runtime_version = "0.33.2"
+        assert "0.33.2" in render(s)
+
+    def test_compare_warns_when_the_runtimes_differ(self):
+        """The case that nearly caused a false attribution during ADR-010's
+        re-confirmation: two results produced by different servers."""
+        a = suite("7b", case("a", run(1, True)))
+        b = suite("7b", case("a", run(1, False)))
+        a.runtime_version, b.runtime_version = "0.33.1", "0.33.2"
+        text = compare(a, b)
+        assert "different inference runtimes" in text
+        assert "0.33.1" in text and "0.33.2" in text
+
+    def test_compare_stays_quiet_when_they_match(self):
+        a = suite("7b", case("a", run(1, True)))
+        b = suite("3b", case("a", run(1, True)))
+        a.runtime_version = b.runtime_version = "0.33.2"
+        assert "different inference runtimes" not in compare(a, b)
