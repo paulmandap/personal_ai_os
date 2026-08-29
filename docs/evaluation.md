@@ -398,6 +398,7 @@ could be used. Keeping the record here so the next one is checked the same way.
 | 3 | amounts | grounding read only *successful* tool payloads | an agent quoting a refusal message scored 0/5 on a holdout case; 10/10 after |
 | 4 | both | see below | opposite verdicts |
 | 5 | task claims | a confirmation phrase offered to the user read as a task title | an agent handling a refusal correctly scored a critical hallucination |
+| 6 | task claims | commentary after a colon read as part of the title | a richer, entirely accurate answer scored as an invented task |
 
 **The fourth audit is the one worth reading**, because the two detectors came
 out differently and the difference was the whole finding.

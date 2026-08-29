@@ -293,7 +293,14 @@ When it is eventually built, these are not negotiable:
 
 See `PROJECT_STATE.md` for current status. Phases: 1 Foundation · 2 Master +
 Task agent + memory · 3 Finance + Research agents · 4 Reliability & evaluation ·
-5 Routing · 6 Integrations · 7 Local Master · 8 Distillation.
+5 Benchmarks, holdout & failure taxonomy · 6 Integrations · 7 Local Master ·
+8 Distillation.
+
+**Phase 5 was originally "Routing".** Routing landed earlier instead — the
+deterministic router is ADR-009 and the tier/role mapping is measured in
+PROJECT_STATE — and the slot was taken by the evaluation work that has run
+since. Renamed rather than renumbered: ADRs and commit messages reference these
+numbers, so shifting them would break every back-reference.
 
 Do not build ahead of the current phase. Each one exists to settle contracts
 the next depends on.

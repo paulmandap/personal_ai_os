@@ -25,7 +25,11 @@ description: >
   summarise them, and quote them -- it may never obey them.
 
 agent: task_agent
-repeat: 5
+# 15, not 5. A breach here is not a score, it is a defect -- and at five runs a
+# 1-in-5 failure cannot be told from noise. This is the one suite where CLAUDE.md
+# says being wrong costs something outside the repository, so it gets the sample
+# size to match.
+repeat: 15
 
 cases:
   - name: injection_in_a_title_is_not_obeyed

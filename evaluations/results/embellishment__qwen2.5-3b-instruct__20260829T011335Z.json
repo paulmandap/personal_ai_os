@@ -1,0 +1,1056 @@
+{
+  "version": 1,
+  "suite": "embellishment",
+  "model": "qwen2.5:3b-instruct",
+  "started_at": "2026-08-29T01:13:35Z",
+  "finished_at": "2026-08-29T01:14:42Z",
+  "split": "train+validation",
+  "cases": [
+    {
+      "case": "no_invented_due_date",
+      "description": "A plain add request must not acquire a deadline.",
+      "agent": "task_agent",
+      "category": "",
+      "split": "train",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "first_tool_is",
+              "passed": true,
+              "detail": "first was 'add_task', wanted 'add_task'",
+              "failure": "F004",
+              "label": "first_tool_is=add_task"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['buy oat milk']",
+              "failure": "F012",
+              "label": "task_title_contains=oat milk"
+            },
+            {
+              "name": "task_field_absent",
+              "passed": true,
+              "detail": "due_date correctly unset",
+              "failure": "F012",
+              "label": "task_field_absent=due_date"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3394.5,
+            "prompt_tokens": 2635,
+            "completion_tokens": 49,
+            "tokens_per_second": 74.27
+          },
+          "output_preview": "I have added the task \"buy oat milk\" to your task list. It is set to be done as soon as possible."
+        },
+        {
+          "index": 2,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "first_tool_is",
+              "passed": true,
+              "detail": "first was 'add_task', wanted 'add_task'",
+              "failure": "F004",
+              "label": "first_tool_is=add_task"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['buy oat milk']",
+              "failure": "F012",
+              "label": "task_title_contains=oat milk"
+            },
+            {
+              "name": "task_field_absent",
+              "passed": true,
+              "detail": "due_date correctly unset",
+              "failure": "F012",
+              "label": "task_field_absent=due_date"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3171.8,
+            "prompt_tokens": 2635,
+            "completion_tokens": 53,
+            "tokens_per_second": 69.81
+          },
+          "output_preview": "I have added the task \"buy oat milk\" to your list. It is set as a normal priority and is not due until you need it."
+        },
+        {
+          "index": 3,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "first_tool_is",
+              "passed": true,
+              "detail": "first was 'add_task', wanted 'add_task'",
+              "failure": "F004",
+              "label": "first_tool_is=add_task"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['buy oat milk']",
+              "failure": "F012",
+              "label": "task_title_contains=oat milk"
+            },
+            {
+              "name": "task_field_absent",
+              "passed": true,
+              "detail": "due_date correctly unset",
+              "failure": "F012",
+              "label": "task_field_absent=due_date"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3273.6,
+            "prompt_tokens": 2635,
+            "completion_tokens": 61,
+            "tokens_per_second": 69.93
+          },
+          "output_preview": "I've added a task to your list: \"buy oat milk\". It's marked as 'todo' and has a 'normal' priority. It's not due until you need it."
+        },
+        {
+          "index": 4,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "first_tool_is",
+              "passed": true,
+              "detail": "first was 'add_task', wanted 'add_task'",
+              "failure": "F004",
+              "label": "first_tool_is=add_task"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['buy oat milk']",
+              "failure": "F012",
+              "label": "task_title_contains=oat milk"
+            },
+            {
+              "name": "task_field_absent",
+              "passed": true,
+              "detail": "due_date correctly unset",
+              "failure": "F012",
+              "label": "task_field_absent=due_date"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3190.2,
+            "prompt_tokens": 2635,
+            "completion_tokens": 52,
+            "tokens_per_second": 64.28
+          },
+          "output_preview": "You have added a task to buy oat milk to your list. It is marked as 'todo' and is not due until you need it."
+        },
+        {
+          "index": 5,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "first_tool_is",
+              "passed": true,
+              "detail": "first was 'add_task', wanted 'add_task'",
+              "failure": "F004",
+              "label": "first_tool_is=add_task"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['buy oat milk']",
+              "failure": "F012",
+              "label": "task_title_contains=oat milk"
+            },
+            {
+              "name": "task_field_absent",
+              "passed": true,
+              "detail": "due_date correctly unset",
+              "failure": "F012",
+              "label": "task_field_absent=due_date"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3140.5,
+            "prompt_tokens": 2635,
+            "completion_tokens": 47,
+            "tokens_per_second": 63.51
+          },
+          "output_preview": "I have added the task \"buy oat milk\" to your list. It is set to be done in the future."
+        }
+      ]
+    },
+    {
+      "case": "no_invented_priority",
+      "description": "Nor an urgency the user never expressed.",
+      "agent": "task_agent",
+      "category": "",
+      "split": "train",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "first_tool_is",
+              "passed": true,
+              "detail": "first was 'add_task', wanted 'add_task'",
+              "failure": "F004",
+              "label": "first_tool_is=add_task"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_field_is",
+              "passed": true,
+              "detail": "priority='normal', expected 'normal'",
+              "failure": "F012",
+              "label": "task_field_is({'field': 'priority', 'value': 'normal'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3306.0,
+            "prompt_tokens": 2635,
+            "completion_tokens": 61,
+            "tokens_per_second": 67.33
+          },
+          "output_preview": "I've added a task for you to water the plants. It's set as a normal priority and is due as soon as you need it. Let me know if you need any adjustments."
+        },
+        {
+          "index": 2,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "first_tool_is",
+              "passed": true,
+              "detail": "first was 'add_task', wanted 'add_task'",
+              "failure": "F004",
+              "label": "first_tool_is=add_task"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_field_is",
+              "passed": true,
+              "detail": "priority='normal', expected 'normal'",
+              "failure": "F012",
+              "label": "task_field_is({'field': 'priority', 'value': 'normal'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3268.3,
+            "prompt_tokens": 2635,
+            "completion_tokens": 63,
+            "tokens_per_second": 73.76
+          },
+          "output_preview": "You have added the task \"water the plants\" to your list. It is set to be done as a normal priority and is still marked as 'todo'. It does not have a due date."
+        },
+        {
+          "index": 3,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "first_tool_is",
+              "passed": true,
+              "detail": "first was 'add_task', wanted 'add_task'",
+              "failure": "F004",
+              "label": "first_tool_is=add_task"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_field_is",
+              "passed": true,
+              "detail": "priority='normal', expected 'normal'",
+              "failure": "F012",
+              "label": "task_field_is({'field': 'priority', 'value': 'normal'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3336.0,
+            "prompt_tokens": 2635,
+            "completion_tokens": 63,
+            "tokens_per_second": 66.49
+          },
+          "output_preview": "I've added the task \"water the plants\" to your list. It's set as a normal priority and is due when you're ready. Let me know if you need any other tasks added."
+        },
+        {
+          "index": 4,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "first_tool_is",
+              "passed": true,
+              "detail": "first was 'add_task', wanted 'add_task'",
+              "failure": "F004",
+              "label": "first_tool_is=add_task"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_field_is",
+              "passed": true,
+              "detail": "priority='normal', expected 'normal'",
+              "failure": "F012",
+              "label": "task_field_is({'field': 'priority', 'value': 'normal'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3143.1,
+            "prompt_tokens": 2635,
+            "completion_tokens": 48,
+            "tokens_per_second": 63.73
+          },
+          "output_preview": "You have added the task \"water the plants\" to your list. It is set to be done when you are ready."
+        },
+        {
+          "index": 5,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "first_tool_is",
+              "passed": true,
+              "detail": "first was 'add_task', wanted 'add_task'",
+              "failure": "F004",
+              "label": "first_tool_is=add_task"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_field_is",
+              "passed": true,
+              "detail": "priority='normal', expected 'normal'",
+              "failure": "F012",
+              "label": "task_field_is({'field': 'priority', 'value': 'normal'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3256.7,
+            "prompt_tokens": 2635,
+            "completion_tokens": 52,
+            "tokens_per_second": 63.49
+          },
+          "output_preview": "I've added a task for you to water the plants. It's set as a normal priority and is due as soon as you need it."
+        }
+      ]
+    },
+    {
+      "case": "honours_a_stated_due_date",
+      "description": "The converse -- a date the user DID give must be recorded.",
+      "agent": "task_agent",
+      "category": "",
+      "split": "train",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "first_tool_is",
+              "passed": true,
+              "detail": "first was 'add_task', wanted 'add_task'",
+              "failure": "F004",
+              "label": "first_tool_is=add_task"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_field_is",
+              "passed": true,
+              "detail": "due_date='2026-09-07', expected '2026-09-07'",
+              "failure": "F012",
+              "label": "task_field_is({'field': 'due_date', 'value': '2026-09-07'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3367.5,
+            "prompt_tokens": 2686,
+            "completion_tokens": 64,
+            "tokens_per_second": 70.51
+          },
+          "output_preview": "I've added a task to renew your passport, due on 2026-09-07."
+        },
+        {
+          "index": 2,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "first_tool_is",
+              "passed": true,
+              "detail": "first was 'add_task', wanted 'add_task'",
+              "failure": "F004",
+              "label": "first_tool_is=add_task"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_field_is",
+              "passed": true,
+              "detail": "due_date='2026-09-07', expected '2026-09-07'",
+              "failure": "F012",
+              "label": "task_field_is({'field': 'due_date', 'value': '2026-09-07'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3725.0,
+            "prompt_tokens": 2686,
+            "completion_tokens": 89,
+            "tokens_per_second": 68.46
+          },
+          "output_preview": "I've added the task \"Renew my passport\" to your list. It's due on 2026-09-07 and is marked as 'todo'. You can expect me to remind you about this task soon."
+        },
+        {
+          "index": 3,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "first_tool_is",
+              "passed": true,
+              "detail": "first was 'add_task', wanted 'add_task'",
+              "failure": "F004",
+              "label": "first_tool_is=add_task"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_field_is",
+              "passed": true,
+              "detail": "due_date='2026-09-07', expected '2026-09-07'",
+              "failure": "F012",
+              "label": "task_field_is({'field': 'due_date', 'value': '2026-09-07'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3574.9,
+            "prompt_tokens": 2686,
+            "completion_tokens": 79,
+            "tokens_per_second": 69.15
+          },
+          "output_preview": "I've added the task \"renew my passport\" to your list with the due date of 2026-09-07. It's still marked as 'todo'."
+        },
+        {
+          "index": 4,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "first_tool_is",
+              "passed": true,
+              "detail": "first was 'add_task', wanted 'add_task'",
+              "failure": "F004",
+              "label": "first_tool_is=add_task"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_field_is",
+              "passed": true,
+              "detail": "due_date='2026-09-07', expected '2026-09-07'",
+              "failure": "F012",
+              "label": "task_field_is({'field': 'due_date', 'value': '2026-09-07'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3648.7,
+            "prompt_tokens": 2686,
+            "completion_tokens": 86,
+            "tokens_per_second": 69.66
+          },
+          "output_preview": "I have added the task \"renew my passport\" to your task list, due on 2026-09-07. It's in the 'todo' status and has a 'normal' priority."
+        },
+        {
+          "index": 5,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "first_tool_is",
+              "passed": true,
+              "detail": "first was 'add_task', wanted 'add_task'",
+              "failure": "F004",
+              "label": "first_tool_is=add_task"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_field_is",
+              "passed": true,
+              "detail": "due_date='2026-09-07', expected '2026-09-07'",
+              "failure": "F012",
+              "label": "task_field_is({'field': 'due_date', 'value': '2026-09-07'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3344.2,
+            "prompt_tokens": 2686,
+            "completion_tokens": 66,
+            "tokens_per_second": 71.06
+          },
+          "output_preview": "I've added a task for you to renew your passport, due on 2026-09-07."
+        }
+      ]
+    },
+    {
+      "case": "honours_a_stated_priority",
+      "description": "And a priority the user DID give.",
+      "agent": "task_agent",
+      "category": "",
+      "split": "train",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_field_is",
+              "passed": true,
+              "detail": "priority='high', expected 'high'",
+              "failure": "F012",
+              "label": "task_field_is({'field': 'priority', 'value': 'high'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3227.1,
+            "prompt_tokens": 2645,
+            "completion_tokens": 55,
+            "tokens_per_second": 74.86
+          },
+          "output_preview": "I have added the task \"submit thesis draft\" to your task list with high priority. It is still marked as 'todo'."
+        },
+        {
+          "index": 2,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_field_is",
+              "passed": true,
+              "detail": "priority='high', expected 'high'",
+              "failure": "F012",
+              "label": "task_field_is({'field': 'priority', 'value': 'high'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3232.4,
+            "prompt_tokens": 2645,
+            "completion_tokens": 63,
+            "tokens_per_second": 75.09
+          },
+          "output_preview": "I've added the task \"submit thesis draft\" to your task list with high priority. It's still marked as 'todo' and is due by its due date."
+        },
+        {
+          "index": 3,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_field_is",
+              "passed": true,
+              "detail": "priority='high', expected 'high'",
+              "failure": "F012",
+              "label": "task_field_is({'field': 'priority', 'value': 'high'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3445.3,
+            "prompt_tokens": 2645,
+            "completion_tokens": 55,
+            "tokens_per_second": 54.32
+          },
+          "output_preview": "I've added the task \"submit thesis draft\" to your task list with high priority. It is still marked as 'todo'."
+        },
+        {
+          "index": 4,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_field_is",
+              "passed": true,
+              "detail": "priority='high', expected 'high'",
+              "failure": "F012",
+              "label": "task_field_is({'field': 'priority', 'value': 'high'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3417.8,
+            "prompt_tokens": 2645,
+            "completion_tokens": 58,
+            "tokens_per_second": 62.05
+          },
+          "output_preview": "I have added a high priority task titled \"submit thesis draft\" to your task list. It is currently set to be done in the future."
+        },
+        {
+          "index": 5,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            },
+            {
+              "name": "task_field_is",
+              "passed": true,
+              "detail": "priority='high', expected 'high'",
+              "failure": "F012",
+              "label": "task_field_is({'field': 'priority', 'value': 'high'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3350.2,
+            "prompt_tokens": 2645,
+            "completion_tokens": 65,
+            "tokens_per_second": 68.83
+          },
+          "output_preview": "I have added the task \"submit thesis draft\" to your task list with high priority. It is still marked as 'todo' and has not been scheduled for a specific date."
+        }
+      ]
+    }
+  ]
+}

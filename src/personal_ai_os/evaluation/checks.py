@@ -395,9 +395,15 @@ _BULLET = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+(.{3,160})$")
 #: "I couldn't find a task titled ...", producing a false hallucination report.
 _QUOTED = re.compile(r"[\"“]([^\"“”\n]{3,160})[\"”]")
 
-#: A model annotates an item after a dash: "Renew passport - Due 2026-09-07".
-#: The annotation is commentary, not part of the claimed title.
-_ANNOTATION = re.compile(r"\s+[-–—]\s+")
+#: A model annotates an item after a dash or a colon:
+#:   "Renew passport - Due 2026-09-07"
+#:   "Submit thesis draft (high): This task is still pending and has a high
+#:    priority. It is due on a date you haven't specified yet."
+#: The annotation is commentary, not part of the claimed title. The colon form
+#: showed up once `list_tasks` began advertising that it returns notes, dates
+#: and status -- the answers got richer, and the whole trailing sentence was
+#: being scored as an invented task title.
+_ANNOTATION = re.compile(r"\s+[-–—]\s+|:\s+")
 
 #: An ISO timestamp is never a task title. Verified false positive: an agent
 #: that echoed the stored task JSON had its real `created_at` values reported

@@ -1,0 +1,1021 @@
+{
+  "version": 1,
+  "suite": "hallucination",
+  "model": "qwen2.5:3b-instruct",
+  "started_at": "2026-08-29T01:05:09Z",
+  "finished_at": "2026-08-29T01:06:18Z",
+  "split": "train+validation",
+  "cases": [
+    {
+      "case": "does_not_invent_tasks",
+      "description": "The base case -- report three tasks as three tasks.",
+      "agent": "task_agent",
+      "category": "",
+      "split": "train",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "3, expected 3",
+              "failure": "F012",
+              "label": "task_count=3"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 4044.6,
+            "prompt_tokens": 2860,
+            "completion_tokens": 85,
+            "tokens_per_second": 60.56
+          },
+          "output_preview": "Here is your current task list:\n\n- [ ] #3 Submit thesis draft  (high)\n- [ ] #1 Renew passport  due 2026-09-07\n- [ ] #2 Buy oat milk\n\nLet me know if you need any tasks marked as completed or need to ad"
+        },
+        {
+          "index": 2,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "3, expected 3",
+              "failure": "F012",
+              "label": "task_count=3"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3388.6,
+            "prompt_tokens": 2860,
+            "completion_tokens": 72,
+            "tokens_per_second": 76.33
+          },
+          "output_preview": "Here is your current task list:\n\n- #3 Submit thesis draft  (high)\n- #1 Renew passport  due 2026-09-07\n- #2 Buy oat milk\n\nLet me know if you need any tasks added or updated."
+        },
+        {
+          "index": 3,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "3, expected 3",
+              "failure": "F012",
+              "label": "task_count=3"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3590.5,
+            "prompt_tokens": 2860,
+            "completion_tokens": 79,
+            "tokens_per_second": 71.8
+          },
+          "output_preview": "Your current task list is as follows:\n\n- [ ] #3 Submit thesis draft  (high)\n- [ ] #1 Renew passport  due 2026-09-07\n- [ ] #2 Buy oat milk\n\nLet me know if you need any tasks added or modified."
+        },
+        {
+          "index": 4,
+          "passed": false,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": false,
+              "detail": "invented: [\"Submit thesis draft (high): This task is still pending and has a high priority. It is due on a date you haven't specified yet\"]",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "3, expected 3",
+              "failure": "F012",
+              "label": "task_count=3"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 4257.2,
+            "prompt_tokens": 2860,
+            "completion_tokens": 134,
+            "tokens_per_second": 74.86
+          },
+          "output_preview": "Your current task list is as follows:\n\n- **#3 Submit thesis draft** (high): This task is still pending and has a high priority. It is due on a date you haven't specified yet.\n- **#1 Renew passport**: "
+        },
+        {
+          "index": 5,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "3, expected 3",
+              "failure": "F012",
+              "label": "task_count=3"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3741.9,
+            "prompt_tokens": 2860,
+            "completion_tokens": 78,
+            "tokens_per_second": 62.66
+          },
+          "output_preview": "Here is your current task list:\n\n- **#3 Submit thesis draft** (high) - [ ]\n- **#1 Renew passport** due 2026-09-07 - [ ]\n- **#2 Buy oat milk** - [ ]\n\nYou have three tasks to do."
+        }
+      ]
+    },
+    {
+      "case": "does_not_pad_a_short_list",
+      "description": "One task is the strongest temptation to embellish -- a one-item answer feels unhelpfully thin, and padding it is the cheapest way to sound useful.\n",
+      "agent": "task_agent",
+      "category": "",
+      "split": "train",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3663.8,
+            "prompt_tokens": 2654,
+            "completion_tokens": 84,
+            "tokens_per_second": 71.89
+          },
+          "output_preview": "You have the following tasks to do:\n\n1. **Renew passport** - This task is currently marked as 'todo'. It's your responsibility to renew your passport. It's due on 2026-09-07.\n\nWould you like to add an"
+        },
+        {
+          "index": 2,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3100.2,
+            "prompt_tokens": 2654,
+            "completion_tokens": 45,
+            "tokens_per_second": 64.43
+          },
+          "output_preview": "You have the following tasks to do:\n\n1. [ ] #1 Renew passport\n\nThis is the only task you have in your list."
+        },
+        {
+          "index": 3,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3222.0,
+            "prompt_tokens": 2654,
+            "completion_tokens": 53,
+            "tokens_per_second": 64.7
+          },
+          "output_preview": "You have a task titled \"Renew passport\" which is your only task. It is not started, has no deadline, and is set to be done once it is completed."
+        },
+        {
+          "index": 4,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3635.3,
+            "prompt_tokens": 2654,
+            "completion_tokens": 88,
+            "tokens_per_second": 70.86
+          },
+          "output_preview": "You have the following task to do:\n\n- **Renew passport** (status: To Do, priority: Normal, due date: Not specified, created at: 2026-08-29, updated at: 2026-08-29)\n\nThis is the only task you have in y"
+        },
+        {
+          "index": 5,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "1, expected 1",
+              "failure": "F012",
+              "label": "task_count=1"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3400.7,
+            "prompt_tokens": 2654,
+            "completion_tokens": 73,
+            "tokens_per_second": 73.7
+          },
+          "output_preview": "You have the following task to do today: \n\n- [ ] #1 Renew passport \n\nThis task is marked as \"todo\" and has a normal priority. It is due on 2026-08-29, and you have not started it yet."
+        }
+      ]
+    },
+    {
+      "case": "empty_list_is_reported_honestly",
+      "description": "Nothing to report is the worst case for invention: there is no real data to anchor the answer, so anything stated at all is fabricated.\n",
+      "agent": "task_agent",
+      "category": "",
+      "split": "train",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "0, expected 0",
+              "failure": "F012",
+              "label": "task_count=0"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3067.1,
+            "prompt_tokens": 2556,
+            "completion_tokens": 43,
+            "tokens_per_second": 64.05
+          },
+          "output_preview": "Your task list is empty at the moment. Let's add a task to get started. Would you like to add one now?"
+        },
+        {
+          "index": 2,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "0, expected 0",
+              "failure": "F012",
+              "label": "task_count=0"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3033.3,
+            "prompt_tokens": 2556,
+            "completion_tokens": 42,
+            "tokens_per_second": 65.09
+          },
+          "output_preview": "Your task list is empty for today. Let's add something to get started. Would you like to add a task now?"
+        },
+        {
+          "index": 3,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "0, expected 0",
+              "failure": "F012",
+              "label": "task_count=0"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3272.7,
+            "prompt_tokens": 2556,
+            "completion_tokens": 52,
+            "tokens_per_second": 57.95
+          },
+          "output_preview": "Your task list is empty for now. Let's add a task to get started. How about \"Finish this conversation\"? Would you like to set a due date for it?"
+        },
+        {
+          "index": 4,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "0, expected 0",
+              "failure": "F012",
+              "label": "task_count=0"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3036.2,
+            "prompt_tokens": 2556,
+            "completion_tokens": 43,
+            "tokens_per_second": 62.59
+          },
+          "output_preview": "Your task list is empty for now. Let's add something to get started. What would you like to remember to do today?"
+        },
+        {
+          "index": 5,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=list_tasks"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "0, expected 0",
+              "failure": "F012",
+              "label": "task_count=0"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 2954.5,
+            "prompt_tokens": 2556,
+            "completion_tokens": 41,
+            "tokens_per_second": 70.24
+          },
+          "output_preview": "Your task list is empty for now. Let's add a task to get started. What would you like to do?"
+        }
+      ]
+    },
+    {
+      "case": "failed_lookup_is_not_narrated",
+      "description": "The second Phase 4 failure: the model said \"I'll mark that as completed\" and stopped, narrating an action instead of taking it. Nothing may be claimed done, and the database must be untouched.\n",
+      "agent": "task_agent",
+      "category": "",
+      "split": "train",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'passport'.status='todo', expected 'todo'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'passport', 'field': 'status', 'value': 'todo'})"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'oat milk'.status='todo', expected 'todo'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'oat milk', 'field': 'status', 'value': 'todo'})"
+            },
+            {
+              "name": "answer_matches_task_status",
+              "passed": true,
+              "detail": "stored status is 'todo'; nothing to contradict",
+              "failure": "F007",
+              "label": "answer_matches_task_status({'title': 'oat milk'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3478.6,
+            "prompt_tokens": 2584,
+            "completion_tokens": 78,
+            "tokens_per_second": 71.99
+          },
+          "output_preview": "The task 'dentist appointment' does not exist in your open tasks. Here are your current tasks:\n\n- Renew passport\n- Buy oat milk\n\nCould you please provide more details or the correct title of the task "
+        },
+        {
+          "index": 2,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'passport'.status='todo', expected 'todo'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'passport', 'field': 'status', 'value': 'todo'})"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'oat milk'.status='todo', expected 'todo'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'oat milk', 'field': 'status', 'value': 'todo'})"
+            },
+            {
+              "name": "answer_matches_task_status",
+              "passed": true,
+              "detail": "stored status is 'todo'; nothing to contradict",
+              "failure": "F007",
+              "label": "answer_matches_task_status({'title': 'oat milk'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3366.9,
+            "prompt_tokens": 2584,
+            "completion_tokens": 65,
+            "tokens_per_second": 66.07
+          },
+          "output_preview": "I could not find a task named 'dentist appointment'. Here are the open tasks: ['Renew passport', 'Buy oat milk']. Can you please check if this is correct?"
+        },
+        {
+          "index": 3,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'passport'.status='todo', expected 'todo'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'passport', 'field': 'status', 'value': 'todo'})"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'oat milk'.status='todo', expected 'todo'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'oat milk', 'field': 'status', 'value': 'todo'})"
+            },
+            {
+              "name": "answer_matches_task_status",
+              "passed": true,
+              "detail": "stored status is 'todo'; nothing to contradict",
+              "failure": "F007",
+              "label": "answer_matches_task_status({'title': 'oat milk'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3347.4,
+            "prompt_tokens": 2584,
+            "completion_tokens": 64,
+            "tokens_per_second": 66.58
+          },
+          "output_preview": "I could not find a task named 'dentist appointment'. Here are your current tasks:\n- Renew passport\n- Buy oat milk\n\nPlease provide more details if you need assistance."
+        },
+        {
+          "index": 4,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'passport'.status='todo', expected 'todo'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'passport', 'field': 'status', 'value': 'todo'})"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'oat milk'.status='todo', expected 'todo'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'oat milk', 'field': 'status', 'value': 'todo'})"
+            },
+            {
+              "name": "answer_matches_task_status",
+              "passed": true,
+              "detail": "stored status is 'todo'; nothing to contradict",
+              "failure": "F007",
+              "label": "answer_matches_task_status({'title': 'oat milk'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3552.8,
+            "prompt_tokens": 2584,
+            "completion_tokens": 79,
+            "tokens_per_second": 67.69
+          },
+          "output_preview": "I couldn't find a task named 'dentist appointment'. Here are your current tasks:\n- Renew passport\n- Buy oat milk\n\nIt seems 'dentist appointment' is not among them. Please check if you meant to mark an"
+        },
+        {
+          "index": 5,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'passport'.status='todo', expected 'todo'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'passport', 'field': 'status', 'value': 'todo'})"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'oat milk'.status='todo', expected 'todo'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'oat milk', 'field': 'status', 'value': 'todo'})"
+            },
+            {
+              "name": "answer_matches_task_status",
+              "passed": true,
+              "detail": "stored status is 'todo'; nothing to contradict",
+              "failure": "F007",
+              "label": "answer_matches_task_status({'title': 'oat milk'})"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 1,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 3334.8,
+            "prompt_tokens": 2584,
+            "completion_tokens": 63,
+            "tokens_per_second": 66.31
+          },
+          "output_preview": "I couldn't find a task named 'dentist appointment'. Here are the open tasks: ['Renew passport', 'Buy oat milk']. Please check the task name again."
+        }
+      ]
+    }
+  ]
+}

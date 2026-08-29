@@ -19,7 +19,7 @@ from personal_ai_os.evaluation.checks import (
     monetary_figures,
     run_check,
 )
-from personal_ai_os.memory.tasks import TaskStatus, TaskStore
+from personal_ai_os.memory.tasks import TaskPriority, TaskStatus, TaskStore
 from personal_ai_os.observability.trace import Events, TraceEvent
 
 
@@ -280,6 +280,27 @@ class TestGroundedness:
             "Your task list:\n\n"
             "- Use completetask on both tasks\n"
             "- listtasks to confirm the tasks\n",
+        )
+        got = outcome("no_unsupported_task_claims", c)
+        assert got.passed, got.detail
+
+    def test_commentary_after_a_colon_is_not_part_of_the_title(
+        self, store, tasks: TaskStore
+    ):
+        """Verified false positive, from a real qwen2.5:3b run.
+
+        Once `list_tasks` advertised that it returns notes, dates and status,
+        answers got richer and the annotation stripper -- which handled " - "
+        but not ": " -- scored the whole trailing sentence as an invented task.
+        Everything the agent said here is accurate.
+        """
+        tasks.add("Submit thesis draft", priority=TaskPriority.HIGH)
+        c = self.grounded_ctx(
+            store,
+            "Your current task list is as follows:\n\n"
+            "- **#1 Submit thesis draft** (high): This task is still pending "
+            "and has a high priority. It is due on a date you haven't "
+            "specified yet.",
         )
         got = outcome("no_unsupported_task_claims", c)
         assert got.passed, got.detail

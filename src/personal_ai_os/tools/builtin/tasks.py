@@ -139,9 +139,18 @@ class ListTasksOutput(BaseModel):
 
 class ListTasksTool(Tool):
     name = "list_tasks"
+    # The scope here matters as much as the wording. It used to say "any
+    # question about what the user has to do", and qwen2.5:3b obeyed that
+    # exactly: asked "what do I need for the passport appointment?" -- with the
+    # answer sitting in that task's notes -- it called nothing, 5 of 5, while
+    # calling list_tasks 3 of 3 for "what is on my task list?". The rule was
+    # wrong, not the model. Saying that notes come back is the other half: a
+    # model cannot know the answer is in there unless the description says so.
     description = (
-        "List the user's tasks, most important first. Use this before "
-        "answering any question about what the user has to do."
+        "List the user's tasks with their notes, due dates, priority and "
+        "status, most important first. Use this before answering any question "
+        "the task list could answer -- including details stored inside a task, "
+        "not only what is outstanding."
     )
     Input = ListTasksInput
     Output = ListTasksOutput
