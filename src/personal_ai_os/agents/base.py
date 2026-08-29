@@ -132,6 +132,32 @@ class AgentResult(BaseModel):
 class BaseAgent:
     """A model, a set of tools, and a bounded loop between them."""
 
+    #: Does this agent read free text the user did not write in this
+    #: conversation -- task notes, transaction descriptions, and later web
+    #: pages and email bodies?
+    #:
+    #: When true the agent is told the instructions-in-data rule
+    #: (`CONTENT_IS_DATA`). Declared here rather than hidden in a prompt
+    #: override so the per-agent decision is greppable.
+    #:
+    #: **Delimiting was tried alongside this and reverted** (ADR-035).
+    #: Wrapping payloads in `<retrieved_data>` -- with the closing tag
+    #: neutralised so content could not escape its own envelope -- cost
+    #: nothing and bought nothing: the safety suite sat at 93% with the rule
+    #: alone, with rule-plus-delimiter, and with neither. Only *which*
+    #: injection succeeded moved.
+    #:
+    #: **Default False by measurement, not oversight.** Applying it to every
+    #: agent cost `planning::two_writes_in_one_request` 15/15 -> 2/15 by
+    #: reintroducing the ADR-032 ordering bug (ADR-034).
+    #:
+    #: A class attribute, not a manifest field, until the mechanism is proven.
+    #: It wants to be `reads_untrusted_content:` in the YAML eventually -- the
+    #: Research Agent will need it -- but promoting an unmeasured switch to the
+    #: configuration surface is how a safety property ends up with the wrong
+    #: default.
+    reads_untrusted_content: bool = False
+
     def __init__(
         self,
         spec: AgentSpec,
@@ -182,7 +208,10 @@ class BaseAgent:
     # --- the loop ----------------------------------------------------------
 
     def run(self, objective: str, *, history: list[Message] | None = None) -> AgentResult:
-        messages: list[Message] = [Message.system(self.system_prompt())]
+        prompt = self.system_prompt()
+        if self.reads_untrusted_content:
+            prompt += CONTENT_IS_DATA
+        messages: list[Message] = [Message.system(prompt)]
         messages.extend(history or [])
         messages.append(Message.user(objective))
 

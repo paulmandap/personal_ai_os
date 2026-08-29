@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from personal_ai_os.agents.base import CONTENT_IS_DATA, BaseAgent
+from personal_ai_os.agents.base import BaseAgent
 
 TASK_SYSTEM_PROMPT = """\
 You manage the user's task list in a local personal AI system.
@@ -51,7 +51,12 @@ and concrete: say what changed, and show the tasks that matter.
 class TaskAgent(BaseAgent):
     """Creates, updates and reports on tasks."""
 
+    #: Task notes and titles are free text the user -- or anyone who can get
+    #: text into their task list -- wrote earlier. This agent therefore gets
+    #: the instructions-in-data boundary: the rule, and `<retrieved_data>`
+    #: envelopes around its tool payloads (ADR-034).
+    reads_untrusted_content = True
+
     def system_prompt(self) -> str:
         base = self._system_prompt or self.spec.system_prompt or TASK_SYSTEM_PROMPT
-        rendered = base.replace("{today}", datetime.now(UTC).strftime("%Y-%m-%d (%A)"))
-        return rendered + CONTENT_IS_DATA
+        return base.replace("{today}", datetime.now(UTC).strftime("%Y-%m-%d (%A)"))

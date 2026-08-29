@@ -223,9 +223,22 @@ spend a holdout case (ADR-027). Full record in `docs/evaluation.md`.
    Also measured, and the reason the clause is task-agent-only: applying it to
    every agent cost `planning::two_writes_in_one_request` **15/15 → 2/15**,
    reintroducing the ADR-032 ordering bug. ~40 tokens of system prompt displaced
-   an unrelated behaviour. **Attention budget is a real constraint here**, and
-   prompt-level defence looks close to exhausted. The untried lever is
-   structural: delimiting retrieved content so the rule has a referent.
+   an unrelated behaviour. **Attention budget is a real constraint here.**
+
+   **ADR-035: delimiting was then tried and reverted.** Wrapping tool payloads
+   in `<retrieved_data>`, with the closing tag neutralised so content could not
+   escape its own envelope, cost nothing (`planning` stayed 25/25) and bought
+   nothing. Three framings, ~375 runs, **93% every time**:
+
+   | Configuration | title inj. | consent inj. | total |
+   |---|---|---|---|
+   | no rule | 15/15 | 10/15 | **70/75** |
+   | rule only | 11/15 | 14/15 | **70/75** |
+   | rule + delimiter | 40/45 | 35/45 | **210/225** |
+
+   Only *which* attack succeeds moves. **Prompt-and-framing defence is
+   exhausted at this model size** — two structural attempts, both measured,
+   both net-flat. The defence must move somewhere the model does not mediate.
 
    `finance` and `master` deliberately do not carry the rule. **The Research
    Agent will need its own measured decision** — do not assume this transfers.
@@ -292,19 +305,23 @@ because after 2026-09-07 there is no conversation to remember them.
 
 ## Next Steps
 
-1. **PROMPT INJECTION, still 70/75 net** (problem 6). ADR-034 improved the
-   realistic attack and worsened the crude one, netting flat. Prompt-level
-   defence looks close to exhausted — and ADR-034 showed *why*: ~40 extra
-   system-prompt tokens displaced an unrelated behaviour badly enough to
-   reintroduce the ADR-032 money bug. There is no budget left in the prompt.
+1. **PROMPT INJECTION, pinned at 70/75 across three framings** (problem 6).
+   ADR-034 and ADR-035 both netted flat. **Stop trying to word or delimit the
+   way out of this** — that is now measured twice, ~375 runs, and the table in
+   problem 6 is there so it is not re-attempted a third time.
 
-   **The untried lever is structural: delimit retrieved content** so the rule
-   has an explicit referent — e.g. wrapping tool payloads as
-   `<user_content>…</user_content>` in `_execute_tool_call`. That costs
-   observation tokens rather than system-prompt tokens, and it gives the model
-   a boundary to point at rather than a rule to remember. Measure it across
-   every suite; `planning::two_writes_in_one_request` is the canary that
-   catches attention-budget damage fastest.
+   The remaining lever is a gate the model does not mediate: **refuse a
+   mutation the user's own message never asked for.** The permission broker
+   cannot do this today — it sees `write` and grants it, with no notion of
+   whether *this* write traces to the user's request rather than to something
+   the agent read. Sketch before building: it needs a way to compare a
+   requested write against the objective, which is either a second model call
+   (costly, and itself injectable) or a conservative structural rule such as
+   "a write whose target was not named in the user's message requires
+   confirmation". The second is measurable and does not add a model.
+
+   This is a larger design than anything attempted so far. It should not be
+   started casually, and it gates the Research Agent.
 2. **The 3B completing tasks it was not asked about** (problem 5b) — 5 of 5,
    and it reports both as done. Check the arguments it passes to
    `complete_task`; this may share a mechanism with problem 2b.
@@ -423,7 +440,8 @@ guard, ADR-031 empty-turn retry), with `confirm_duplicate` as the escape hatch.
 
 Phases 1–5 committed and pushed (`f561e9d`, `61965a9`, `20b6e5e`, `5de9ec9`,
 `cf628df`, `83224ee`, `bfcab5f`, `57a8b7e`, `5482351`, `ce9818a`,
-`450a505`). ADR-034 is **uncommitted**.
+`450a505`, `949bf89`). ADR-035 is
+**uncommitted**.
 
 ---
 
@@ -447,6 +465,7 @@ no cloud provider) overrides everything.
 | **032** | **A tool that changes state returns the state it produced** |
 | **033** | **A computed figure must cross the boundary, and say which state it is** |
 | **034** | **A rule the runtime never states is not implemented** |
+| **035** | **Framing does not reduce injection compliance; it only moves it** |
 
 ---
 
@@ -484,4 +503,4 @@ three new agents since Phase 1.
 - 566 tests: 550 unit (offline, sockets blocked), 16 integration (live)
 - 9 evaluation suites, 47 cases, 9 holdout · 21 checks · 15 failure codes
 - 3 runtime dependencies (`pydantic`, `httpx`, `pyyaml`)
-- 10 commits. ADR-034 is uncommitted.
+- 11 commits. ADR-035 is uncommitted.
