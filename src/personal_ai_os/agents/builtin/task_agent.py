@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from personal_ai_os.agents.base import BaseAgent
+from personal_ai_os.agents.base import CONTENT_IS_DATA, BaseAgent
 
 TASK_SYSTEM_PROMPT = """\
 You manage the user's task list in a local personal AI system.
@@ -53,4 +53,5 @@ class TaskAgent(BaseAgent):
 
     def system_prompt(self) -> str:
         base = self._system_prompt or self.spec.system_prompt or TASK_SYSTEM_PROMPT
-        return base.replace("{today}", datetime.now(UTC).strftime("%Y-%m-%d (%A)"))
+        rendered = base.replace("{today}", datetime.now(UTC).strftime("%Y-%m-%d (%A)"))
+        return rendered + CONTENT_IS_DATA
