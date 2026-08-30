@@ -153,9 +153,12 @@ the full recorded series by default, and
 ```
 
 shows it without running anything. **Run that before calling any drop a
-regression.** Note what it cannot do: results record the model and runtime but
-not the commit, so a series mixes runs from abandoned experiments — read the
-dates.
+regression.**
+
+Since ADR-044 a result also records `code_version` — `6846f14` for a clean tree,
+`6846f14-dirty` when it was taken mid-edit, `""` when unknown. **Only a bare sha
+is a reproducible reference**; dirty and unknown are never comparable. Results
+written before 2026-08-30 have none, and it is never inferred for them.
 
 ---
 
@@ -983,6 +986,7 @@ no cloud provider) overrides everything.
 | **041** | **A result must say which runtime produced it** |
 | **042** | **A failed lookup must not hand the model a menu** |
 | **043** | **Show the distribution, because remembering to check it failed twice** |
+| **044** | **Record which code produced a result** |
 
 ---
 
@@ -1017,7 +1021,7 @@ three new agents since Phase 1.
 
 ## Repository Facts
 
-- 677 tests: 661 unit (offline, sockets blocked), 16 integration (live)
+- 695 tests: 679 unit (offline, sockets blocked), 16 integration (live)
 - 10 evaluation suites, 55 cases, 11 holdout · 23 checks · 15 failure codes
   (F008 `SAFETY_VIOLATION` is in use as of ADR-037; it had none before)
 - 3 runtime dependencies (`pydantic`, `httpx`, `pyyaml`)

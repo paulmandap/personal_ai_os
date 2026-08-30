@@ -2228,3 +2228,70 @@ between its neighbours.
   `RunTrace.event` swallowing disk errors.
 - `render(result)` with no history is **byte-identical** to before, asserted by a
   test, so callers without a results directory lose nothing.
+
+---
+
+## ADR-044 — Record which code produced a result
+
+**Date:** 2026-08-30 · **Status:** accepted · **Phase:** 5 (overflow)
+
+**Context.** ADR-043's history view says in its own output that it shows a
+distribution, **not a same-code baseline** — results record the model and (since
+ADR-041) the runtime, but not the code. That gap caused a real near-miss:
+choosing "latest result per suite" silently selected ADR-039's ledger arms and
+ADR-036's gate variants, runs made under different application code. It was
+caught by hand, twice, by reading timestamps against commit times.
+
+**Decision.** `SuiteResult.code_version`, observed **once per suite** beside
+`runtime_version`, with three deliberately distinct states:
+
+| value | meaning |
+|---|---|
+| `6846f14` | clean tree — **a reproducible reference point** |
+| `6846f14-dirty` | tracked files modified; the commit does not identify the code |
+| `""` | provenance undetermined; **claims nothing** |
+
+`detect_code_version()` shells out to git. **This is the first `subprocess` call
+in `src/`**, and it is a precedent worth naming: `evaluation/` is the harness,
+not the runtime; no dependency is added; and the model seam is untouched — this
+asks the filesystem about code, not a provider about a model. Reading `.git/HEAD`
+directly would avoid subprocess but cannot tell a clean tree from a modified one,
+which is the half that matters.
+
+**It never fails a suite.** Missing git, non-repository path, timeout, non-zero
+exit, malformed output, any unexpected exception — all return `""`. Untracked
+files are ignored (`--untracked-files=no`): a scratch file does not change what
+the code does.
+
+**Comparability is strict.** `HistoryPoint.same_code_as()` returns true only when
+both versions are non-empty, neither is `-dirty`, and they are exactly equal.
+**Dirty is never comparable** — the commit does not identify the code — and `""`
+is never comparable, because treating "unknown" as "probably the same" is how a
+false baseline gets chosen in the first place.
+
+**`RESULT_VERSION` 2 → 3**, on ADR-041's argument: v2 means the field did not
+exist so the code is unknown; v3 with an empty string means it existed and could
+not be read. Existing v2 files load unchanged, asserted against a real committed
+result, and **provenance is never inferred or reconstructed for historical
+results**.
+
+**The dirty marker is the load-bearing half.** Measurement precedes commit here,
+so nearly every stored result was taken mid-edit — ADR-039's two arms *and* the
+baseline they were compared against were all on uncommitted trees. Marking them
+stops any being mistaken for a reference.
+
+**Limits.**
+
+- **It cannot separate two variants of one experiment.** Both ADR-039 arms read
+  `6846f14-dirty`. A content hash over the behaviour-defining files would, and
+  was **rejected deliberately**: case files change often, so nearly every point
+  would differ from every other and the marker would carry no signal. A
+  deliberate A/B still needs ADR-042's discipline — run both arms the same day
+  and label them.
+- **Only future results carry it.** The 241 already stored show blank, exactly as
+  `runtime_version` did after ADR-041.
+- **"Dirty" is coarse** — a README edit marks a run as loudly as an agent-loop
+  edit, because `git status` does not know which files affect behaviour.
+- **Second `RESULT_VERSION` bump in two days**, for a constant nothing reads.
+- **It records; it does not enforce.** Like ADR-043, a bad comparison becomes
+  visible rather than impossible.

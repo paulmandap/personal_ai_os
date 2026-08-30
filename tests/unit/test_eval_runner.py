@@ -15,7 +15,7 @@ import pytest
 
 from personal_ai_os.config.schema import Settings
 from personal_ai_os.evaluation.case import EvalCase, EvalSuite
-from personal_ai_os.evaluation.runner import EvalRunner
+from personal_ai_os.evaluation.runner import EvalRunner, detect_code_version
 from personal_ai_os.memory.store import Store
 from personal_ai_os.memory.tasks import TaskStore
 from personal_ai_os.models.fake import ScriptedModel, text_response, tool_call_response
@@ -361,3 +361,90 @@ class TestRuntimeVersionProvenance:
         runner._runtime_version = "stale"
         result = runner.run_suite(self._suite())
         assert result.runtime_version == ""
+
+
+class TestDetectCodeVersion:
+    """ADR-044: provenance instrumentation that can never fail a suite.
+
+    Git is monkeypatched throughout so nothing here depends on the real tree
+    state -- a test asserting "dirty" against the live repository would pass or
+    fail depending on whether someone had edits open.
+    """
+
+    def _fake_git(self, monkeypatch, head=("abc1234\n", 0), status=("", 0), raises=None):
+        import subprocess as sp
+        from personal_ai_os.evaluation import runner as runner_mod
+
+        def fake_run(cmd, **kwargs):
+            if raises is not None:
+                raise raises
+            payload, code = head if "rev-parse" in cmd else status
+            return sp.CompletedProcess(cmd, code, stdout=payload, stderr="")
+
+        monkeypatch.setattr(runner_mod.subprocess, "run", fake_run)
+
+    def test_a_clean_tree_is_a_bare_sha(self, monkeypatch):
+        self._fake_git(monkeypatch)
+        assert detect_code_version(REPO_ROOT) == "abc1234"
+
+    def test_unstaged_changes_mark_it_dirty(self, monkeypatch):
+        self._fake_git(monkeypatch, status=(" M src/x.py\n", 0))
+        assert detect_code_version(REPO_ROOT) == "abc1234-dirty"
+
+    def test_staged_changes_mark_it_dirty(self, monkeypatch):
+        self._fake_git(monkeypatch, status=("M  src/x.py\n", 0))
+        assert detect_code_version(REPO_ROOT) == "abc1234-dirty"
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"head": ("", 128)},                    # not a repository
+            {"head": ("not-a-sha\n", 0)},           # malformed output
+            {"head": ("\n", 0)},                    # empty output
+            {"status": ("", 128)},                  # status failed
+            {"raises": FileNotFoundError("git")},   # git not installed
+            {"raises": OSError("boom")},            # anything unexpected
+        ],
+    )
+    def test_every_failure_path_returns_empty_and_never_raises(
+        self, monkeypatch, kwargs
+    ):
+        """Provenance is optional; a suite must not die because git will not
+        answer. Empty claims nothing, which is the honest result."""
+        self._fake_git(monkeypatch, **kwargs)
+        assert detect_code_version(REPO_ROOT) == ""
+
+    def test_a_timeout_returns_empty(self, monkeypatch):
+        import subprocess as sp
+        self._fake_git(monkeypatch, raises=sp.TimeoutExpired("git", 10))
+        assert detect_code_version(REPO_ROOT) == ""
+
+    def test_untracked_files_alone_do_not_mark_it_dirty(self, monkeypatch):
+        """`--untracked-files=no` is deliberate: a scratch file does not change
+        what the code does."""
+        self._fake_git(monkeypatch, status=("", 0))
+        assert detect_code_version(REPO_ROOT) == "abc1234"
+
+    def test_it_is_observed_once_per_suite_not_per_case(self, monkeypatch):
+        """Every case in one result must share one provenance observation."""
+        calls: list = []
+        import subprocess as sp
+        from personal_ai_os.evaluation import runner as runner_mod
+
+        def counting(cmd, **kwargs):
+            calls.append(cmd)
+            payload = "abc1234\n" if "rev-parse" in cmd else ""
+            return sp.CompletedProcess(cmd, 0, stdout=payload, stderr="")
+
+        monkeypatch.setattr(runner_mod.subprocess, "run", counting)
+        runner = EvalRunner(
+            repo_root=REPO_ROOT, runtime_builder=scripted_builder(add_task_then_answer())
+        )
+        suite = EvalSuite(
+            suite="prov", agent="task_agent", repeat=3,
+            cases=[make_case(checks=["answered"]), make_case("c2", checks=["answered"])],
+        )
+        result = runner.run_suite(suite)
+        assert result.code_version == "abc1234"
+        # One rev-parse + one status for the whole suite, not per repetition.
+        assert len(calls) == 2, f"git invoked {len(calls)} times, expected 2"

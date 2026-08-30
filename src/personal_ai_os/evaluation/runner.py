@@ -12,6 +12,7 @@ actually ships.
 
 from __future__ import annotations
 
+import subprocess
 import tempfile
 import time
 from collections.abc import Callable, Iterator
@@ -55,6 +56,70 @@ EVAL_POLICY: dict[PermissionLevel, str] = {
     PermissionLevel.DELETE: "deny",
     PermissionLevel.DESTRUCTIVE: "deny",
 }
+
+#: How long git gets to answer before provenance is abandoned. Generous for a
+#: local command, and bounded because a hung `git` must not hang a suite.
+GIT_TIMEOUT_S = 10.0
+
+
+def detect_code_version(repo_root: Path) -> str:
+    """Which application code produced this result (ADR-044).
+
+    Three states, and keeping them distinct is the whole point:
+
+    ==================  ====================================================
+    ``"6846f14"``       a clean tree -- a **reproducible reference point**
+    ``"6846f14-dirty"`` tracked files modified; the commit alone does not
+                        identify the code, so this is *not* a baseline
+    ``""``              provenance could not be determined; claims nothing
+    ==================  ====================================================
+
+    The dirty marker is the load-bearing half. Measurement precedes commit in
+    this project, so nearly every stored result was taken mid-edit -- ADR-039's
+    two ledger arms and the baseline they were compared against were all made on
+    uncommitted trees. Marking them stops any of them being mistaken for a
+    reference.
+
+    **Never raises, and never fails a suite.** Missing git, a non-repository
+    path, a timeout, a non-zero exit, malformed output, anything unexpected: all
+    return ``""``. This is provenance instrumentation, not application
+    behaviour, and a suite must not die because git would not answer.
+
+    **Known limit:** it cannot separate two variants of one experiment. Both of
+    ADR-039's arms read ``6846f14-dirty``. A deliberate A/B still needs the
+    discipline ADR-042 used -- run both arms the same day and label them.
+    """
+
+    def _git(*args: str) -> str | None:
+        try:
+            done = subprocess.run(
+                ["git", "-C", str(repo_root), *args],
+                capture_output=True,
+                text=True,
+                timeout=GIT_TIMEOUT_S,
+            )
+        except Exception:  # not installed, timeout, OS refusal -- all the same
+            return None
+        if done.returncode != 0:
+            return None
+        return done.stdout
+
+    head = _git("rev-parse", "--short", "HEAD")
+    if head is None:
+        return ""
+    sha = head.strip()
+    # A sha is hex; anything else means we are not reading what we think.
+    if not sha or not all(c in "0123456789abcdef" for c in sha.lower()):
+        return ""
+
+    # `--porcelain` is empty exactly when no tracked file is staged or modified.
+    # Untracked files are deliberately ignored: a stray scratch file does not
+    # change what the code does.
+    status = _git("status", "--porcelain", "--untracked-files=no")
+    if status is None:
+        return ""
+    return f"{sha}-dirty" if status.strip() else sha
+
 
 RuntimeBuilder = Callable[[Settings, Store, RecordingBroker], Runtime]
 
@@ -253,6 +318,9 @@ class EvalRunner:
             suite=suite.suite,
             model=self.model or self._resolved_model_label(),
             runtime_version=self._runtime_version or "",
+            # Once per suite, so every case in one result shares one
+            # observation -- never per repetition (ADR-044).
+            code_version=detect_code_version(self.repo_root),
             started_at=started,
             finished_at=utc_stamp(),
             split="+".join(splits),

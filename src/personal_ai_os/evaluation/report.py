@@ -27,7 +27,12 @@ from personal_ai_os.evaluation.taxonomy import Failure, by_severity
 #: exist, so the runtime is unknown; v2 with an empty string means the field
 #: existed and the runtime declined to say.** Without the bump those two are the
 #: same empty value -- the exact ambiguity ADR-041 exists to remove.
-RESULT_VERSION = 2
+#:
+#: Bumped again to 3 for `code_version` (ADR-044), on the same argument: **v2
+#: means the field did not exist, so the code is unknown; v3 with an empty
+#: string means it existed and could not be read.** Nothing reads this constant,
+#: so the bump costs nothing and preserves a real distinction.
+RESULT_VERSION = 3
 PREVIEW_CHARS = 200
 
 
@@ -171,6 +176,15 @@ class SuiteResult(BaseModel):
     #: providers that report no version, such as the scripted model used by the
     #: offline tests.
     runtime_version: str = ""
+    #: Which application code produced this result (ADR-044). `"6846f14"` for a
+    #: clean tree, `"6846f14-dirty"` when tracked files were modified, `""` when
+    #: provenance could not be determined.
+    #:
+    #: **Only a bare sha is a reproducible reference.** A dirty result is a
+    #: measurement taken mid-edit, and an empty one claims nothing at all --
+    #: results written before this existed (`version: 2` and below) are empty,
+    #: and are **never** reconstructed or inferred.
+    code_version: str = ""
     started_at: str
     finished_at: str = ""
     #: Which split was run. A result that does not say this cannot be trusted
@@ -283,6 +297,23 @@ class HistoryPoint(BaseModel):
     #: Empty for results written before ADR-041, and for providers that report
     #: no version. Carried so a series spanning a runtime change is readable.
     runtime_version: str = ""
+    #: Empty for results written before ADR-044. See `SuiteResult.code_version`.
+    code_version: str = ""
+
+    def same_code_as(self, current: str) -> bool:
+        """Is this point comparable with `current`?
+
+        **Only an exact match between two non-empty, non-dirty versions.**
+        `-dirty` is never comparable -- the commit does not identify the code --
+        and `""` claims nothing, so it is never comparable either. Treating
+        either as "probably the same" is how a false baseline gets chosen
+        (ADR-044).
+        """
+        if not current or not self.code_version:
+            return False
+        if current.endswith("-dirty") or self.code_version.endswith("-dirty"):
+            return False
+        return self.code_version == current
 
     @property
     def rate(self) -> float:
@@ -376,6 +407,7 @@ def load_history(
                 passed=result.passed_runs,
                 total=result.total_runs,
                 runtime_version=result.runtime_version,
+                code_version=result.code_version,
             )
         )
         for case in result.cases:
@@ -387,6 +419,7 @@ def load_history(
                     passed=case.passed,
                     total=case.total,
                     runtime_version=result.runtime_version,
+                    code_version=result.code_version,
                 )
             )
     history.overall.sort(key=lambda p: p.started_at)
@@ -411,6 +444,9 @@ def render_history(history: SuiteHistory) -> str:
         runtimes = sorted({p.runtime_version or "?" for p in history.overall})
         if len(runtimes) > 1:
             lines.append(f"  runtimes  {', '.join(runtimes)}  (\"?\" = not recorded)")
+        codes = sorted({p.code_version or "?" for p in history.overall})
+        if len(codes) > 1:
+            lines.append(f"  code      {', '.join(codes)}  (\"?\" = not recorded)")
     lines.append("")
     for name in sorted(history.cases):
         lines.append(f"  {name}")

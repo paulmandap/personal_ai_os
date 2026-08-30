@@ -9,6 +9,7 @@ import pytest
 from personal_ai_os.evaluation.checks import CheckOutcome
 from personal_ai_os.evaluation.report import (
     CaseResult,
+    HistoryPoint,
     RunMetrics,
     RunRecord,
     SuiteResult,
@@ -232,7 +233,7 @@ class TestRuntimeVersionProvenance:
         s.runtime_version = "0.33.2"
         loaded = SuiteResult.load(s.save(tmp_path))
         assert loaded.runtime_version == "0.33.2"
-        assert loaded.version == 2
+        assert loaded.version == 3  # bumped again for code_version (ADR-044)
 
     def test_a_v1_result_with_no_such_field_still_loads(self):
         """Backward compatibility, asserted against a real committed result.
@@ -368,3 +369,57 @@ class TestHistory:
         self._save(tmp_path, "m", "2026-08-01T00:00:00Z", 5, 5, runtime="0.33.1")
         self._save(tmp_path, "m", "2026-08-02T00:00:00Z", 5, 5, runtime="0.33.2")
         assert "0.33.1, 0.33.2" in render_history(load_history(tmp_path, "demo", "m"))
+
+
+class TestCodeProvenance:
+    """ADR-044: which application code produced this result?
+
+    ADR-043's history view admits it shows a distribution, not a same-code
+    baseline. This is the field that lets it say which points are comparable.
+    """
+
+    def _point(self, code: str, passed: int = 3) -> "HistoryPoint":
+        return HistoryPoint(started_at="2026-08-30T00:00:00Z", passed=passed,
+                            total=5, code_version=code)
+
+    def test_only_an_exact_clean_match_is_comparable(self):
+        assert self._point("abc1234").same_code_as("abc1234")
+
+    def test_dirty_is_never_comparable_on_either_side(self):
+        """A dirty tree means the commit does not identify the code."""
+        assert not self._point("abc1234-dirty").same_code_as("abc1234")
+        assert not self._point("abc1234").same_code_as("abc1234-dirty")
+        assert not self._point("abc1234-dirty").same_code_as("abc1234-dirty")
+
+    def test_unknown_provenance_is_never_comparable(self):
+        """`""` claims nothing; treating it as a match invents a baseline."""
+        assert not self._point("").same_code_as("abc1234")
+        assert not self._point("abc1234").same_code_as("")
+        assert not self._point("").same_code_as("")
+
+    def test_a_different_commit_is_not_comparable(self):
+        assert not self._point("abc1234").same_code_as("def5678")
+
+    def test_it_round_trips_and_v2_files_still_load(self, tmp_path: Path):
+        s = suite("m", case("a", run(1, True)))
+        s.code_version = "abc1234"
+        assert SuiteResult.load(s.save(tmp_path)).code_version == "abc1234"
+
+        # A real committed v2 result, which predates the field entirely.
+        older = [p for p in sorted(Path("evaluations/results").glob("*.json"))
+                 if '"version": 2' in p.read_text(encoding="utf-8")]
+        assert older, "expected committed v2 results to exist"
+        loaded = SuiteResult.load(older[0])
+        assert loaded.version == 2
+        assert loaded.code_version == ""   # never inferred
+        assert loaded.total_runs > 0
+
+    def test_history_reports_a_series_spanning_versions(self, tmp_path: Path):
+        for stamp, code in (("2026-08-01T00:00:00Z", "aaa1111"),
+                            ("2026-08-02T00:00:00Z", "bbb2222-dirty")):
+            s = SuiteResult(suite="demo", model="m", started_at=stamp,
+                            code_version=code, cases=[CaseResult(case="a",
+                                                                 runs=[run(1, True)])])
+            s.save(tmp_path)
+        text = render_history(load_history(tmp_path, "demo", "m"))
+        assert "aaa1111" in text and "bbb2222-dirty" in text
