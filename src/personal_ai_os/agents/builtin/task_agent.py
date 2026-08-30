@@ -51,6 +51,11 @@ and concrete: say what changed, and show the tasks that matter.
 class TaskAgent(BaseAgent):
     """Creates, updates and reports on tasks."""
 
+    #: ADR-051. This is where the echo dishonesty was measured -- the agent
+    #: completes what it was asked, makes no second call, and reports a second
+    #: completion anyway.
+    checks_answer_fidelity = True
+
     #: Task notes and titles are free text the user -- or anyone who can get
     #: text into their task list -- wrote earlier. This agent therefore gets
     #: the instructions-in-data boundary: the rule, and `<retrieved_data>`

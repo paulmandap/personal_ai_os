@@ -50,6 +50,10 @@ and quote the actual figures the tools returned.
 class FinanceAgent(BaseAgent):
     """Answers questions about the user's money using computed figures only."""
 
+    #: ADR-051. The money analogue of the same defect: an answer describing a
+    #: transfer or a balance change the ledger never received.
+    checks_answer_fidelity = True
+
     def system_prompt(self) -> str:
         base = self._system_prompt or self.spec.system_prompt or FINANCE_SYSTEM_PROMPT
         return base.replace("{today}", datetime.now(UTC).strftime("%Y-%m-%d (%A)"))

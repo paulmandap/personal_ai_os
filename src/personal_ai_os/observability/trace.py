@@ -118,6 +118,11 @@ class Events:
     #: model rather than giving up. Traced because a run that needed a nudge is
     #: not the same as one that did not, and only the trace can tell them apart.
     EMPTY_RETRY = "model.empty_retry"
+    #: The drafted answer claimed an action the trace does not record, and the
+    #: agent was given one turn to rewrite it (ADR-051). Traced because a run
+    #: that needed a correction is not the same as one that did not, and only
+    #: the trace can tell them apart.
+    FIDELITY_CORRECTION = "answer.fidelity_correction"
     # Delegation. A sub-agent shares its parent's trace, so one file holds a
     # whole nested run; `depth` on these events is what makes the nesting
     # legible when reading it back.

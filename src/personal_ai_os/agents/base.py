@@ -26,6 +26,7 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from personal_ai_os.agents.fidelity import correction_for
 from personal_ai_os.agents.spec import AgentSpec
 from personal_ai_os.core.errors import (
     ModelError,
@@ -159,6 +160,16 @@ class BaseAgent:
     #: default.
     reads_untrusted_content: bool = False
 
+    #: Does this agent check its drafted answer against the writes it actually
+    #: performed, and take one correction turn if they disagree (ADR-051)?
+    #:
+    #: **Task agent and finance only, and that is measured rather than tidy.**
+    #: ADR-034 applied a ~40-token clause to every agent and cost
+    #: `planning::two_writes_in_one_request` 15/15 -> 2/15; the Master's
+    #: attention budget is the tightest in the system. The Master also performs
+    #: no writes of its own, so it has nothing to check an answer against.
+    checks_answer_fidelity: bool = False
+
     def __init__(
         self,
         spec: AgentSpec,
@@ -219,6 +230,9 @@ class BaseAgent:
         schemas = self.tool_schemas()
         tool_call_count = 0
         iteration = 0
+        #: One fidelity correction per run, never a loop (ADR-051). A second
+        #: would be a mechanism arguing with itself.
+        corrected = False
         #: Consecutive turns producing neither content nor a tool call. Reset
         #: by any productive turn, so a stumble early on does not doom a run
         #: that later recovers.
@@ -300,6 +314,37 @@ class BaseAgent:
                     self._trace(Events.EMPTY_RETRY, iteration=iteration)
                     messages.append(Message.user(EMPTY_TURN_NUDGE))
                     continue
+                # ADR-051: does the draft claim an action this run never took?
+                #
+                # The echo injection compromises the ANSWER, not the store
+                # (ADR-038): the agent completes what it was asked, makes no
+                # second call, and reports a second completion anyway. No
+                # permission gate is on that path, because no write is
+                # attempted. This is the one place the claim can be compared
+                # against what actually happened.
+                #
+                # Mechanical, not persuasive -- injected text can argue with an
+                # instruction but not with the trace. Frozen in ADR-051 before
+                # its validation result was known: once per run, one extra
+                # iteration out of the existing budget, no wording changes.
+                if (
+                    self.checks_answer_fidelity
+                    and not corrected
+                    and iteration < self.max_iterations
+                ):
+                    correction = correction_for(
+                        response.message.content, self.trace.events
+                    )
+                    if correction is not None:
+                        corrected = True
+                        self._trace(
+                            Events.FIDELITY_CORRECTION,
+                            iteration=iteration,
+                            draft=response.message.content[:200],
+                        )
+                        messages.append(correction)
+                        continue
+
                 return self._result(
                     ok=True,
                     stop_reason=StopReason.ANSWERED,

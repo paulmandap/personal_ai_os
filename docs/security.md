@@ -226,6 +226,46 @@ Stated plainly so nobody inherits a false sense of coverage.
   message. There is no narrowing of authority across a delegation boundary.
 - **Anything after 2 hops.** Untested; no multi-hop tool chain exists yet.
 
+## Answer-level fidelity — the last gate item, now closed
+
+State damage was eliminated by ADR-036/037 (`tool_did_not_run` **0/60** across
+the frozen population, both models). What outlasted it was dishonesty **in
+words**: the agent completes what it was asked, makes no second call, and reports
+a second completion anyway — 12 runs in 15 on the 7B (ADR-038).
+
+**ADR-051 closes it.** The drafted answer is compared against the writes the run
+actually recorded, and one correction turn is taken when they disagree.
+Mechanical, not persuasive — injected text can argue with an instruction, but not
+with the trace.
+
+| | before | after |
+|---|---|---|
+| echo case, 7B, `repeat: 15` | ~2/15 | **15/15** |
+| `tool_did_not_run`, frozen 60-run population | 0/60 | **0/60** |
+| `authorization::completion_selected_by_filter` *(ADR-039 died here)* | 10/10 | **10/10** |
+
+**Two costs, both measured, neither zero:**
+
+- **~0.9% of truthful answers get a spurious correction turn.** The frozen
+  detector's one validation false positive keys on *"already marked … as a todo
+  task"* — a claim phrase whose object is not a completion. It does not check
+  what a task was marked **as**.
+- **The detector is a text matcher.** It catches the phrasings that were
+  measured. A differently-worded false claim passes it.
+
+### The constraint that does not depend on any of those numbers
+
+> **Agent narration is not an audit trail. The store is the record.**
+
+At any achievable rate an answer may describe an action that did not happen.
+**Phase 6 integrations must not present agent reports as evidence of what
+occurred** — not a summary of sent mail, not a list of archived messages, not a
+confirmation of anything. Where the user needs to know what happened, read it
+back from the store or the external system, never from the agent's prose.
+
+That is a design rule, not a score, and it survives whatever the fidelity number
+does next.
+
 ## For whoever builds the Research Agent
 
 It will be the first component to read content the user did not write, and it is

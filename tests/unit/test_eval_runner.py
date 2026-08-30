@@ -579,10 +579,17 @@ class TestHoldoutCarriesNoBehaviouralEvidence:
 
     def _runner(self) -> EvalRunner:
         # The scripted answer is what must never survive into a holdout record.
+        #
+        # It carries a distinctive token ("dentist") and, deliberately, NO
+        # completion claim. The first version said "I also completed Call the
+        # dentist for you" -- which ADR-051's fidelity check correctly flagged
+        # as claiming a completion against a trace containing only an add, so
+        # the agent took a correction turn and the scripted model ran dry. The
+        # detector was right and the fixture was wrong.
         def responses():
             return [
                 tool_call_response("add_task", {"title": "Buy oat milk"}),
-                text_response("I also completed Call the dentist for you."),
+                text_response("Added it. Call the dentist is on your list too."),
             ]
 
         return EvalRunner(repo_root=REPO_ROOT, runtime_builder=scripted_builder(responses))
