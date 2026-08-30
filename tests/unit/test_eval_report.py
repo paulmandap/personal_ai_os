@@ -13,8 +13,10 @@ from personal_ai_os.evaluation.report import (
     RunRecord,
     SuiteResult,
     compare,
+    load_history,
     model_slug,
     render,
+    render_history,
 )
 from personal_ai_os.evaluation.taxonomy import Failure
 
@@ -269,3 +271,100 @@ class TestRuntimeVersionProvenance:
         b = suite("3b", case("a", run(1, True)))
         a.runtime_version = b.runtime_version = "0.33.2"
         assert "different inference runtimes" not in compare(a, b)
+
+
+class TestHistory:
+    """ADR-043: a drop is only a regression relative to a distribution.
+
+    Twice in one day a single stored number was read as a property and a
+    regression reported that did not exist -- `robustness` 17/35 against a
+    baseline of 28/35, in a series reading 19, 20, 21, 28.
+    """
+
+    def _save(self, tmp_path: Path, model: str, stamp: str, passed: int,
+              total: int, *, case: str = "a", runtime: str = "", split: str = "train"):
+        runs = [run(i + 1, i < passed) for i in range(total)]
+        s = SuiteResult(
+            suite="demo", model=model, started_at=stamp, runtime_version=runtime,
+            split=split, cases=[CaseResult(case=case, runs=runs)],
+        )
+        return s.save(tmp_path)
+
+    def test_it_collects_a_series_oldest_first(self, tmp_path: Path):
+        for stamp, passed in (("2026-08-03T00:00:00Z", 1),
+                              ("2026-08-01T00:00:00Z", 5),
+                              ("2026-08-02T00:00:00Z", 3)):
+            self._save(tmp_path, "m", stamp, passed, 5)
+        h = load_history(tmp_path, "demo", "m")
+        assert [p.passed for p in h.overall] == [5, 3, 1]
+        assert [p.passed for p in h.cases["a"]] == [5, 3, 1]
+
+    def test_it_shortlists_by_suite_and_model(self, tmp_path: Path):
+        self._save(tmp_path, "7b", "2026-08-01T00:00:00Z", 5, 5)
+        self._save(tmp_path, "3b", "2026-08-02T00:00:00Z", 1, 5)
+        assert len(load_history(tmp_path, "demo", "7b").overall) == 1
+        assert len(load_history(tmp_path, "demo", "3b").overall) == 1
+        assert not load_history(tmp_path, "other", "7b")
+
+    def test_holdout_is_excluded_unless_asked(self, tmp_path: Path):
+        """Browsing holdout results casually is how one gets spent (ADR-027)."""
+        self._save(tmp_path, "m", "2026-08-01T00:00:00Z", 5, 5, split="holdout")
+        assert not load_history(tmp_path, "demo", "m")
+        assert load_history(tmp_path, "demo", "m", include_holdout=True).overall
+
+    def test_a_malformed_result_is_skipped_not_fatal(self, tmp_path: Path):
+        """A broken history view must not stop someone reading a live result."""
+        self._save(tmp_path, "m", "2026-08-01T00:00:00Z", 4, 5)
+        (tmp_path / "demo__m__20260802T000000Z.json").write_text("{ not json",
+                                                                 encoding="utf-8")
+        (tmp_path / "demo__m__20260803T000000Z.json").write_text('{"nope": 1}',
+                                                                 encoding="utf-8")
+        h = load_history(tmp_path, "demo", "m")
+        assert [p.passed for p in h.overall] == [4]
+
+    def test_a_missing_results_dir_is_empty_not_an_error(self, tmp_path: Path):
+        assert not load_history(tmp_path / "nope", "demo", "m")
+
+    def test_differing_repeat_counts_keep_counts_and_gain_rates(self, tmp_path: Path):
+        """`5/5` and `9/15` are different amounts of evidence.
+
+        Normalising to rates alone would hide that; showing counts alone is what
+        made `5/5 -> 0/5` look catastrophic beside a 60% norm.
+        """
+        self._save(tmp_path, "m", "2026-08-01T00:00:00Z", 2, 5)
+        self._save(tmp_path, "m", "2026-08-02T00:00:00Z", 9, 15)
+        text = render_history(load_history(tmp_path, "demo", "m"))
+        assert "2/5 (40%)" in text and "9/15 (60%)" in text
+
+    def test_a_current_run_is_placed_in_the_series(self, tmp_path: Path):
+        for stamp, passed in (("2026-08-01T00:00:00Z", 2),
+                              ("2026-08-02T00:00:00Z", 3)):
+            self._save(tmp_path, "m", stamp, passed, 5)
+        h = load_history(tmp_path, "demo", "m")
+        low = suite("m", case("a", *[run(i + 1, False) for i in range(5)]))
+        assert "BELOW the historical low" in render(low, h)
+        high = suite("m", case("a", *[run(i + 1, True) for i in range(5)]))
+        assert "ABOVE the historical high" in render(high, h)
+        mid = suite("m", case("a", run(1, True), run(2, True), run(3, False),
+                              run(4, False), run(5, False)))
+        assert "within range" in render(mid, h)
+
+    def test_render_without_history_is_unchanged(self, tmp_path: Path):
+        """Byte-identical for callers with no results directory."""
+        s = suite("m", case("a", run(1, True), run(2, False)))
+        assert render(s) == render(s, None)
+        assert "history" not in render(s)
+
+    def test_the_series_shows_every_value_not_a_summary(self, tmp_path: Path):
+        """A mean or min/max would have hidden that 28 was a lone peak."""
+        for stamp, passed in (("2026-08-01T00:00:00Z", 19), ("2026-08-02T00:00:00Z", 20),
+                              ("2026-08-03T00:00:00Z", 21), ("2026-08-04T00:00:00Z", 28)):
+            self._save(tmp_path, "m", stamp, passed, 35)
+        text = render_history(load_history(tmp_path, "demo", "m"))
+        for value in ("19/35", "20/35", "21/35", "28/35"):
+            assert value in text
+
+    def test_it_reports_when_runtimes_differ(self, tmp_path: Path):
+        self._save(tmp_path, "m", "2026-08-01T00:00:00Z", 5, 5, runtime="0.33.1")
+        self._save(tmp_path, "m", "2026-08-02T00:00:00Z", 5, 5, runtime="0.33.2")
+        assert "0.33.1, 0.33.2" in render_history(load_history(tmp_path, "demo", "m"))

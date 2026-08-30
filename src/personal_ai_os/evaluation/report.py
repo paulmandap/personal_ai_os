@@ -256,6 +256,168 @@ class SuiteResult(BaseModel):
         return cls.model_validate(json.loads(path.read_text(encoding="utf-8")))
 
 
+# --- history ---------------------------------------------------------------
+#
+# **Why this exists.** Twice in one day a single stored number was read as a
+# property and a regression reported that did not exist: `robustness` 17/35 was
+# compared against a baseline of 28/35 -- the highest value that suite had ever
+# recorded, in a series reading 19, 20, 21, 28. `docs/evaluation.md` already
+# said to check every stored result before calling a drop a regression, and the
+# rule had been re-read that same morning. **A rule that depends on remembering
+# to apply it failed twice**, so the distribution is now shown by default.
+#
+# **What this is NOT.** A distribution, not a same-code baseline. Results record
+# the model and (since ADR-041) the runtime, but not the commit, so a series
+# happily mixes runs made under abandoned experiments -- ADR-039's ledger arms,
+# ADR-036's gate variants -- with ordinary ones. Read the dates. Recording a
+# code version would close that and is deliberately left to its own decision
+# (ADR-043).
+
+
+class HistoryPoint(BaseModel):
+    """One past measurement of a suite or case."""
+
+    started_at: str
+    passed: int
+    total: int
+    #: Empty for results written before ADR-041, and for providers that report
+    #: no version. Carried so a series spanning a runtime change is readable.
+    runtime_version: str = ""
+
+    @property
+    def rate(self) -> float:
+        return self.passed / self.total if self.total else 0.0
+
+    def render(self, *, with_rate: bool) -> str:
+        """`4/15`, or `2/5 (40%)` when the series mixes repeat counts.
+
+        The counts are always kept. Normalising to rates alone would hide that
+        a `5/5` and a `9/15` are different amounts of evidence; showing counts
+        alone is what made `5/5 -> 0/5` look catastrophic beside a 60% norm.
+        """
+        return f"{self.passed}/{self.total}" + (f" ({self.rate:.0%})" if with_rate else "")
+
+
+class SuiteHistory(BaseModel):
+    """Every recorded measurement of one suite on one model, oldest first."""
+
+    suite: str
+    model: str
+    overall: list[HistoryPoint] = Field(default_factory=list)
+    cases: dict[str, list[HistoryPoint]] = Field(default_factory=dict)
+
+    def __bool__(self) -> bool:
+        return bool(self.overall or self.cases)
+
+
+def _series(points: list[HistoryPoint], current: HistoryPoint | None = None) -> str:
+    """A full series, plus where the current run falls in it.
+
+    Deliberately prints **every** value rather than a mean or a min/max. A
+    summary would have hidden that 28 was a lone peak above 19, 20, 21 -- which
+    is the entire failure this function exists to prevent.
+    """
+    if not points:
+        return "no earlier runs recorded"
+    mixed = len({p.total for p in points} | ({current.total} if current else set())) > 1
+    body = ", ".join(p.render(with_rate=mixed) for p in points)
+    if current is None:
+        return body
+    rates = [p.rate for p in points]
+    if current.rate > max(rates):
+        verdict = "ABOVE the historical high"
+    elif current.rate < min(rates):
+        verdict = "BELOW the historical low"
+    else:
+        verdict = f"within range ({min(rates):.0%}-{max(rates):.0%})"
+    return f"{body}  ->  {current.render(with_rate=mixed)}   {verdict}"
+
+
+def load_history(
+    results_dir: Path,
+    suite: str,
+    model: str,
+    *,
+    include_holdout: bool = False,
+    exclude: str = "",
+) -> SuiteHistory:
+    """Past results for one suite and model, oldest first.
+
+    Shortlisted by **filename** before anything is opened: `filename()` encodes
+    suite, holdout tag, model slug and timestamp, and there are hundreds of
+    committed results totalling tens of megabytes. Loading them all on every
+    render would be slow and pointless.
+
+    Holdout results are excluded unless asked for. Surfacing them casually is
+    how a holdout gets studied without anyone deciding to (ADR-027).
+
+    **Never raises.** A malformed or legacy result file is skipped, because a
+    broken history view must not stop someone reading a live result -- the same
+    reasoning as `RunTrace.event` swallowing disk errors.
+    """
+    history = SuiteHistory(suite=suite, model=model)
+    if not results_dir.is_dir():
+        return history
+
+    tag = "__holdout" if include_holdout else ""
+    prefix = f"{suite}{tag}__{model_slug(model)}__"
+    for path in sorted(results_dir.glob(f"{prefix}*.json")):
+        if path.name == exclude:
+            continue
+        try:
+            result = SuiteResult.load(path)
+        except Exception:  # legacy shape, truncated write, anything
+            continue
+        if not result.total_runs:
+            continue
+        history.overall.append(
+            HistoryPoint(
+                started_at=result.started_at,
+                passed=result.passed_runs,
+                total=result.total_runs,
+                runtime_version=result.runtime_version,
+            )
+        )
+        for case in result.cases:
+            if not case.total:
+                continue
+            history.cases.setdefault(case.case, []).append(
+                HistoryPoint(
+                    started_at=result.started_at,
+                    passed=case.passed,
+                    total=case.total,
+                    runtime_version=result.runtime_version,
+                )
+            )
+    history.overall.sort(key=lambda p: p.started_at)
+    for points in history.cases.values():
+        points.sort(key=lambda p: p.started_at)
+    return history
+
+
+def render_history(history: SuiteHistory) -> str:
+    """The standalone view, for looking before running anything."""
+    lines = [
+        f"suite  : {history.suite}",
+        f"model  : {history.model}",
+        "",
+        "  Every recorded run, oldest first. This is a DISTRIBUTION, not a",
+        "  same-code baseline: results do not record which commit produced them,",
+        "  so a series can mix runs from abandoned experiments. Read the dates.",
+        "",
+        f"  overall   {_series(history.overall)}",
+    ]
+    if history.overall:
+        runtimes = sorted({p.runtime_version or "?" for p in history.overall})
+        if len(runtimes) > 1:
+            lines.append(f"  runtimes  {', '.join(runtimes)}  (\"?\" = not recorded)")
+    lines.append("")
+    for name in sorted(history.cases):
+        lines.append(f"  {name}")
+        lines.append(f"      {_series(history.cases[name])}")
+    return "\n".join(lines)
+
+
 def model_slug(model: str) -> str:
     """`qwen2.5:7b-instruct` -> `qwen2.5-7b-instruct`, safe for filenames."""
     return re.sub(r"[^A-Za-z0-9._-]+", "-", model).strip("-")
@@ -273,7 +435,17 @@ def _bar(rate: float, width: int = 10) -> str:
     return "#" * filled + "." * (width - filled)
 
 
-def render(result: SuiteResult) -> str:
+def render(result: SuiteResult, history: SuiteHistory | None = None) -> str:
+    """Render one result, optionally against every earlier run of the same suite.
+
+    With ``history=None`` the output is byte-identical to before this existed,
+    so a caller with no results directory loses nothing.
+
+    With history, each case gains its full recorded series. That is the point: a
+    drop is only a regression relative to a *distribution*, and reading one
+    stored number as a property produced two false regression reports in a
+    single day (ADR-043).
+    """
     lines = [
         f"suite  : {result.suite}",
         f"model  : {result.model}",
@@ -299,6 +471,15 @@ def render(result: SuiteResult) -> str:
         for name, rate in case.check_rates().items():
             if rate < 1.0:
                 lines.append(f"      {name:<50} {rate:>5.0%}")
+        if history is not None:
+            current = HistoryPoint(
+                started_at=result.started_at,
+                passed=case.passed,
+                total=case.total,
+                runtime_version=result.runtime_version,
+            )
+            series = _series(history.cases.get(case.case, []), current)
+            lines.append(f"      history  {series}")
 
     categories = result.by_category()
     if len(categories) > 1:
@@ -338,6 +519,18 @@ def render(result: SuiteResult) -> str:
             "no hallucination, no unsupported claim, no safety violation, and "
             "the stored state is as the case expects."
         )
+    if history is not None:
+        current = HistoryPoint(
+            started_at=result.started_at,
+            passed=result.passed_runs,
+            total=result.total_runs,
+            runtime_version=result.runtime_version,
+        )
+        lines.append(f"  history     : {_series(history.overall, current)}")
+        lines.append(
+            "  (a distribution, not a same-code baseline -- results do not "
+            "record their commit)"
+        )
     if result.pass_rate == 1.0 and result.total_runs:
         lines.append(
             "  note: 100% means this suite has stopped measuring anything. "
@@ -346,8 +539,14 @@ def render(result: SuiteResult) -> str:
     return "\n".join(lines)
 
 
-def compare(a: SuiteResult, b: SuiteResult) -> str:
-    """Side-by-side, deliberately not collapsed to one number."""
+def compare(
+    a: SuiteResult, b: SuiteResult, history: SuiteHistory | None = None
+) -> str:
+    """Side-by-side, deliberately not collapsed to one number.
+
+    Pass `history` to show the series both points sit in. Without it the output
+    is byte-identical to before (ADR-043).
+    """
     lines = [
         f"suite: {a.suite}",
         "",
@@ -392,6 +591,19 @@ def compare(a: SuiteResult, b: SuiteResult) -> str:
         "  Read both columns. A faster model that fails more checks is a",
         "  regression, however good its throughput looks.",
     ]
+    if history is not None:
+        # The judgement this view exists for is "did B regress against A", and
+        # that is exactly where a single stored A gets mistaken for a property.
+        # Measured cost of not showing this: `robustness` 17/35 was called a
+        # regression against an A of 28/35, in a series reading 19, 20, 21, 28.
+        lines += [
+            "",
+            "  A and B are two points in a longer series. Before calling a",
+            "  difference a regression, read the whole thing:",
+            f"    overall  {_series(history.overall)}",
+            "  (a distribution, not a same-code baseline -- results do not",
+            "  record their commit, so abandoned experiments appear here too)",
+        ]
     if a.runtime_version != b.runtime_version:
         lines += [
             "",

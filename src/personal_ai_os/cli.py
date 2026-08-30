@@ -334,7 +334,13 @@ def _eval_dirs(workspace: Path | None) -> tuple[Path, Path, Path]:
 
 def cmd_eval(args: argparse.Namespace) -> int:
     from personal_ai_os.evaluation.case import DEFAULT_SPLITS, load_suites
-    from personal_ai_os.evaluation.report import SuiteResult, compare, render
+    from personal_ai_os.evaluation.report import (
+        SuiteResult,
+        compare,
+        load_history,
+        render,
+        render_history,
+    )
     from personal_ai_os.evaluation.runner import EvalRunner
 
     root, cases_dir, results_dir = _eval_dirs(args.workspace)
@@ -348,7 +354,26 @@ def cmd_eval(args: argparse.Namespace) -> int:
                 f"({left.suite} vs {right.suite})",
                 file=sys.stderr,
             )
-        print(compare(left, right))
+        # The series both points sit in. This view is where "did B regress
+        # against A" gets decided, and where a single stored A was twice
+        # mistaken for a property (ADR-043).
+        history = load_history(results_dir, left.suite, left.model)
+        print(compare(left, right, history if history else None))
+        return 0
+
+    if args.eval_command == "history":
+        model = args.model or ""
+        if not model:
+            print("--model is required: history is per suite AND model",
+                  file=sys.stderr)
+            return 1
+        history = load_history(
+            results_dir, args.suite, model, include_holdout=args.include_holdout
+        )
+        if not history:
+            print(f"no recorded results for {args.suite!r} on {model!r}")
+            return 1
+        print(render_history(history))
         return 0
 
     suites = load_suites(cases_dir)
@@ -399,7 +424,17 @@ def cmd_eval(args: argparse.Namespace) -> int:
         print("this calls a local model repeatedly and will take a while.\n")
 
         result = runner.run_suite(suite, splits=splits)  # type: ignore[arg-type]
-        print(render(result))
+        # History is shown by DEFAULT, not behind a flag. A flag that has to be
+        # remembered is precisely what failed twice (ADR-043). `exclude` keeps
+        # this run out of its own history when it has already been saved.
+        history = load_history(
+            results_dir,
+            suite.suite,
+            result.model,
+            include_holdout=args.split == "holdout",
+            exclude=result.filename(),
+        )
+        print(render(result, history if history else None))
 
         if not args.no_save:
             path = result.save(results_dir)
@@ -526,6 +561,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     eval_run.add_argument("--no-save", action="store_true", help="do not write a result file")
     eval_run.set_defaults(func=cmd_eval, eval_command="run")
+
+    eval_hist = eval_sub.add_parser(
+        "history", help="every recorded result for a suite, oldest first"
+    )
+    eval_hist.add_argument("suite")
+    eval_hist.add_argument("--model", help="required: history is per suite and model")
+    eval_hist.add_argument(
+        "--include-holdout",
+        action="store_true",
+        help="include holdout results (ADR-027: do not browse these casually)",
+    )
+    eval_hist.set_defaults(func=cmd_eval, eval_command="history")
 
     eval_cmp = eval_sub.add_parser("compare", help="compare two saved results")
     eval_cmp.add_argument("left")

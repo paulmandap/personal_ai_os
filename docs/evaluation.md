@@ -49,6 +49,31 @@ A corollary for reading committed history: a single 100% is one sample, not a
 property. Before treating a drop as a regression, check what that case has
 scored across *every* stored result.
 
+**That rule failed twice in one day, so it is now a command rather than advice**
+(ADR-043). `paios eval run` prints each case's full recorded series by default,
+and
+
+```powershell
+paios eval history <suite> --model <model>
+```
+
+shows it without running anything. The failure it prevents: `robustness` 17/35
+was called a collapse against a baseline of 28/35 — the highest value that suite
+had ever recorded, in a series reading **19, 20, 21, 28**. Seeing the series
+makes the outlier obvious; remembering to look for it did not.
+
+Two things the view deliberately does:
+
+- **Prints every value, not a summary.** A mean or a min/max would still hide a
+  lone peak.
+- **Keeps counts and adds rates when repeats differ.** `5/5` and `9/15` are
+  different amounts of evidence, and comparing counts alone is what made
+  `5/5 → 0/5` look catastrophic beside a 60% norm.
+
+And one thing it cannot do: **a history is a distribution, not a same-code
+baseline.** Results record the model and runtime but not the commit, so a series
+mixes ordinary runs with abandoned experiments. Read the dates.
+
 ## Scoring is deterministic
 
 Scores come from the trace and the database, never from a judge model

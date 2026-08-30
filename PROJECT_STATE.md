@@ -138,6 +138,25 @@ will always be blind to verbatim copying.
 and audit against the *training* split, so repairing the instrument does not
 spend a holdout case (ADR-027). Full record in `docs/evaluation.md`.
 
+### And never read one stored number as a property
+
+The companion failure, and the one that recurred fastest: on 2026-08-30 a
+regression was reported twice against baselines that were each **the highest
+value that case had ever recorded**. `docs/evaluation.md` already said to check
+every stored result, and the rule had been re-read that morning.
+
+**It is now mechanical rather than remembered (ADR-043).** `paios eval` prints
+the full recorded series by default, and
+
+```powershell
+& .\.venv\Scripts\paios.exe eval history <suite> --model <model>
+```
+
+shows it without running anything. **Run that before calling any drop a
+regression.** Note what it cannot do: results record the model and runtime but
+not the commit, so a series mixes runs from abandoned experiments — read the
+dates.
+
 ---
 
 ## Completed (Phase 5)
@@ -963,6 +982,7 @@ no cloud provider) overrides everything.
 | **040** | **A tool must not show the model a figure it would have to convert** |
 | **041** | **A result must say which runtime produced it** |
 | **042** | **A failed lookup must not hand the model a menu** |
+| **043** | **Show the distribution, because remembering to check it failed twice** |
 
 ---
 
@@ -997,7 +1017,7 @@ three new agents since Phase 1.
 
 ## Repository Facts
 
-- 667 tests: 651 unit (offline, sockets blocked), 16 integration (live)
+- 677 tests: 661 unit (offline, sockets blocked), 16 integration (live)
 - 10 evaluation suites, 55 cases, 11 holdout · 23 checks · 15 failure codes
   (F008 `SAFETY_VIOLATION` is in use as of ADR-037; it had none before)
 - 3 runtime dependencies (`pydantic`, `httpx`, `pyyaml`)

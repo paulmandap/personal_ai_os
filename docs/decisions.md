@@ -2150,3 +2150,81 @@ toggled off on the same runtime, `robustness` and `planning` gave *identical*
 results, so nothing here was caused by ADR-042. That method was right; only the
 baseline it was contrasted against was wrong. **A controlled A/B against a
 same-day arm survived; a comparison against a stored high-water mark did not.**
+
+---
+
+## ADR-043 — Show the distribution, because remembering to check it failed twice
+
+**Date:** 2026-08-30 · **Status:** accepted · **Phase:** 5 (overflow)
+
+**Context.** Twice on 2026-08-30 a single stored number was read as a property
+and a regression reported that did not exist:
+
+- `robustness` 17/35 was called a collapse against a baseline of **28/35** — the
+  highest value that suite had ever recorded, in a series reading
+  **19, 20, 21, 28**. Likewise `contradiction_is_surfaced` against its lone
+  10/15 in a 0–6 band, and `ordering_matters` against its lone 5/5 in a 2/5 band.
+  It became a committed Known Problem and a wrong top priority before being
+  withdrawn.
+- Hours earlier, the handoff pass corrected five stale claims of the same shape.
+
+`docs/evaluation.md` already carried the rule, and it had been re-read that
+morning:
+
+> A single 100% is one sample, not a property. Before treating a drop as a
+> regression, check what that case has scored across *every* stored result.
+
+**A rule that depends on remembering to apply it has now failed twice, in one
+day, by the person who had just re-verified it.** That is a process defect, not a
+discipline problem, and the fix belongs in the tool.
+
+**Decision.** `paios eval` shows the full recorded distribution **by default**.
+
+- `load_history()` collects every past result for a suite and model, oldest
+  first, shortlisting by **filename** before opening anything — `filename()`
+  already encodes suite, holdout tag, model slug and timestamp, and there are
+  239 committed results totalling 17 MB.
+- `render()` and `compare()` take an optional `SuiteHistory`. Each case gains its
+  series and where the current run falls in it — *within range*, *ABOVE the
+  historical high*, *BELOW the historical low*.
+- `paios eval history <suite> --model <m>` gives the same view without running
+  anything. **This is the command that would have prevented the false claim.**
+
+**Three display rules, each aimed at the specific mistake.**
+
+1. **Every value, never a summary.** A mean or a min/max would still have hidden
+   that 28 was a lone peak above 19, 20, 21.
+2. **Counts kept, rates added when repeats differ.** The same case appears as
+   `2/5` and `9/15`; comparing counts alone is what made `5/5 → 0/5` look
+   catastrophic beside a 60% norm, and normalising to rates alone would hide that
+   they are different amounts of evidence.
+3. **Default on, not behind a flag.** A flag that must be remembered is exactly
+   what failed.
+
+**Verified against the real history**, which is the acceptance test:
+`paios eval history robustness --model qwen2.5:3b-instruct` prints
+`19/35 (54%), 20/35 (57%), 21/35 (60%), 28/35 (80%), 17/35 (49%), 17/35 (49%)`
+and `contradiction_is_surfaced`'s full 0–10 band. The outlier is now visible
+between its neighbours.
+
+**Consequences and limits.**
+
+- **This helps the reader, not the arithmetic.** Nothing here *prevents* picking
+  a bad baseline; it makes a bad baseline visible. That is the honest ceiling of
+  a display fix.
+- **A history is a distribution, not a same-code baseline.** Results record the
+  model and (since ADR-041) the runtime, but **not the commit**, so a series
+  mixes ordinary runs with ADR-039's ledger arms and ADR-036's gate variants. The
+  view says so in its own output. Recording a `code_version` would close it and
+  was **deliberately deferred** this session: it is a second provenance field and
+  shelling out to git from the harness deserves its own decision rather than
+  riding along with a display change. **That trap remains open, by choice.**
+- **Holdout results are excluded unless asked for** (ADR-027) — browsing them
+  casually is how one gets spent. The view is therefore silent about them.
+- **`runtime_version` is blank before ADR-041**, so a runtime change part-way
+  through a series is invisible in older points.
+- **Malformed or legacy result files are skipped, never fatal.** A broken history
+  view must not stop someone reading a live result — the same reasoning as
+  `RunTrace.event` swallowing disk errors.
+- `render(result)` with no history is **byte-identical** to before, asserted by a
+  test, so callers without a results directory lose nothing.
