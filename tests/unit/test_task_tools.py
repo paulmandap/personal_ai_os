@@ -212,10 +212,25 @@ class TestCompleteByTitle:
         still_open = [t.title for t in tasks.list()]
         assert still_open == ["Renew passport"]
 
-    def test_no_match_lists_the_open_tasks(self, tool_context, tasks: TaskStore):
+    def test_no_match_does_not_offer_the_other_open_tasks(
+        self, tool_context, tasks: TaskStore
+    ):
+        """ADR-042: the refusal names the miss, and offers no alternatives.
+
+        This test previously asserted the opposite -- that the refusal listed
+        the other open tasks -- and that contract was the defect. Traced on
+        qwen2.5:3b, the list read as a menu: in 4 of 15 runs the model completed
+        a task nobody had asked about, each time naming a title this refusal had
+        just enumerated. The 7B saw the same list and declined it, 15/15.
+
+        Deliberately renamed rather than deleted: the old name recorded a
+        behaviour that has been measured and reversed, and a reader should be
+        able to see that it changed on purpose.
+        """
         tasks.add("Renew passport")
-        with pytest.raises(ToolExecutionError, match="Renew passport"):
+        with pytest.raises(ToolExecutionError, match="dentist") as exc:
             call(CompleteTaskTool(), {"title": "dentist"}, tool_context)
+        assert "Renew passport" not in str(exc.value)
 
     def test_ambiguity_is_refused_rather_than_guessed(self, tool_context, tasks):
         """Completing whichever sorted first would be silently wrong."""
@@ -291,10 +306,14 @@ class TestUpdateByFind:
         with pytest.raises(ToolExecutionError, match="2 open tasks match"):
             call(UpdateTaskTool(), {"find": "oat milk", "notes": "x"}, tool_context)
 
-    def test_no_match_lists_the_open_tasks(self, tool_context, tasks: TaskStore):
+    def test_no_match_does_not_offer_the_other_open_tasks(
+        self, tool_context, tasks: TaskStore
+    ):
+        """Same change as complete_task, for the same measured reason (ADR-042)."""
         tasks.add("Renew passport")
-        with pytest.raises(ToolExecutionError, match="Renew passport"):
+        with pytest.raises(ToolExecutionError, match="dentist") as exc:
             call(UpdateTaskTool(), {"find": "dentist", "notes": "x"}, tool_context)
+        assert "Renew passport" not in str(exc.value)
 
     def test_an_id_still_works(self, tool_context, tasks: TaskStore):
         task = tasks.add("Renew passport")
@@ -332,3 +351,68 @@ class TestSchemas:
             props = tool.schema().parameters["properties"]
             missing = [k for k, v in props.items() if not v.get("description")]
             assert not missing, f"{tool.name} fields without description: {missing}"
+
+
+class TestRefusalsDoNotOfferAlternatives:
+    """ADR-042: a failed lookup must not hand the model a menu.
+
+    Traced mechanism on qwen2.5:3b, from the eval harness with tracing on:
+
+        complete_task("dentist appointment") -> no match, listed both open tasks
+        complete_task("oat milk")            -> OK, the correct write
+        complete_task(id=1, title=...)       -> invalid arguments, so it retries
+        complete_task("oat milk")            -> no match (it is done now, so not
+                                                "open"), listed ['Renew passport']
+        complete_task("Renew passport")      -> the wrong write
+
+    The decisive refusal is the second one, where the list has narrowed to a
+    single entry. 4 of 15 runs ended that way; the 7B saw the same list and
+    declined it 15/15.
+    """
+
+    def test_zero_match_names_only_the_miss(self, tool_context, tasks: TaskStore):
+        tasks.add("Renew passport")
+        tasks.add("Buy oat milk")
+        with pytest.raises(ToolExecutionError) as exc:
+            call(CompleteTaskTool(), {"title": "dentist appointment"}, tool_context)
+        message = str(exc.value)
+        assert "dentist appointment" in message
+        assert "Renew passport" not in message
+        assert "Buy oat milk" not in message
+
+    def test_the_already_done_retry_offers_nothing(self, tool_context, tasks: TaskStore):
+        """The exact step that produced the wrong write.
+
+        `find_by_title` searches open tasks, so completing a task and then
+        retrying it reports no match. That refusal used to enumerate whatever
+        was still open -- one task, which reads as the answer.
+        """
+        tasks.add("Buy oat milk")
+        tasks.add("Renew passport")
+        call(CompleteTaskTool(), {"title": "oat milk"}, tool_context)
+        with pytest.raises(ToolExecutionError) as exc:
+            call(CompleteTaskTool(), {"title": "oat milk"}, tool_context)
+        assert "Renew passport" not in str(exc.value)
+
+    def test_ambiguity_still_lists_its_candidates(self, tool_context, tasks: TaskStore):
+        """The distinction that must survive: with several matches the list IS
+        the answer, and naming them is what stops the tool guessing."""
+        tasks.add("Buy oat milk")
+        tasks.add("Buy oat milk again")
+        with pytest.raises(ToolExecutionError, match="2 open tasks match") as exc:
+            call(CompleteTaskTool(), {"title": "oat milk"}, tool_context)
+        assert "Buy oat milk again" in str(exc.value)
+
+    def test_the_failure_stays_recoverable(self, tool_context, tasks: TaskStore):
+        """Not a silent empty result: the loop needs an observation it can act
+        on so a failed first step does not stop a valid second one."""
+        tasks.add("Renew passport")
+        with pytest.raises(ToolExecutionError):
+            call(CompleteTaskTool(), {"title": "dentist"}, tool_context)
+
+    def test_the_id_path_refusal_is_untouched(self, tool_context, tasks: TaskStore):
+        """Scope check. `tool_calling::survives_a_bad_start` is the canary for
+        this path, and it must not move."""
+        tasks.add("Renew passport")
+        with pytest.raises(ToolExecutionError, match="list_tasks"):
+            call(CompleteTaskTool(), {"id": 999}, tool_context)

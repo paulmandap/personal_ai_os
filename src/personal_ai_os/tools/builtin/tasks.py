@@ -238,12 +238,19 @@ class UpdateTaskTool(Tool):
             # Same resolution as complete_task: requiring an id the user never
             # gave is what pushes a model into inventing one (ADR-022).
             matches = tasks.find_by_title(str(args.find))
+            # ADR-042: a zero-match refusal must NOT enumerate the other open
+            # tasks. It used to, and the list read as a menu: qwen2.5:3b
+            # completed a task nobody asked about in 4 of 15 traced runs, always
+            # by naming a title this refusal had just listed. The decisive one
+            # is the *second* refusal in a run -- once the requested task is
+            # done it is no longer "open", the retry fails, and the list has
+            # narrowed to a single entry that reads as the answer.
+            #
+            # The ambiguity branch below keeps its list, deliberately: there the
+            # candidates *are* the answer, and naming them is what stops the
+            # tool completing whichever sorted first.
             if not matches:
-                open_titles = [t.title for t in tasks.list(limit=20)]
-                raise ToolExecutionError(
-                    f"no open task matches {args.find!r}. Open tasks: "
-                    f"{open_titles or 'none'}"
-                )
+                raise ToolExecutionError(f"no open task matches {args.find!r}.")
             if len(matches) > 1:
                 raise ToolExecutionError(
                     f"{len(matches)} open tasks match {args.find!r}: "
@@ -329,12 +336,19 @@ class CompleteTaskTool(Tool):
                 ) from exc
 
         matches = tasks.find_by_title(str(args.title))
+        # ADR-042: a zero-match refusal must NOT enumerate the other open
+        # tasks. It used to, and the list read as a menu: qwen2.5:3b
+        # completed a task nobody asked about in 4 of 15 traced runs, always
+        # by naming a title this refusal had just listed. The decisive one
+        # is the *second* refusal in a run -- once the requested task is
+        # done it is no longer "open", the retry fails, and the list has
+        # narrowed to a single entry that reads as the answer.
+        #
+        # The ambiguity branch below keeps its list, deliberately: there the
+        # candidates *are* the answer, and naming them is what stops the
+        # tool completing whichever sorted first.
         if not matches:
-            open_titles = [t.title for t in tasks.list(limit=20)]
-            raise ToolExecutionError(
-                f"no open task matches {args.title!r}. Open tasks: "
-                f"{open_titles or 'none'}"
-            )
+            raise ToolExecutionError(f"no open task matches {args.title!r}.")
         if len(matches) > 1:
             # Ambiguity is recoverable: name the candidates and let the model
             # pick, rather than silently completing whichever sorted first.
