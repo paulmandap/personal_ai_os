@@ -328,8 +328,12 @@ class TestRuntimeVersionProvenance:
         assert loaded.runtime_version == "0.33.2"
         # A literal on purpose: this is the tripwire that makes a RESULT_VERSION
         # bump a conscious act. 1 -> 2 runtime_version (ADR-041), 2 -> 3
-        # code_version (ADR-044), 3 -> 4 kind (ADR-048).
-        assert loaded.version == 4
+        # code_version (ADR-044), 3 -> 4 kind (ADR-048), 4 -> 5 holdout
+        # redaction (ADR-049).
+        #
+        # Four bumps in three days. The tripwire is doing its job; the rate is
+        # the smell -- see the note on RESULT_VERSION in report.py.
+        assert loaded.version == 5
 
     def test_a_v1_result_with_no_such_field_still_loads(self):
         """Backward compatibility, asserted against a real committed result.

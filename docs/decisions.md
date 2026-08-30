@@ -2923,6 +2923,97 @@ one; a fourth built on same-day evidence would repeat that.
 
 ---
 
+## ADR-049 — A holdout result must not carry behavioural evidence
+
+**Date:** 2026-08-30 · **Status:** accepted · **Phase:** 5 (overflow)
+
+**Context.** ADR-027 protects the holdout by convention: *"once you have studied
+why a holdout case failed, it is a training case."* That protection assumes
+studying is a deliberate act. It is not, because the evidence ships in the
+committed record.
+
+A holdout result carries `RunRecord.output_preview` — 200 characters of the
+agent's answer — and `CheckOutcome.detail`. **Reading one is studying the
+failure, in miniature**, and it is one `git grep` away. The hole is not
+hypothetical: it was found by opening a committed holdout result and reading the
+preview of `impossible_request_is_declined` — a case that was in fact studied and
+retired under ADR-027.
+
+**`detail` is not merely database state, and proving that turned this from
+cosmetic into load-bearing.** The groundedness checks lift strings straight out
+of the answer:
+
+```python
+f"invented: {invented}"                                    # claimed titles
+f"figures no tool returned: {[str(v) for v in invented]}"  # figures
+```
+
+### The information-flow trace
+
+| stage | behavioural evidence | persisted | rendered | logged |
+|---|---|---|---|---|
+| `AgentResult.output` / `.transcript` | full answer, full history | **no** | no | no |
+| `RunContext` | both | **no** — in-memory | no | no |
+| **`RunRecord.output_preview`** | 200 chars of the answer | **YES** | no | no |
+| **`CheckOutcome.detail`** | output-derived strings | **YES** | no | no |
+| `RunRecord.error`, `RunMetrics` | infrastructure / counts only | yes | yes | no |
+| traces | everything | only with `--trace-dir` | via `paios trace` | no |
+| logging | case, index, exception | — | stderr | **no model output** |
+
+Confirmed by inspection: `AgentResult` is read in-memory by checks and never
+copied into a `RunRecord`; `report.py` contains **zero** references to `.detail`,
+so `render`, `render_history` and `compare` are already safe; `output_preview`
+has exactly one writer; every `log.*` in `evaluation/`, `agents/base.py` and
+`runtime.py` passes names, indices and exceptions but no model output; and the
+`PersonalAIOSError` path builds a record with no checks and no preview.
+
+**So `output_preview` and `detail` are the complete set of persisted carriers.**
+
+**Decision.** In `EvalRunner._run_once`, when `case.split == "holdout"`, clear
+`output_preview` and every outcome's `detail`.
+
+**At construction, not at save.** The evidence then never exists in memory, so it
+cannot reach a log, a render, an exception message, or a field added later by
+someone who did not read this.
+
+**Every outcome, not only failing ones.** A per-check judgement about which
+details are "safe" is the kind of rule that rots; a blanket clear is verifiable
+in one line. Labels, `passed` and failure codes survive, so scores, the taxonomy
+and `defect_free` are untouched — and a test asserts redaction moves no verdict.
+
+**Empty values, not omission**, on ADR-041's own argument: an empty field is a
+positive assertion, a missing one is indistinguishable from an old file that
+never had it. Omission would also force `.get()` on every consumer without
+reducing the repopulation risk — only the invariant test prevents that.
+
+**`RESULT_VERSION` 4 → 5**, resolving the one residual ambiguity: an empty
+preview on v4-or-earlier means the model said nothing; on v5+ it means the
+evidence was never created. The rule is *`split == "holdout"` on v5+ ⇒ redacted
+by construction* — no new field, because `split` already travels with the result.
+
+**Fourth bump in three days, and that is a smell**, recorded rather than hidden.
+The constant is write-only. If a fifth arrives soon, ask why the result schema is
+unstable rather than incrementing again.
+
+**Historical files are not touched** — no rewrite, no backfill, the rule from
+ADR-041/044/048. Old holdout results keep their previews and remain a known
+exposure. A test asserts they still do, proving never-rewrite mechanically rather
+than by promise.
+
+### Consequences
+
+- **Studying a holdout failure now requires a fresh run.** That is a feature: it
+  makes the act deliberate rather than available by scrolling, which is what
+  ADR-027 intended and could not enforce.
+- **Discipline replaced by machinery** — this project's own repeated lesson.
+  ADR-043 and ADR-044 both exist because a remembered rule failed.
+- **It does not reach backwards.** The exposure in existing files is unchanged.
+- **It protects the record, not the reader.** Nothing stops someone re-running a
+  holdout case with `--trace-dir` and studying it deliberately; the point is that
+  it can no longer happen by accident.
+
+---
+
 ## Approval history
 
 **Relocated from `PROJECT_STATE.md` on 2026-08-30**, when that document was

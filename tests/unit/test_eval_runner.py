@@ -559,6 +559,133 @@ class TestTraceCapture:
         assert len(ids) == 3
 
 
+class TestHoldoutCarriesNoBehaviouralEvidence:
+    """ADR-049: reading why a holdout case failed retires it (ADR-027), and a
+    committed result put that evidence one `git grep` away.
+
+    These assert the **invariant**, not the implementation. The full
+    information-flow trace found exactly two persisted carriers --
+    `RunRecord.output_preview` and `CheckOutcome.detail` -- and `detail` is not
+    merely database state: the groundedness checks write strings lifted straight
+    out of the answer.
+    """
+
+    def _case(self, split: str, **kw) -> EvalCase:
+        return make_case(
+            checks=["answered", {"task_title_contains": "passport"}],
+            split=split,
+            **kw,
+        )
+
+    def _runner(self) -> EvalRunner:
+        # The scripted answer is what must never survive into a holdout record.
+        def responses():
+            return [
+                tool_call_response("add_task", {"title": "Buy oat milk"}),
+                text_response("I also completed Call the dentist for you."),
+            ]
+
+        return EvalRunner(repo_root=REPO_ROOT, runtime_builder=scripted_builder(responses))
+
+    # --- 1 & 2: nothing survives, including on the groundedness path ------
+
+    def test_a_failing_holdout_run_carries_no_evidence(self):
+        """Asserted on a case that FAILS -- that is when evidence is written."""
+        result = self._runner().run_case(self._case("holdout", repeat=2))
+        assert result.pass_rate == 0.0, "case must fail, or it proves nothing"
+        for run in result.runs:
+            assert run.output_preview == ""
+            assert all(o.detail == "" for o in run.checks)
+
+    def test_the_groundedness_leak_is_closed(self):
+        """`no_unsupported_task_claims` writes `invented: [...]` straight from
+        the model's answer. That is the specific leak the trace found."""
+        runner = self._runner()
+        case = make_case(
+            checks=["no_unsupported_task_claims"], split="holdout", repeat=1
+        )
+        run = runner.run_case(case).runs[0]
+        assert run.checks[0].detail == ""
+        assert "dentist" not in run.model_dump_json()
+
+    # --- 3: the exception path -------------------------------------------
+
+    def test_a_harness_error_holdout_run_carries_no_evidence(self):
+        broken = EvalCase(
+            name="broken", agent="no_such_agent", objective="x",
+            checks=["answered"], repeat=1, split="holdout",
+        )
+        run = self._runner().run_case(broken).runs[0]
+        assert run.stop_reason == "harness_error"
+        assert run.output_preview == ""
+        assert all(o.detail == "" for o in run.checks)
+
+    # --- 4: train is untouched -------------------------------------------
+
+    def test_a_train_run_still_carries_its_preview_and_detail(self):
+        result = self._runner().run_case(self._case("train", repeat=1))
+        run = result.runs[0]
+        assert "dentist" in run.output_preview
+        assert any(o.detail for o in run.checks)
+
+    # --- 5: redaction cannot move a verdict ------------------------------
+
+    def test_redaction_changes_no_verdict(self):
+        """The property that makes redacted numbers usable at all. If clearing
+        evidence could move a score, every holdout measurement would be
+        suspect."""
+        train = self._runner().run_case(self._case("train", repeat=2))
+        holdout = self._runner().run_case(self._case("holdout", repeat=2))
+
+        assert [r.passed for r in train.runs] == [r.passed for r in holdout.runs]
+        assert [r.defect_free for r in train.runs] == [
+            r.defect_free for r in holdout.runs
+        ]
+        for a, b in zip(train.runs, holdout.runs):
+            assert [(o.label, o.passed, o.failure) for o in a.checks] == [
+                (o.label, o.passed, o.failure) for o in b.checks
+            ]
+
+    # --- 6: rendering exposes nothing ------------------------------------
+
+    def test_rendering_never_exposes_evidence(self):
+        """True today -- `report.py` has no reference to `.detail`. Asserted so
+        a future change cannot silently break it."""
+        from personal_ai_os.evaluation.report import render
+
+        suite = EvalSuite(
+            suite="s", agent="task_agent", repeat=1,
+            cases=[self._case("train")],
+        )
+        rendered = render(self._runner().run_suite(suite, splits=("train",)))
+        assert "dentist" not in rendered
+
+    # --- 7: history is not rewritten -------------------------------------
+
+    def test_committed_pre_redaction_holdout_files_are_untouched(self):
+        """Proves the never-rewrite rule mechanically rather than by promise.
+
+        Old holdout results keep their previews and remain a known exposure.
+        ADR-049 stops that being extended; it does not reach backwards.
+        """
+        from personal_ai_os.evaluation.report import SuiteResult
+
+        older = sorted(Path("evaluations/results").glob("*__holdout__*.json"))
+        assert older, "expected committed holdout results to exist"
+        with_preview = [
+            p for p in older
+            if any(
+                r.output_preview
+                for c in SuiteResult.load(p).cases
+                for r in c.runs
+            )
+        ]
+        assert with_preview, (
+            "pre-redaction holdout results should still carry their previews; "
+            "if this fails, something rewrote history"
+        )
+
+
 class TestDetectCodeVersion:
     """ADR-044: provenance instrumentation that can never fail a suite.
 

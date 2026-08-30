@@ -40,10 +40,20 @@ from personal_ai_os.evaluation.taxonomy import Failure, by_severity
 #: honest value. This is stated because a version bump is precisely when someone
 #: is tempted to tidy the old files.
 #:
-#: Third bump in three days for a constant nothing reads. Worth naming as a
-#: smell: if a fourth arrives quickly, ask why the result schema is unstable
-#: rather than incrementing again.
-RESULT_VERSION = 4
+#: Bumped to 5 for holdout redaction (ADR-049). It carries a real distinction on
+#: the same argument as every bump before it: **an empty `output_preview` on a
+#: v4-or-earlier holdout result means the model said nothing; on v5+ it means the
+#: evidence was never created.** Without the bump those are one value, and a
+#: reader cannot tell a silent agent from a redacted record.
+#:
+#: The rule: `split == "holdout"` on v5+ ⇒ redacted by construction. No new field
+#: is needed, because `split` already travels with the result.
+#:
+#: **Fourth bump in three days, and that is a smell** -- recorded rather than
+#: hidden. The constant is write-only; nothing reads it. If a fifth arrives
+#: soon, the right response is to ask why the result schema is unstable, not to
+#: keep incrementing.
+RESULT_VERSION = 5
 PREVIEW_CHARS = 200
 
 

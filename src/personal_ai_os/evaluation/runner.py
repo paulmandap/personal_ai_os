@@ -335,6 +335,27 @@ class EvalRunner:
                 outcome.label = spec.describe()
                 outcomes.append(outcome)
 
+            # ADR-049: a holdout result must carry no behavioural evidence.
+            #
+            # Reading *why* a holdout case failed retires it (ADR-027), and a
+            # committed result file put that evidence one `git grep` away.
+            # `detail` is not merely database state -- the groundedness checks
+            # write strings lifted straight out of the answer, e.g.
+            # `invented: ['Call the dentist']`.
+            #
+            # Cleared at CONSTRUCTION, not at save: the evidence then never
+            # exists in memory, so it cannot reach a log, a render, an exception
+            # message, or a field somebody adds later without reading this.
+            #
+            # Every outcome, not only failing ones. A per-check judgement about
+            # which details are "safe" is the kind of rule that rots; a blanket
+            # clear is verifiable in one line. Labels, `passed` and failure codes
+            # survive, so scores, the taxonomy and `defect_free` are untouched.
+            redact = case.split == "holdout"
+            if redact:
+                for outcome in outcomes:
+                    outcome.detail = ""
+
             return RunRecord(
                 index=index,
                 passed=all(o.passed for o in outcomes),
@@ -342,7 +363,7 @@ class EvalRunner:
                 error=result.error,
                 checks=outcomes,
                 metrics=_metrics(result, ctx, wall_ms),
-                output_preview=result.output[:200],
+                output_preview="" if redact else result.output[:200],
             )
 
     # --- cases and suites --------------------------------------------------
