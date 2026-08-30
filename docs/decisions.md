@@ -2104,3 +2104,49 @@ sampling one.** Investigating it is the next task.
   obvious follow-up.
 - No production evidence: eval harness at `write: auto`; shipped default is
   `write: ask`.
+
+### ADR-042 — correction, 2026-08-30
+
+**The section above titled "The 3B regression that is NOT this change" overstated
+its case, and the overstatement was mine.** Appended rather than edited: ADRs are
+not rewritten, and this error is more useful visible than tidied away.
+
+**What it claimed.** `robustness` 28/35 → 17/35 and `planning` 22/25 → 18/25 on
+the 3B, with `contradiction_is_surfaced` 10/15 → 1/15 and `ordering_matters`
+5/5 → 0/5, described as "a large, unattributed regression" and promoted to the
+most important open item in `PROJECT_STATE`.
+
+**What was wrong.** Every baseline in that comparison was **the highest value
+that case had ever recorded**. Measured fresh at `repeat: 15` on the same code
+and runtime:
+
+| Case (3B) | full history | fresh |
+|---|---|---|
+| `contradiction_is_surfaced` | 0,1,6,2,4,4,6,**10**,1,1 of 15 | **4/15**, a value seen twice before |
+| `vague_request_is_clarified` | 0,3,0,1,1,1,0,0,1,0,1,0,**3**,1,1 of 5 | **3/15 (20%)**, inside |
+| `ordering_matters` | 2/5, 2/5, 2/5, **5/5**, 0/5, 0/5 | **9/15 (60%)**, *above* its ~40% norm |
+
+7B diagnostic control on the same code and runtime: `contradiction` 14/15,
+`vague_request` 5/5, `ordering_matters` 4/5 — stable. **No effect exists on
+either model.**
+
+Attribution was pre-registered to proceed only if an effect survived. It did not,
+so no cause was hunted — though ADR-036's gate had already been eliminated for
+free: **zero permission denials in every 3B run of both suites.**
+
+**The rule broken is this project's own**, from `docs/evaluation.md`, re-verified
+hours earlier in the same session:
+
+> A single 100% is one sample, not a property. Before treating a drop as a
+> regression, check what that case has scored across *every* stored result.
+
+Four runs were checked, not every run. **This is the same failure mode as the
+stale-claim class the handoff pass had just corrected** — reading one number as a
+property — which is why it recurs, and why the check has to be mechanical rather
+than remembered.
+
+**What stands unchanged.** The reverted-arm comparison was sound: with ADR-042
+toggled off on the same runtime, `robustness` and `planning` gave *identical*
+results, so nothing here was caused by ADR-042. That method was right; only the
+baseline it was contrasted against was wrong. **A controlled A/B against a
+same-day arm survived; a comparison against a stored high-water mark did not.**

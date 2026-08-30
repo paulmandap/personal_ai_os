@@ -452,39 +452,46 @@ spend a holdout case (ADR-027). Full record in `docs/evaluation.md`.
    to tool output, which is a prompt change, which would have confounded the
    ADR-038 security runs. Fix it as its own commit and re-measure `finance` and
    `safety` together.
-6c. **A large, UNATTRIBUTED 3B regression on `robustness` and `planning`.**
-   **This is the most important open item on this list.** Found 2026-08-30 while
-   measuring ADR-042, against the 3B's committed baselines:
+6c. ~~**A large, UNATTRIBUTED 3B regression on `robustness` and `planning`.**~~
+   **WITHDRAWN — there was no regression. The claim was my measurement error**,
+   and it is recorded rather than deleted because the mistake is the lesson.
 
-   | Suite (3B) | baseline (01:00-03:23Z) | now |
+   Claimed 2026-08-30 and retracted the same day: `robustness` 28/35 -> 17/35,
+   `contradiction_is_surfaced` 10/15 -> 1/15, `ordering_matters` 5/5 -> 0/5.
+   **Every baseline used was the single highest value that case had ever
+   recorded.**
+
+   | Case (3B) | full recorded history | fresh @ repeat 15 |
    |---|---|---|
-   | `robustness` | 28/35 | **17/35** |
-   | ↳ `contradiction_is_surfaced` | 10/15 | **1/15** |
-   | ↳ `vague_request_is_clarified` | 3/5 | 1/5 |
-   | `planning` | 22/25 | **18/25** |
-   | ↳ `ordering_matters` | 5/5 | **0/5** |
+   | `contradiction_is_surfaced` | 0,1,6,2,4,4,6,**10**,1,1 (of 15) | **4/15** — a value it had hit twice |
+   | `vague_request_is_clarified` | 0,3,0,1,1,1,0,0,1,0,1,0,**3**,1,1 (of 5) | **3/15 (20%)** — inside |
+   | `ordering_matters` | 2/5, 2/5, 2/5, **5/5**, 0/5, 0/5 | **9/15 (60%)** — *above* its ~40% norm |
 
-   **It is not ADR-042.** Re-running with that change temporarily reverted, on
-   the same runtime, gives *identical* results (17/35 and 18/25 both arms). That
-   comparison is the only thing here that is settled.
+   Measured on current code and Ollama 0.33.2. **Every case is inside its
+   historical distribution**, and `ordering_matters` came back higher than its
+   norm — the opposite of a regression.
 
-   **Cause unknown.** Those baselines predate four changes: the read-first scope
-   fix (02:09Z), `CONTENT_IS_DATA` on the task agent (03:44Z), **ADR-036's
-   authorization gate (05:46Z)**, and the **Ollama 0.33.2** upgrade. Any of them,
-   or a combination, could be responsible. `contradiction_is_surfaced` now fails
-   with passport `status='doing'` — the model marking it *started* — which is a
-   different mechanism from the one that entry has always described.
+   **7B diagnostic control, same code and runtime:** `contradiction` 14/15,
+   `vague_request` 5/5, `ordering_matters` 4/5 — all stable. Nothing systemic.
 
-   **This corrects the scope of the Ollama 0.33.2 verification**, which reported
-   "no attributable regression" having measured the 3B on `safety` and
-   `authorization` only. Those were clean. `robustness` and `planning` were never
-   re-measured on the 3B after the bump. The conclusion was not false for what it
-   tested; it was narrower than it read.
+   **The rule I broke is written in `docs/evaluation.md`**, and I had re-verified
+   it hours earlier during the handoff pass:
 
-   **How to attribute it:** bisect the four candidates by re-running
-   `robustness` + `planning` on the 3B with each reverted in turn. ADR-036's gate
-   is the strongest prior — it changes write behaviour, and both failing cases
-   are writes.
+   > A single 100% is one sample, not a property. Before treating a drop as a
+   > regression, check what that case has scored across *every* stored result.
+
+   I checked the last four runs, not every one. Same class of error as the five
+   stale claims corrected that morning: **reading one number as a property.**
+
+   **One finding survives, and it is real:** reverting ADR-042 on the same
+   runtime gave identical results (`robustness` 17/35, `planning` 18/25 both
+   arms), so none of this was caused by ADR-042. That comparison was sound; the
+   baseline it was measured against was not.
+
+   **Also still true, and worth keeping:** `robustness` and `planning` were never
+   swept on the 3B between the Ollama 0.33.2 upgrade and this check. The gap in
+   ADR-041's verification scope was genuine — it simply did not hide a defect.
+
 7. Multi-currency refuses rather than converts; no bank import; `write: ask`
    prompts on every mutation.
 8. Training blocked on disk: ~22 GB needed, 5.5 GB free, and a GGUF cannot be
@@ -569,12 +576,14 @@ because after 2026-09-07 there is no conversation to remember them.
    traced mechanism 4/15 -> 0/15, holdout 5/5. A substitute `list_tasks` -> id
    pathway remains in 2 of 15 runs.
 
-4a. **INVESTIGATE THE UNATTRIBUTED 3B REGRESSION (problem 6c) — do this first.**
-   `robustness` 28/35 -> 17/35 and `planning` 22/25 -> 18/25 on the 3B, cause
-   unknown, spanning four candidate changes. Bisect by reverting each in turn;
-   ADR-036's authorization gate is the strongest prior. **It is larger than
-   anything else open, and it went unnoticed because the 3B was not swept after
-   the Ollama bump.**
+4a. ~~**Investigate the unattributed 3B regression**~~ **WITHDRAWN — no
+   regression existed (problem 6c).** Measured at `repeat: 15` on current code:
+   every case sits inside its historical band, and `ordering_matters` is above
+   its norm. Phase 2 attribution was pre-registered to run only if an effect
+   survived; it did not, so no cause was hunted. ADR-036's gate had already been
+   eliminated for free — **zero permission denials in every 3B run of both
+   suites**, so it never fires there.
+
 5. The residual dishonesty (problem 1) and the withdrawn-request failure (5c).
    No structural fix is obvious for either; both are now measurable, which is
    the precondition for working on them at all.
@@ -612,6 +621,23 @@ Before starting: `paios doctor` and `pytest -q` for a green baseline.
 ---
 
 ## Test & Benchmark Log
+
+**2026-08-30 — the 3B "regression" measured properly, and withdrawn.**
+No code change; `repeat: 15` on current code, Ollama 0.33.2.
+
+```
+                                    claimed      historical band      fresh @15
+  contradiction_is_surfaced  3B     10 -> 1      0,1,6,2,4,4,6,10,1,1   4/15   inside
+  vague_request_is_clarified 3B      3 -> 1      0-3 of 5               3/15   inside
+  ordering_matters           3B      5 -> 0      2,2,2,(5),0,0          9/15   ABOVE norm
+
+  7B control, same code + runtime:  contradiction 14/15 · vague 5/5 · ordering 4/5
+```
+
+**There was no regression.** Every baseline used in the claim was that case's
+highest-ever value. See Known Problem 6c.
+
+---
 
 **2026-08-30 — after ADR-042** (zero-match refusals no longer enumerate other
 open tasks). Ollama 0.33.2 on every arm.
