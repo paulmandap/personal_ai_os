@@ -786,6 +786,31 @@ Deciding to investigate any of these **spends the case** (ADR-027). That is
 Paul's call, taken deliberately, and it should be followed by retiring the case
 to `train` and writing a fresh one.
 
+### One was investigated, and it found a gate defect (ADR-050)
+
+`authorization::a_correction_authorises_the_second_write` was diagnosed **from
+source, without reading any holdout artifact** — the case definition, its
+near-twin in `finance.yaml`, and `write_is_authorized` evaluated as a pure
+function. Its 0/10 on both models is decided **before any model runs**: the
+objective says *"put my savings at…"* and `RECORD_MONEY`'s stems hold `set` and
+`balanc` but not `put`.
+
+**Retired to `train` per ADR-027, and NOT replaced.** `authorization` now has
+zero holdout cases, recorded as a known gap. The replacement must not be authored
+by an assistant that has read `permissions/authorization.py` — knowing the word
+list, the failure mode and the suite's construct contaminates anything it writes,
+and disclosure does not undo that. Requirement spec in ADR-050.
+
+**The gate was not widened.** That is a security-boundary change; the experiment
+is pre-registered in `docs/security.md` with an absolute kill rule.
+
+**A note on method that generalises:** the diagnosis cost nothing from the
+holdout because the failure was deterministic and the evidence was in the source.
+**Before spending a holdout case, check whether its oracle or its dependencies
+already explain the result.** ADR-027's original retirement
+(`impossible_request_is_declined`) had the same shape — the investigation found
+the oracle was wrong, not the agent.
+
 ### What this sweep does *not* establish
 
 It is a **poor generalisation check for ADR-046**, and that was known before it
