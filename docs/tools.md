@@ -185,6 +185,39 @@ Two things worth carrying to the next tool of this kind:
   guard entirely. Neither model was observed doing so — but that is a
   measurement, not a guarantee.
 
+## …and a refusal must be true, not merely accurate
+
+Two rules govern what a failed lookup may say, and they were learned in the
+opposite order.
+
+**ADR-042: name the miss, offer nothing else.** A zero-match refusal used to
+enumerate the other open tasks, and the list read as a menu — qwen2.5:3b
+completed one of them. Removing the affordance beat arguing with the model
+about it, which is the approach ADR-034 and ADR-035 had already measured as
+net-flat.
+
+**ADR-046: say which kind of miss it was.** `find_by_title` searches *open*
+tasks, so a just-completed task produced `no open task matches 'oat milk'` —
+literally accurate, and false in the sense that matters. The task existed; the
+model had no way to tell "never existed" from "already done", and what it did
+next was pick a different task. So a miss among open tasks re-checks the closed
+ones and reports what it finds:
+
+| closed matches | says |
+|---|---|
+| none | `no open task matches 'X'.` — ADR-042 verbatim |
+| one | its **actual terminal status**, read from the row, never assumed |
+| several | the count, and **no titles** — naming one rebuilds the menu on the closed side |
+
+`complete_task` and `update_task` get **different sentences**, because they
+share the lookup and not the constraint: a closed match means one tool's request
+is already satisfied and the other's can no longer be served. One string for
+both would have to be wrong about one of them.
+
+The general rule: **a tool's refusal is read by a model as a fact about the
+world.** "Not found" and "found, already finished" lead somewhere different, and
+a refusal that collapses them is a tool telling the model something untrue.
+
 ## Testing
 
 Test `run()` directly with a `ToolContext`; no agent, no model, no registry:

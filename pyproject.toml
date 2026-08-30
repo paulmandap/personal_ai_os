@@ -38,7 +38,12 @@ paios = "personal_ai_os.cli:main"
 where = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+# `evaluations` is here for one reason: the mechanism detector's controls.
+# A detector is only worth its number if it has been shown to fire when it
+# should and stay silent when it should not, and a check that lives outside the
+# default test run is a check that rots. Nothing else under `evaluations/` is
+# collectable -- it is YAML and JSON.
+testpaths = ["tests", "evaluations"]
 markers = [
     "integration: needs a running Ollama server and pulled models",
 ]

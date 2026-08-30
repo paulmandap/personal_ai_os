@@ -32,7 +32,18 @@ from personal_ai_os.evaluation.taxonomy import Failure, by_severity
 #: means the field did not exist, so the code is unknown; v3 with an empty
 #: string means it existed and could not be read.** Nothing reads this constant,
 #: so the bump costs nothing and preserves a real distinction.
-RESULT_VERSION = 3
+#: Bumped again to 4 for `kind` (ADR-048), on the same argument a third time:
+#: **v3 means the field did not exist, so a result's status as benchmark or
+#: probe is unknown; v4 with `"benchmark"` means it was declared.** Old results
+#: are read unchanged and **never rewritten, re-stamped or backfilled** -- a v3
+#: file keeps `version: 3` forever and simply carries no `kind`. Absence is the
+#: honest value. This is stated because a version bump is precisely when someone
+#: is tempted to tidy the old files.
+#:
+#: Third bump in three days for a constant nothing reads. Worth naming as a
+#: smell: if a fourth arrives quickly, ask why the result schema is unstable
+#: rather than incrementing again.
+RESULT_VERSION = 4
 PREVIEW_CHARS = 200
 
 
@@ -185,6 +196,10 @@ class SuiteResult(BaseModel):
     #: results written before this existed (`version: 2` and below) are empty,
     #: and are **never** reconstructed or inferred.
     code_version: str = ""
+    #: `benchmark` or `probe` (ADR-048). Empty-defaulted to `benchmark` so
+    #: pre-v4 results read as what they were. A probe's numbers describe a
+    #: deliberately adversarial diagnostic and are **not** product results.
+    kind: str = "benchmark"
     started_at: str
     finished_at: str = ""
     #: Which split was run. A result that does not say this cannot be trusted
@@ -257,7 +272,11 @@ class SuiteResult(BaseModel):
         # The split is in the filename as well as the body: a holdout result
         # must be recognisable without opening it.
         tag = "__holdout" if self.split == "holdout" else ""
-        return f"{self.suite}{tag}__{model_slug(self.model)}__{stamp}.json"
+        # A probe is marked in the *filename* because the realistic accident is
+        # a glob over this directory being summed, not a careless reader
+        # (ADR-048). The prefix makes `probe__*` trivially excludable.
+        mark = "probe__" if self.kind == "probe" else ""
+        return f"{mark}{self.suite}{tag}__{model_slug(self.model)}__{stamp}.json"
 
     def save(self, results_dir: Path) -> Path:
         results_dir.mkdir(parents=True, exist_ok=True)
@@ -391,8 +410,14 @@ def load_history(
         return history
 
     tag = "__holdout" if include_holdout else ""
-    prefix = f"{suite}{tag}__{model_slug(model)}__"
-    for path in sorted(results_dir.glob(f"{prefix}*.json")):
+    stem = f"{suite}{tag}__{model_slug(model)}__"
+    # Both patterns, because `probe__` marks the file to keep probes out of
+    # directory-wide aggregates -- not out of their own history (ADR-048). A
+    # suite name belongs to exactly one kind, so this cannot mix them.
+    paths = sorted(
+        [*results_dir.glob(f"{stem}*.json"), *results_dir.glob(f"probe__{stem}*.json")]
+    )
+    for path in paths:
         if path.name == exclude:
             continue
         try:
@@ -489,6 +514,18 @@ def render(result: SuiteResult, history: SuiteHistory | None = None) -> str:
         f"split  : {result.split}",
         f"run at : {result.started_at}",
         "",
+    ]
+    if result.kind == "probe":
+        # Said first, and said loudly. A probe constructs adversarial conditions
+        # on purpose, so quoting its rate as a product score is a category
+        # error rather than a rounding one (ADR-048).
+        lines[5:5] = [
+            "  *** PROBE -- a diagnostic, not a benchmark. These cases are",
+            "  *** built to provoke a specific failure. Do NOT report these",
+            "  *** numbers as evaluation scores.",
+            "",
+        ]
+    lines += [
         # 52, not 32: the longest case name in the suites is 50 characters, and
         # a name that overflows shunts every column right and makes the table
         # unreadable -- which it had been since the DENY column arrived.

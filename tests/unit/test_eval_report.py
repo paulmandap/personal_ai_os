@@ -225,6 +225,99 @@ class TestRendering:
         assert "only_in_a" in text and "only_in_b" in text
 
 
+class TestProbeIsNotABenchmark:
+    """ADR-048: a diagnostic's numbers must never read as a product score.
+
+    A probe constructs adversarial conditions deliberately. Folding it into
+    "how well does the system work" is a category error, not a rounding error,
+    and the realistic accident is a glob over `evaluations/results/` being
+    summed rather than a careless reader.
+    """
+
+    def _probe(self, model: str = "m") -> SuiteResult:
+        s = suite(model, case("a", run(1, True)))
+        s.suite = "overcompletion"
+        s.kind = "probe"
+        return s
+
+    def test_the_filename_marks_it(self, tmp_path: Path):
+        path = self._probe().save(tmp_path)
+        assert path.name.startswith("probe__")
+
+    def test_a_benchmark_filename_is_unchanged(self, tmp_path: Path):
+        """The marker must not perturb every existing result's name."""
+        path = suite("m", case("a", run(1, True))).save(tmp_path)
+        assert not path.name.startswith("probe__")
+        assert path.name.startswith("demo__")
+
+    def test_kind_survives_a_round_trip(self, tmp_path: Path):
+        assert SuiteResult.load(self._probe().save(tmp_path)).kind == "probe"
+
+    def test_a_probe_keeps_its_own_history(self, tmp_path: Path):
+        """The marker keeps probes out of aggregates, not out of their own
+        series -- `paios eval history overcompletion` must still work."""
+        self._probe().save(tmp_path)
+        history = load_history(tmp_path, "overcompletion", "m")
+        assert len(history.overall) == 1
+
+    def test_a_probe_never_appears_in_another_suites_history(self, tmp_path: Path):
+        """The containment property, asserted rather than left incidental."""
+        self._probe().save(tmp_path)
+        suite("m", case("a", run(1, True))).save(tmp_path)   # suite name "demo"
+        assert len(load_history(tmp_path, "demo", "m").overall) == 1
+        assert len(load_history(tmp_path, "overcompletion", "m").overall) == 1
+
+    def test_a_directory_glob_can_exclude_probes_by_name_alone(self, tmp_path: Path):
+        """What a future aggregate would actually do: sum the directory.
+
+        Without the filename marker it would have to open every file to know
+        what it was summing. This is the defence that does not depend on anyone
+        remembering to check a field.
+        """
+        self._probe().save(tmp_path)
+        suite("m", case("a", run(1, True))).save(tmp_path)
+        everything = sorted(p.name for p in tmp_path.glob("*.json"))
+        benchmarks = [n for n in everything if not n.startswith("probe__")]
+        assert len(everything) == 2 and len(benchmarks) == 1
+
+    def test_render_says_so_loudly(self, tmp_path: Path):
+        out = render(self._probe())
+        assert "PROBE" in out
+        assert "not a benchmark" in out.lower()
+
+    def test_a_benchmark_render_is_not_labelled(self):
+        assert "PROBE" not in render(suite("m", case("a", run(1, True))))
+
+
+class TestOlderResultsAreReadNeverRewritten:
+    """ADR-048's compatibility clause, which is about *reading*.
+
+    A version bump is precisely when someone is tempted to tidy the old files.
+    Nothing rewrites, re-stamps or backfills them: a v3 result keeps
+    `version: 3` forever and simply carries no `kind`.
+    """
+
+    def test_a_pre_v4_result_loads_and_defaults_to_benchmark(self):
+        results = sorted(Path("evaluations/results").glob("*.json"))
+        older = [
+            p for p in results
+            if '"version": 3' in p.read_text(encoding="utf-8")
+        ]
+        assert older, "expected committed v3 results to exist"
+        loaded = SuiteResult.load(older[0])
+        assert loaded.version == 3          # not silently upgraded
+        assert loaded.kind == "benchmark"   # absent field reads as what it was
+
+    def test_loading_does_not_touch_the_file(self):
+        results = sorted(Path("evaluations/results").glob("*.json"))
+        target = next(
+            p for p in results if '"version": 3' in p.read_text(encoding="utf-8")
+        )
+        before = target.read_bytes()
+        SuiteResult.load(target)
+        assert target.read_bytes() == before
+
+
 class TestRuntimeVersionProvenance:
     """ADR-041: which inference runtime produced this result?"""
 
@@ -233,7 +326,10 @@ class TestRuntimeVersionProvenance:
         s.runtime_version = "0.33.2"
         loaded = SuiteResult.load(s.save(tmp_path))
         assert loaded.runtime_version == "0.33.2"
-        assert loaded.version == 3  # bumped again for code_version (ADR-044)
+        # A literal on purpose: this is the tripwire that makes a RESULT_VERSION
+        # bump a conscious act. 1 -> 2 runtime_version (ADR-041), 2 -> 3
+        # code_version (ADR-044), 3 -> 4 kind (ADR-048).
+        assert loaded.version == 4
 
     def test_a_v1_result_with_no_such_field_still_loads(self):
         """Backward compatibility, asserted against a real committed result.

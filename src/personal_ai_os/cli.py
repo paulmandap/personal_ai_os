@@ -385,7 +385,12 @@ def cmd_eval(args: argparse.Namespace) -> int:
         for suite in suites:
             counts = suite.split_counts()
             split_note = "  ".join(f"{k}={v}" for k, v in sorted(counts.items()))
-            print(f"\n  {suite.suite}  ({len(suite.cases)} cases, {split_note})")
+            # A probe says so wherever it is listed. Its cases are deliberately
+            # adversarial, so its numbers are not a product score (ADR-048).
+            mark = "  ** PROBE -- diagnostic, not a benchmark **" if (
+                suite.kind == "probe"
+            ) else ""
+            print(f"\n  {suite.suite}  ({len(suite.cases)} cases, {split_note}){mark}")
             if suite.description:
                 print(f"    {suite.description.strip()}")
             for case in suite.cases:
@@ -405,7 +410,12 @@ def cmd_eval(args: argparse.Namespace) -> int:
     splits: tuple[str, ...] = (
         ("holdout",) if args.split == "holdout" else DEFAULT_SPLITS
     )
-    runner = EvalRunner(repo_root=root, model=args.model, repeat=args.repeat)
+    runner = EvalRunner(
+        repo_root=root,
+        model=args.model,
+        repeat=args.repeat,
+        trace_dir=args.trace_dir,
+    )
     failures = 0
 
     for suite in selected:
@@ -417,6 +427,11 @@ def cmd_eval(args: argparse.Namespace) -> int:
         print(f"\nrunning {suite.suite}: {len(cases)} cases, {total} runs")
         if args.model:
             print(f"pinned model: {args.model}")
+        if args.trace_dir:
+            # Said out loud so a traced run is never mistaken for an ordinary
+            # one. It scores identically -- tracing is write-only -- but it
+            # leaves artifacts, and where they went is the useful half.
+            print(f"tracing to: {Path(args.trace_dir).resolve()}")
         if args.split == "holdout":
             # Deliberately noisy. Every holdout run is a measurement that
             # should not be repeated casually (ADR-027).
@@ -560,6 +575,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="'default' runs train+validation; 'holdout' runs ONLY the holdout cases",
     )
     eval_run.add_argument("--no-save", action="store_true", help="do not write a result file")
+    eval_run.add_argument(
+        "--trace-dir",
+        type=Path,
+        default=None,
+        help=(
+            "write one JSONL trace per repetition to "
+            "DIR/<suite>/<case>/run-NN_<run_id>.jsonl, for counting failure "
+            "mechanisms. Off by default. Use a path under runs/ -- it is "
+            "gitignored, and traces are large"
+        ),
+    )
     eval_run.set_defaults(func=cmd_eval, eval_command="run")
 
     eval_hist = eval_sub.add_parser(

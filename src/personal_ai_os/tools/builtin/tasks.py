@@ -35,6 +35,47 @@ def _tasks(ctx: ToolContext) -> TaskStore:
     return TaskStore(ctx.store)
 
 
+# --- when an open-task lookup misses (ADR-046) -----------------------------
+#
+# `find_by_title` searches open tasks, which is right for deciding what to act
+# on and wrong for explaining a miss. "no open task matches 'oat milk'" is true
+# and misleading in the same breath: the task exists, it was just completed, and
+# nothing in that sentence lets the model tell "never existed" from "already
+# done". Measured on the 3B, that false refusal directly precedes a wrong write
+# in 4 runs of 15.
+#
+# ADR-042's rule still binds -- a failed lookup must not hand the model a menu --
+# so these answer the query and offer nothing beyond it.
+
+
+def _closed_matches(tasks: TaskStore, needle: str) -> list[Task]:
+    """Non-open tasks the lookup would have found had it been looking.
+
+    Filtering to non-open is belt and braces: the open search already returned
+    nothing, so nothing open cleared the threshold. It is kept so the caller's
+    branches stay true by construction rather than by that argument holding.
+    """
+    return [
+        task
+        for task in tasks.find_by_title(needle, include_done=True)
+        if not task.status.is_open
+    ]
+
+
+def _too_many_closed(needle: str, count: int) -> str:
+    """Several closed matches: refuse, and name none of them.
+
+    Naming one would rebuild ADR-042's menu on the closed side, and picking one
+    would be the guess `find_by_title` exists to avoid. The count is the honest
+    thing to report -- the phrase is too broad, and that is all the caller
+    needs to know.
+    """
+    return (
+        f"no open task matches {needle!r}. {count} closed tasks do; use a "
+        f"more specific title."
+    )
+
+
 # --- add -------------------------------------------------------------------
 
 
@@ -215,6 +256,32 @@ class UpdateTaskInput(ToolInput):
         return self
 
 
+def _update_miss(tasks: TaskStore, needle: str) -> str:
+    """Why `update_task` found nothing open under this phrase.
+
+    Deliberately **not** the same sentence `complete_task` uses. They share the
+    lookup, not the constraint: there, a closed match means the user's request
+    is already satisfied (or can never be); here it means the request is not
+    satisfied and this selector cannot reach the task. One string for both would
+    have to be wrong about one of them.
+
+    It also stops short of "use its id from list_tasks", which would be *true* --
+    the id path does reach a closed task -- and would advertise the exact
+    `list_tasks` -> id pathway ADR-042 created and this work is trying to shrink.
+    State the constraint; do not hand out a route.
+    """
+    closed = _closed_matches(tasks, needle)
+    if not closed:
+        return f"no open task matches {needle!r}."          # ADR-042, verbatim
+    if len(closed) > 1:
+        return _too_many_closed(needle, len(closed))
+    task = closed[0]
+    return (
+        f"{task.title!r} is {task.status.value}, not open, and update_task "
+        f"matches open tasks by title."
+    )
+
+
 class UpdateTaskTool(Tool):
     name = "update_task"
     description = (
@@ -250,7 +317,7 @@ class UpdateTaskTool(Tool):
             # candidates *are* the answer, and naming them is what stops the
             # tool completing whichever sorted first.
             if not matches:
-                raise ToolExecutionError(f"no open task matches {args.find!r}.")
+                raise ToolExecutionError(_update_miss(tasks, str(args.find)))
             if len(matches) > 1:
                 raise ToolExecutionError(
                     f"{len(matches)} open tasks match {args.find!r}: "
@@ -286,6 +353,12 @@ class CompleteTaskInput(ToolInput):
     accepted, both qwen2.5:3b and 7b guessed an id rather than calling
     list_tasks first, and completed the wrong task. Removing the need to know
     an id removes the failure, which a prompt instruction did not.
+
+    **Accepting both selectors when they agree was tried and reverted**
+    (ADR-047). qwen2.5:3b supplies both in 12 runs of 15, so the rejection is
+    common -- but removing it took invalid-argument refusals from 27 to 0 and
+    left the defect it was aimed at completely unmoved (4/15 either way). The
+    loop it removes is a delay, not a cause.
     """
 
     title: str | None = Field(
@@ -307,6 +380,44 @@ class CompleteTaskInput(ToolInput):
                 "give exactly one of 'title' or 'id' -- title is usually what you want"
             )
         return self
+
+
+def _complete_miss(tasks: TaskStore, needle: str) -> str:
+    """Why `complete_task` found nothing open under this phrase.
+
+    Two closed outcomes, and they are different requests rather than two
+    wordings of one, so they get different sentences:
+
+    - **done** -- what the user asked for is already true. "Nothing to change"
+      is the fact, and it is the fact that stops a retry turning into a wrong
+      write.
+    - **cancelled** -- it can never be true, because a cancelled task is not
+      waiting to be finished.
+
+    The status is read from the row. Assuming "done" would be right most of the
+    time and would report a cancelled task as completed -- a false claim about
+    stored state, from the tool, which is the class of defect this whole area
+    exists to prevent.
+
+    **Still a refusal, not an idempotent success.** Returning the already-done
+    task would arguably be more correct, and is not done here: it would make
+    `complete_task` *succeed* where it previously refused, which moves
+    `tool_succeeded` and `tool_did_not_run` -- the safety suite's two oracles
+    (ADR-037). A security-relevant surface does not get changed as a side effect
+    of fixing a message. The fact the model needs is delivered either way.
+    """
+    closed = _closed_matches(tasks, needle)
+    if not closed:
+        return f"no open task matches {needle!r}."          # ADR-042, verbatim
+    if len(closed) > 1:
+        return _too_many_closed(needle, len(closed))
+    task = closed[0]
+    if task.status is TaskStatus.DONE:
+        return f"nothing to change: {task.title!r} is already marked done."
+    return (
+        f"{task.title!r} is {task.status.value}, not open, so it cannot be "
+        f"completed."
+    )
 
 
 class CompleteTaskTool(Tool):
@@ -348,7 +459,7 @@ class CompleteTaskTool(Tool):
         # candidates *are* the answer, and naming them is what stops the
         # tool completing whichever sorted first.
         if not matches:
-            raise ToolExecutionError(f"no open task matches {args.title!r}.")
+            raise ToolExecutionError(_complete_miss(tasks, str(args.title)))
         if len(matches) > 1:
             # Ambiguity is recoverable: name the candidates and let the model
             # pick, rather than silently completing whichever sorted first.

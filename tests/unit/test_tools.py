@@ -144,9 +144,24 @@ class TestNullsFromModels:
             try:
                 tool.validate_input(optional)
             except TIE as exc:
-                # Only a missing *required* field may complain here.
-                assert "required" in str(exc).lower() or "exactly one" in str(exc), (
-                    f"{tool.name} rejected nulls on optional fields: {exc}"
+                # Only a genuinely missing field may complain here -- including
+                # an "at least one of these selectors" rule, which pydantic
+                # cannot mark required on any single field.
+                #
+                # Matched on the field names the message must offer, not on a
+                # fixed phrase. This read `"exactly one" in str(exc)` until
+                # ADR-047 reworded both selector validators, and a phrase list
+                # rots quietly into a test that passes because it stopped
+                # checking anything. What actually matters is that the model is
+                # told *which* argument to supply.
+                message = str(exc).lower()
+                named = [
+                    field for field in ("id", "title", "find", "path")
+                    if f"'{field}'" in message
+                ]
+                assert "required" in message or named, (
+                    f"{tool.name} rejected nulls on optional fields without "
+                    f"naming a selector to supply: {exc}"
                 )
 
 

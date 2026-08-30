@@ -12,6 +12,7 @@ actually ships.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import tempfile
 import time
@@ -24,6 +25,7 @@ from personal_ai_os.agents.base import AgentResult, StopReason
 from personal_ai_os.config.loader import load_settings
 from personal_ai_os.config.schema import Settings
 from personal_ai_os.core.errors import PersonalAIOSError
+from personal_ai_os.core.ids import new_run_id
 from personal_ai_os.evaluation.case import DEFAULT_SPLITS, EvalCase, EvalSuite, Split
 from personal_ai_os.evaluation.checks import RunContext, run_check
 from personal_ai_os.evaluation.report import (
@@ -60,6 +62,18 @@ EVAL_POLICY: dict[PermissionLevel, str] = {
 #: How long git gets to answer before provenance is abandoned. Generous for a
 #: local command, and bounded because a hung `git` must not hang a suite.
 GIT_TIMEOUT_S = 10.0
+
+_UNSAFE_PATH_CHARS = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _slug(name: str) -> str:
+    """A filesystem-safe directory component for a suite or case name.
+
+    Suite and case names come from YAML the repository owns, so they are
+    already tame -- but they are *data*, and a name carrying a separator would
+    otherwise write outside the directory the caller named.
+    """
+    return _UNSAFE_PATH_CHARS.sub("_", name).strip("._-") or "unnamed"
 
 
 def detect_code_version(repo_root: Path) -> str:
@@ -141,6 +155,7 @@ class EvalRunner:
         repo_root: Path,
         model: str | None = None,
         repeat: int | None = None,
+        trace_dir: Path | None = None,
         runtime_builder: RuntimeBuilder = _default_runtime,
     ) -> None:
         self.repo_root = repo_root.resolve()
@@ -148,6 +163,15 @@ class EvalRunner:
         #: exactly the model named rather than wherever routing sends it.
         self.model = model
         self.repeat = repeat
+        #: Where to write one JSONL trace per repetition, or None for today's
+        #: behaviour: in-memory events only, nothing on disk (ADR-045).
+        #:
+        #: **Resolved, and deliberately outside the fixture.** Each repetition
+        #: runs in a `TemporaryDirectory` that is deleted immediately after, and
+        #: `_settings_for` pins `paths.allowed_roots` to it -- so a trace written
+        #: inside would be both destroyed on teardown and *readable by the agent
+        #: under test*. Neither is acceptable for an instrument.
+        self.trace_dir = trace_dir.resolve() if trace_dir is not None else None
         self._build_runtime = runtime_builder
         #: Server version observed at suite initialization, from the first
         #: runtime built. Reset per suite by `run_suite` (ADR-041).
@@ -244,7 +268,39 @@ class EvalRunner:
 
     # --- one repetition ----------------------------------------------------
 
-    def _run_once(self, case: EvalCase, index: int) -> RunRecord:
+    def _trace_for(self, case: EvalCase, index: int, suite: str) -> RunTrace:
+        """The repetition's trace: in-memory always, on disk only if asked.
+
+        **Judging a fix by the mechanism that disappeared is this project's
+        central method, and until now the harness could not support it.** Both
+        prior diagnoses had to edit this method by hand to swap
+        `RunTrace.disabled` for a live one -- which meant every diagnostic run
+        was taken on a modified tree and stamped `<sha>-dirty`, the one thing
+        ADR-044 says is never a reference point. Twice, the alternative --
+        rebuilding the scenario outside the harness -- diverged from it
+        (ADR-040 scored 0/20 on its own control; ADR-042's first attempt gave
+        1/15 where the harness gives 7/15).
+
+        `RunTrace` records into `self.events` either way, so what the checks
+        score is byte-identical whether or not a file is written. Tracing is
+        **write-only**: it adds an output, never an input.
+        """
+        if self.trace_dir is None:
+            return RunTrace.disabled(agent=case.agent)
+
+        run_id = new_run_id()
+        directory = self.trace_dir / _slug(suite or "suite") / _slug(case.name)
+        # The repetition index leads the filename so a case's runs read in
+        # order; the `_<run_id>.jsonl` tail is kept so `find_trace` and
+        # `paios trace` work on these files unchanged.
+        return RunTrace(
+            run_id=run_id,
+            agent=case.agent,
+            path=directory / f"run-{index:02d}_{run_id}.jsonl",
+            enabled=True,
+        )
+
+    def _run_once(self, case: EvalCase, index: int, suite: str = "") -> RunRecord:
         with self._fixture(case) as (settings, store):
             broker = RecordingBroker(
                 PolicyBroker(settings.permissions.policy, interactive=False)
@@ -252,7 +308,7 @@ class EvalRunner:
             runtime = self._build_runtime(settings, store, broker)
             if self._runtime_version is None:
                 self._runtime_version = self._observe_runtime_version(runtime)
-            trace = RunTrace.disabled(agent=case.agent)
+            trace = self._trace_for(case, index, suite)
 
             started = time.perf_counter()
             try:
@@ -291,10 +347,16 @@ class EvalRunner:
 
     # --- cases and suites --------------------------------------------------
 
-    def run_case(self, case: EvalCase) -> CaseResult:
+    def run_case(self, case: EvalCase, *, suite: str = "") -> CaseResult:
+        """Run one case `repeat` times.
+
+        `suite` is passed explicitly rather than cached on the runner: it only
+        exists to name a trace directory, and hidden state that decides where
+        files land is how one experiment's traces end up filed under another's.
+        """
         repeats = self.repeat or case.repeat
         log.info("case %s: %d run(s)", case.name, repeats)
-        runs = [self._run_once(case, i + 1) for i in range(repeats)]
+        runs = [self._run_once(case, i + 1, suite) for i in range(repeats)]
         return CaseResult(
             case=case.name,
             description=case.description,
@@ -313,9 +375,12 @@ class EvalRunner:
         # than none (ADR-041).
         self._runtime_version = None
         selected = suite.select(splits)
-        cases = [self.run_case(c) for c in selected]
+        cases = [self.run_case(c, suite=suite.suite) for c in selected]
         return SuiteResult(
             suite=suite.suite,
+            # Travels with the result so a probe's numbers can never be read as
+            # a product score, in this session or years later (ADR-048).
+            kind=suite.kind,
             model=self.model or self._resolved_model_label(),
             runtime_version=self._runtime_version or "",
             # Once per suite, so every case in one result shares one

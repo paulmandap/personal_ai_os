@@ -146,6 +146,29 @@ Split = Literal["train", "validation", "holdout"]
 DEFAULT_SPLITS: tuple[Split, ...] = ("train", "validation")
 
 
+class ProbeTargets(BaseModel):
+    """Which seeded tasks the objective asked for, and which it did not.
+
+    **Declared, never inferred** (ADR-048). Mechanism counting used to derive
+    this by intersecting the objective's content words with each seeded title.
+    That is fine for one hand-checked case and wrong as the foundation of a
+    matrix where the decoys are the manipulated variable: a probe whose
+    classification depends on a stemmer is a probe that can be wrong in the
+    direction of its own hypothesis.
+
+    Titles must match the seeded ones exactly -- a validator enforces it,
+    because a typo here would silently reclassify a decoy as requested and
+    invert the result it is measuring.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Seeded titles the objective explicitly asks the agent to act on.
+    requested: list[str] = Field(default_factory=list)
+    #: Seeded titles it does not. Acting on one of these is the defect.
+    decoys: list[str] = Field(default_factory=list)
+
+
 class EvalCase(BaseModel):
     """One objective and what must be true afterwards."""
 
@@ -155,6 +178,9 @@ class EvalCase(BaseModel):
     description: str = ""
     agent: str = ""
     objective: str
+    #: Probe metadata. `None` on ordinary benchmark cases, whose counting keeps
+    #: the older inferred classification so their committed numbers do not move.
+    probe: ProbeTargets | None = None
     repeat: int = Field(default=DEFAULT_REPEAT, ge=1, le=50)
     #: What competence this measures, e.g. "grounding", "routing", "recovery".
     #: Lets a report say *where* an agent is weak, not just how often.
@@ -185,6 +211,41 @@ class EvalCase(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _probe_targets_are_real(self) -> EvalCase:
+        """Every declared target must be a seeded title, and none may be both.
+
+        A typo would silently reclassify a decoy as requested, which inverts the
+        very number the probe exists to measure. Caught at load, like an unknown
+        check name, rather than becoming a quietly wrong result.
+        """
+        if self.probe is None:
+            return self
+        seeded = {t.title for t in self.setup.tasks}
+        declared = [*self.probe.requested, *self.probe.decoys]
+        unknown = [t for t in declared if t not in seeded]
+        if unknown:
+            raise ValueError(
+                f"case {self.name!r} declares probe targets that are not seeded "
+                f"tasks: {unknown}. Seeded: {sorted(seeded)}"
+            )
+        both = set(self.probe.requested) & set(self.probe.decoys)
+        if both:
+            raise ValueError(
+                f"case {self.name!r} lists {sorted(both)} as both requested and "
+                f"a decoy; a task is one or the other"
+            )
+        missing = seeded - set(declared)
+        if missing:
+            raise ValueError(
+                f"case {self.name!r} seeds {sorted(missing)} without classifying "
+                f"them; every seeded task must be requested or a decoy"
+            )
+        return self
+
+
+SuiteKind = Literal["benchmark", "probe"]
+
 
 class EvalSuite(BaseModel):
     """A file of related cases."""
@@ -192,6 +253,17 @@ class EvalSuite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     suite: str
+    #: What this suite's numbers mean (ADR-048).
+    #:
+    #: `benchmark` measures the product. `probe` is a diagnostic built to answer
+    #: one question, expected to be deleted afterwards, and **must never be read
+    #: as a product evaluation result** -- a probe deliberately constructs
+    #: adversarial conditions, so folding it into "how well does the system
+    #: work" is a category error, not a rounding error.
+    #:
+    #: Suite-level rather than case-level on purpose: a file mixing the two
+    #: would be ambiguous exactly where the distinction matters.
+    kind: SuiteKind = "benchmark"
     description: str = ""
     #: Defaults inherited by cases that do not set their own.
     agent: str = ""

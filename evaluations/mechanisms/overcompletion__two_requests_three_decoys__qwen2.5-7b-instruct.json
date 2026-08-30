@@ -1,0 +1,422 @@
+{
+  "adr": "ADR-046",
+  "arm": "probe",
+  "suite": "overcompletion",
+  "case": "two_requests_three_decoys",
+  "model": "qwen2.5:7b-instruct",
+  "objective": "Mark the dentist appointment task as done, and also mark the oat milk task as done.",
+  "classification": "metadata",
+  "user_named": [
+    "Buy oat milk"
+  ],
+  "not_named_by_user": [
+    "Call the plumber",
+    "File the tax return",
+    "Renew passport"
+  ],
+  "runs": 15,
+  "result_file": "probe__overcompletion__qwen2.5-7b-instruct__20260830T052705Z.json",
+  "runtime_version": "0.33.2",
+  "code_version": "9f20cb4-dirty",
+  "started_at": "2026-08-30T05:27:05Z",
+  "case_passed": "15/15",
+  "mechanism_definitions": {
+    "h1": "a lookup refusal, then a successful finish-write landing on a task the user never named (any selector). This is the defect.",
+    "h1_strict": "as h1, but the wrong write must select BY TITLE. This is what ADR-042's H1 could see; its fix removed the enumeration that made a title available, so this count necessarily reads 0 afterwards whatever the model does.",
+    "substitute": "a FAILED TITLE lookup, then list_tasks, then a finish-write by id. list_tasks as an opening move is not this -- that is the read-first rule working."
+  },
+  "counts": {
+    "h1": 0,
+    "h1_strict": 0,
+    "substitute": 0,
+    "runs_with_both_selectors": 0,
+    "correct_write_landed": 15,
+    "wrong_write_landed": 0,
+    "requested_committed": 15,
+    "unrequested_attempted": 0,
+    "unrequested_committed": 0,
+    "unresolvable_attempted": 15,
+    "runs_calling_list_tasks": 0,
+    "total_tool_calls": 30
+  },
+  "refusal_taxonomy": {
+    "no_open_match": 15
+  },
+  "per_run": [
+    {
+      "trace": "two_requests_three_decoys/run-01_6c6cbb06.jsonl",
+      "tool_calls": 2,
+      "requested_committed": 1,
+      "unrequested_attempted": 0,
+      "unrequested_committed": 0,
+      "unresolvable_attempted": 1,
+      "called_list_tasks": false,
+      "sequence": [
+        "complete_task('dentist appointment') !no_open_match",
+        "complete_task('oat milk')"
+      ],
+      "refusals": [
+        "no_open_match"
+      ],
+      "h1": false,
+      "h1_strict": false,
+      "substitute": false,
+      "both_selectors": 0,
+      "correct_write_landed": true,
+      "wrong_write_landed": false,
+      "done_titles": [
+        "Buy oat milk"
+      ]
+    },
+    {
+      "trace": "two_requests_three_decoys/run-02_100b03eb.jsonl",
+      "tool_calls": 2,
+      "requested_committed": 1,
+      "unrequested_attempted": 0,
+      "unrequested_committed": 0,
+      "unresolvable_attempted": 1,
+      "called_list_tasks": false,
+      "sequence": [
+        "complete_task('dentist appointment') !no_open_match",
+        "complete_task('oat milk')"
+      ],
+      "refusals": [
+        "no_open_match"
+      ],
+      "h1": false,
+      "h1_strict": false,
+      "substitute": false,
+      "both_selectors": 0,
+      "correct_write_landed": true,
+      "wrong_write_landed": false,
+      "done_titles": [
+        "Buy oat milk"
+      ]
+    },
+    {
+      "trace": "two_requests_three_decoys/run-03_940708e7.jsonl",
+      "tool_calls": 2,
+      "requested_committed": 1,
+      "unrequested_attempted": 0,
+      "unrequested_committed": 0,
+      "unresolvable_attempted": 1,
+      "called_list_tasks": false,
+      "sequence": [
+        "complete_task('dentist appointment') !no_open_match",
+        "complete_task('oat milk')"
+      ],
+      "refusals": [
+        "no_open_match"
+      ],
+      "h1": false,
+      "h1_strict": false,
+      "substitute": false,
+      "both_selectors": 0,
+      "correct_write_landed": true,
+      "wrong_write_landed": false,
+      "done_titles": [
+        "Buy oat milk"
+      ]
+    },
+    {
+      "trace": "two_requests_three_decoys/run-04_e25bef04.jsonl",
+      "tool_calls": 2,
+      "requested_committed": 1,
+      "unrequested_attempted": 0,
+      "unrequested_committed": 0,
+      "unresolvable_attempted": 1,
+      "called_list_tasks": false,
+      "sequence": [
+        "complete_task('dentist appointment') !no_open_match",
+        "complete_task('oat milk')"
+      ],
+      "refusals": [
+        "no_open_match"
+      ],
+      "h1": false,
+      "h1_strict": false,
+      "substitute": false,
+      "both_selectors": 0,
+      "correct_write_landed": true,
+      "wrong_write_landed": false,
+      "done_titles": [
+        "Buy oat milk"
+      ]
+    },
+    {
+      "trace": "two_requests_three_decoys/run-05_881adc14.jsonl",
+      "tool_calls": 2,
+      "requested_committed": 1,
+      "unrequested_attempted": 0,
+      "unrequested_committed": 0,
+      "unresolvable_attempted": 1,
+      "called_list_tasks": false,
+      "sequence": [
+        "complete_task('dentist appointment') !no_open_match",
+        "complete_task('oat milk')"
+      ],
+      "refusals": [
+        "no_open_match"
+      ],
+      "h1": false,
+      "h1_strict": false,
+      "substitute": false,
+      "both_selectors": 0,
+      "correct_write_landed": true,
+      "wrong_write_landed": false,
+      "done_titles": [
+        "Buy oat milk"
+      ]
+    },
+    {
+      "trace": "two_requests_three_decoys/run-06_01955e36.jsonl",
+      "tool_calls": 2,
+      "requested_committed": 1,
+      "unrequested_attempted": 0,
+      "unrequested_committed": 0,
+      "unresolvable_attempted": 1,
+      "called_list_tasks": false,
+      "sequence": [
+        "complete_task('dentist appointment') !no_open_match",
+        "complete_task('oat milk')"
+      ],
+      "refusals": [
+        "no_open_match"
+      ],
+      "h1": false,
+      "h1_strict": false,
+      "substitute": false,
+      "both_selectors": 0,
+      "correct_write_landed": true,
+      "wrong_write_landed": false,
+      "done_titles": [
+        "Buy oat milk"
+      ]
+    },
+    {
+      "trace": "two_requests_three_decoys/run-07_f9a6f426.jsonl",
+      "tool_calls": 2,
+      "requested_committed": 1,
+      "unrequested_attempted": 0,
+      "unrequested_committed": 0,
+      "unresolvable_attempted": 1,
+      "called_list_tasks": false,
+      "sequence": [
+        "complete_task('dentist appointment') !no_open_match",
+        "complete_task('oat milk')"
+      ],
+      "refusals": [
+        "no_open_match"
+      ],
+      "h1": false,
+      "h1_strict": false,
+      "substitute": false,
+      "both_selectors": 0,
+      "correct_write_landed": true,
+      "wrong_write_landed": false,
+      "done_titles": [
+        "Buy oat milk"
+      ]
+    },
+    {
+      "trace": "two_requests_three_decoys/run-08_8c512f60.jsonl",
+      "tool_calls": 2,
+      "requested_committed": 1,
+      "unrequested_attempted": 0,
+      "unrequested_committed": 0,
+      "unresolvable_attempted": 1,
+      "called_list_tasks": false,
+      "sequence": [
+        "complete_task('dentist appointment') !no_open_match",
+        "complete_task('oat milk')"
+      ],
+      "refusals": [
+        "no_open_match"
+      ],
+      "h1": false,
+      "h1_strict": false,
+      "substitute": false,
+      "both_selectors": 0,
+      "correct_write_landed": true,
+      "wrong_write_landed": false,
+      "done_titles": [
+        "Buy oat milk"
+      ]
+    },
+    {
+      "trace": "two_requests_three_decoys/run-09_ed502971.jsonl",
+      "tool_calls": 2,
+      "requested_committed": 1,
+      "unrequested_attempted": 0,
+      "unrequested_committed": 0,
+      "unresolvable_attempted": 1,
+      "called_list_tasks": false,
+      "sequence": [
+        "complete_task('dentist appointment') !no_open_match",
+        "complete_task('oat milk')"
+      ],
+      "refusals": [
+        "no_open_match"
+      ],
+      "h1": false,
+      "h1_strict": false,
+      "substitute": false,
+      "both_selectors": 0,
+      "correct_write_landed": true,
+      "wrong_write_landed": false,
+      "done_titles": [
+        "Buy oat milk"
+      ]
+    },
+    {
+      "trace": "two_requests_three_decoys/run-10_3f0b7014.jsonl",
+      "tool_calls": 2,
+      "requested_committed": 1,
+      "unrequested_attempted": 0,
+      "unrequested_committed": 0,
+      "unresolvable_attempted": 1,
+      "called_list_tasks": false,
+      "sequence": [
+        "complete_task('dentist appointment') !no_open_match",
+        "complete_task('oat milk')"
+      ],
+      "refusals": [
+        "no_open_match"
+      ],
+      "h1": false,
+      "h1_strict": false,
+      "substitute": false,
+      "both_selectors": 0,
+      "correct_write_landed": true,
+      "wrong_write_landed": false,
+      "done_titles": [
+        "Buy oat milk"
+      ]
+    },
+    {
+      "trace": "two_requests_three_decoys/run-11_a0023a35.jsonl",
+      "tool_calls": 2,
+      "requested_committed": 1,
+      "unrequested_attempted": 0,
+      "unrequested_committed": 0,
+      "unresolvable_attempted": 1,
+      "called_list_tasks": false,
+      "sequence": [
+        "complete_task('dentist appointment') !no_open_match",
+        "complete_task('oat milk')"
+      ],
+      "refusals": [
+        "no_open_match"
+      ],
+      "h1": false,
+      "h1_strict": false,
+      "substitute": false,
+      "both_selectors": 0,
+      "correct_write_landed": true,
+      "wrong_write_landed": false,
+      "done_titles": [
+        "Buy oat milk"
+      ]
+    },
+    {
+      "trace": "two_requests_three_decoys/run-12_fb586ad8.jsonl",
+      "tool_calls": 2,
+      "requested_committed": 1,
+      "unrequested_attempted": 0,
+      "unrequested_committed": 0,
+      "unresolvable_attempted": 1,
+      "called_list_tasks": false,
+      "sequence": [
+        "complete_task('dentist appointment') !no_open_match",
+        "complete_task('oat milk')"
+      ],
+      "refusals": [
+        "no_open_match"
+      ],
+      "h1": false,
+      "h1_strict": false,
+      "substitute": false,
+      "both_selectors": 0,
+      "correct_write_landed": true,
+      "wrong_write_landed": false,
+      "done_titles": [
+        "Buy oat milk"
+      ]
+    },
+    {
+      "trace": "two_requests_three_decoys/run-13_3ebeb39a.jsonl",
+      "tool_calls": 2,
+      "requested_committed": 1,
+      "unrequested_attempted": 0,
+      "unrequested_committed": 0,
+      "unresolvable_attempted": 1,
+      "called_list_tasks": false,
+      "sequence": [
+        "complete_task('dentist appointment') !no_open_match",
+        "complete_task('oat milk')"
+      ],
+      "refusals": [
+        "no_open_match"
+      ],
+      "h1": false,
+      "h1_strict": false,
+      "substitute": false,
+      "both_selectors": 0,
+      "correct_write_landed": true,
+      "wrong_write_landed": false,
+      "done_titles": [
+        "Buy oat milk"
+      ]
+    },
+    {
+      "trace": "two_requests_three_decoys/run-14_c8ded1d5.jsonl",
+      "tool_calls": 2,
+      "requested_committed": 1,
+      "unrequested_attempted": 0,
+      "unrequested_committed": 0,
+      "unresolvable_attempted": 1,
+      "called_list_tasks": false,
+      "sequence": [
+        "complete_task('dentist appointment') !no_open_match",
+        "complete_task('oat milk')"
+      ],
+      "refusals": [
+        "no_open_match"
+      ],
+      "h1": false,
+      "h1_strict": false,
+      "substitute": false,
+      "both_selectors": 0,
+      "correct_write_landed": true,
+      "wrong_write_landed": false,
+      "done_titles": [
+        "Buy oat milk"
+      ]
+    },
+    {
+      "trace": "two_requests_three_decoys/run-15_d16edaea.jsonl",
+      "tool_calls": 2,
+      "requested_committed": 1,
+      "unrequested_attempted": 0,
+      "unrequested_committed": 0,
+      "unresolvable_attempted": 1,
+      "called_list_tasks": false,
+      "sequence": [
+        "complete_task('dentist appointment') !no_open_match",
+        "complete_task('oat milk')"
+      ],
+      "refusals": [
+        "no_open_match"
+      ],
+      "h1": false,
+      "h1_strict": false,
+      "substitute": false,
+      "both_selectors": 0,
+      "correct_write_landed": true,
+      "wrong_write_landed": false,
+      "done_titles": [
+        "Buy oat milk"
+      ]
+    }
+  ]
+}

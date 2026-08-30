@@ -363,6 +363,202 @@ class TestRuntimeVersionProvenance:
         assert result.runtime_version == ""
 
 
+class TestTraceCapture:
+    """ADR-045: the harness can record traces, so a mechanism can be counted.
+
+    Judging a fix by *which failure disappeared* is this project's central
+    method, and the harness could not support it: `_run_once` hardcoded
+    `RunTrace.disabled`, and each repetition's fixture is deleted on teardown.
+    Both prior diagnoses edited the runner by hand -- so every diagnostic run
+    was taken on a dirty tree, which ADR-044 says is never a reference point --
+    and both times the alternative of rebuilding the scenario outside the
+    harness diverged from it (ADR-040, ADR-042).
+    """
+
+    def _suite(self, *, repeat: int = 2) -> EvalSuite:
+        return EvalSuite(
+            suite="traced",
+            agent="task_agent",
+            repeat=repeat,
+            cases=[make_case("a_case", checks=["answered"])],
+        )
+
+    def _runner(self, trace_dir=None, **kw) -> EvalRunner:
+        return EvalRunner(
+            repo_root=REPO_ROOT,
+            trace_dir=trace_dir,
+            runtime_builder=scripted_builder(add_task_then_answer()),
+            **kw,
+        )
+
+    # --- 1. the default is untouched --------------------------------------
+
+    def test_no_trace_dir_writes_nothing(self, tmp_path: Path):
+        """The shipped path must be byte-for-byte what it was."""
+        self._runner().run_suite(self._suite())
+        assert list(tmp_path.rglob("*")) == []
+
+    def test_no_trace_dir_still_records_events_in_memory(self):
+        """Checks score from `trace.events`, which exists either way."""
+        runner = self._runner()
+        record = runner._run_once(make_case(checks=["answered"]), 1)
+        assert record.metrics.tool_calls == 1
+
+    # --- 2. tracing is write-only -----------------------------------------
+
+    def test_tracing_changes_neither_the_transcript_nor_any_verdict(
+        self, tmp_path: Path
+    ):
+        """The invariant that makes a traced number usable.
+
+        If switching the instrument on could move a check, every measurement
+        taken with it would be suspect -- so this is asserted, not assumed.
+        """
+        checks = [
+            "answered",
+            {"first_tool_is": "add_task"},
+            "no_invalid_arguments",
+            {"task_count": 1},
+            {"task_field_absent": "due_date"},
+        ]
+        untraced = self._runner().run_case(make_case(checks=checks, repeat=2))
+        traced = self._runner(trace_dir=tmp_path / "t").run_case(
+            make_case(checks=checks, repeat=2), suite="traced"
+        )
+
+        def verdicts(result):
+            return [
+                [(o.label, o.passed) for o in run.checks] for run in result.runs
+            ]
+
+        assert verdicts(traced) == verdicts(untraced)
+        assert [r.passed for r in traced.runs] == [r.passed for r in untraced.runs]
+        assert [r.output_preview for r in traced.runs] == [
+            r.output_preview for r in untraced.runs
+        ]
+        assert [r.stop_reason for r in traced.runs] == [
+            r.stop_reason for r in untraced.runs
+        ]
+
+    # --- 3. outside the fixture, and invisible to the agent ---------------
+
+    def test_the_trace_is_not_inside_the_evaluated_workspace(self, tmp_path: Path):
+        """Two failures in one, which is why it is one test.
+
+        The fixture is a TemporaryDirectory deleted after each repetition, and
+        `_settings_for` pins `paths.allowed_roots` to it. A trace written
+        inside would be destroyed on teardown *and* readable by the agent under
+        test. An instrument must not become an input.
+        """
+        trace_dir = tmp_path / "traces"
+        runner = self._runner(trace_dir=trace_dir)
+        runner.run_suite(self._suite(repeat=1))
+
+        written = list(trace_dir.rglob("*.jsonl"))
+        assert written, "expected a trace file"
+
+        fixture_settings = runner._settings_for(tmp_path / "fixture")
+        for root in fixture_settings.resolved_allowed_roots():
+            for path in written:
+                assert not path.is_relative_to(root)
+
+    def test_the_path_jail_refuses_the_trace_directory(self, tmp_path: Path):
+        """Asserted through the jail itself, not by reasoning about paths."""
+        from personal_ai_os.core.errors import PathNotAllowedError
+        from personal_ai_os.tools.base import ToolContext
+        from personal_ai_os.tools.builtin.list_dir import ListDirTool
+
+        trace_dir = tmp_path / "traces"
+        runner = self._runner(trace_dir=trace_dir)
+        runner.run_suite(self._suite(repeat=1))
+
+        fixture = tmp_path / "fixture"
+        fixture.mkdir()
+        settings = runner._settings_for(fixture)
+        ctx = ToolContext(
+            allowed_roots=settings.resolved_allowed_roots(),
+            workspace_root=fixture,
+        )
+        tool = ListDirTool()
+        with pytest.raises(PathNotAllowedError, match="outside every allowed root"):
+            tool.run(tool.validate_input({"path": str(trace_dir)}), ctx)
+
+    def test_no_trace_content_reaches_the_transcript(self, tmp_path: Path):
+        trace_dir = tmp_path / "traces"
+        runner = self._runner(trace_dir=trace_dir)
+        runner.run_suite(self._suite(repeat=1))
+        preview_source = str(trace_dir)
+        record = runner._run_once(make_case(checks=["answered"]), 1, "traced")
+        assert preview_source not in record.output_preview
+
+    # --- 4 & 5. durable, attributable, replayable -------------------------
+
+    def test_one_file_per_repetition_named_for_suite_case_and_index(
+        self, tmp_path: Path
+    ):
+        trace_dir = tmp_path / "traces"
+        self._runner(trace_dir=trace_dir).run_suite(self._suite(repeat=3))
+
+        case_dir = trace_dir / "traced" / "a_case"
+        files = sorted(p.name for p in case_dir.glob("*.jsonl"))
+        assert len(files) == 3
+        assert files[0].startswith("run-01_") and files[0].endswith(".jsonl")
+        assert [f[:6] for f in files] == ["run-01", "run-02", "run-03"]
+
+    def test_the_files_survive_fixture_teardown(self, tmp_path: Path):
+        """The reason the directory cannot simply be the fixture's runs/."""
+        trace_dir = tmp_path / "traces"
+        self._runner(trace_dir=trace_dir).run_suite(self._suite(repeat=2))
+        assert all(p.stat().st_size > 0 for p in trace_dir.rglob("*.jsonl"))
+
+    def test_a_trace_replays_with_the_tool_call_and_its_payload(self, tmp_path: Path):
+        """What mechanism counting actually reads."""
+        from personal_ai_os.observability.trace import Events, read_trace
+
+        trace_dir = tmp_path / "traces"
+        self._runner(trace_dir=trace_dir).run_suite(self._suite(repeat=1))
+        path = next(trace_dir.rglob("*.jsonl"))
+
+        events = list(read_trace(path))
+        requested = [e for e in events if e.type == Events.TOOL_REQUESTED]
+        results = [e for e in events if e.type == Events.TOOL_RESULT]
+        assert [e.data["tool"] for e in requested] == ["add_task"]
+        assert requested[0].data["arguments"]["title"] == "Buy oat milk"
+        assert results and results[0].data["ok"] is True
+        assert "Buy oat milk" in results[0].data["result"]
+
+    def test_the_filename_stays_readable_by_find_trace(self, tmp_path: Path):
+        """`paios trace <run_id>` must keep working on these files."""
+        from personal_ai_os.observability.trace import find_trace
+
+        trace_dir = tmp_path / "traces"
+        self._runner(trace_dir=trace_dir).run_suite(self._suite(repeat=1))
+        path = next(trace_dir.rglob("*.jsonl"))
+        run_id = path.stem.split("_")[-1]
+        assert find_trace(path.parent, run_id) == path
+
+    def test_suite_and_case_names_are_slugged_into_safe_components(
+        self, tmp_path: Path
+    ):
+        """Case names are data. One carrying a separator must not escape."""
+        from personal_ai_os.evaluation.runner import _slug
+
+        assert _slug("robustness/../etc") == "robustness_.._etc"
+        assert _slug("a::b") == "a_b"
+        assert _slug("...") == "unnamed"
+
+        trace_dir = tmp_path / "traces"
+        runner = self._runner(trace_dir=trace_dir)
+        runner.run_case(make_case("odd/name", checks=["answered"], repeat=1), suite="s")
+        assert (trace_dir / "s" / "odd_name").is_dir()
+
+    def test_each_repetition_gets_its_own_run_id(self, tmp_path: Path):
+        trace_dir = tmp_path / "traces"
+        self._runner(trace_dir=trace_dir).run_suite(self._suite(repeat=3))
+        ids = {p.stem.split("_")[-1] for p in trace_dir.rglob("*.jsonl")}
+        assert len(ids) == 3
+
+
 class TestDetectCodeVersion:
     """ADR-044: provenance instrumentation that can never fail a suite.
 

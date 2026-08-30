@@ -241,10 +241,19 @@ class TestCompleteByTitle:
         assert len(tasks.list()) == 2
 
     def test_already_completed_tasks_are_not_matched(self, tool_context, tasks):
+        """The property is that a done task is not *selected*, not the wording.
+
+        This asserted `match="no open task matches"` until ADR-046, which is the
+        sentence that turned out to be misleading -- the task exists, and saying
+        it does not is what preceded a wrong write in 4 of 15 traced runs. The
+        assertion is restated at the invariant it was really protecting: the
+        lookup still refuses, and still refuses *for this title*. What it says
+        while refusing is TestAClosedMatchIsNotAMiss's business.
+        """
         done = tasks.add("Buy oat milk")
         assert done.id is not None
         tasks.complete(done.id)
-        with pytest.raises(ToolExecutionError, match="no open task matches"):
+        with pytest.raises(ToolExecutionError, match="Buy oat milk"):
             call(CompleteTaskTool(), {"title": "oat milk"}, tool_context)
 
     def test_neither_argument_is_a_validation_error(self, tool_context):
@@ -252,6 +261,9 @@ class TestCompleteByTitle:
             CompleteTaskTool().validate_input({})
 
     def test_both_arguments_is_a_validation_error(self, tool_context):
+        """Accepting both when they agree was tried and reverted (ADR-047):
+        it took invalid-argument refusals 27 -> 0 and moved the defect it was
+        aimed at not at all."""
         with pytest.raises(ToolInputError, match="exactly one"):
             CompleteTaskTool().validate_input({"id": 1, "title": "x"})
 
@@ -386,6 +398,8 @@ class TestRefusalsDoNotOfferAlternatives:
         `find_by_title` searches open tasks, so completing a task and then
         retrying it reports no match. That refusal used to enumerate whatever
         was still open -- one task, which reads as the answer.
+
+        ADR-046 additionally makes it *true*: see TestAClosedMatchIsNotAMiss.
         """
         tasks.add("Buy oat milk")
         tasks.add("Renew passport")
@@ -416,3 +430,157 @@ class TestRefusalsDoNotOfferAlternatives:
         tasks.add("Renew passport")
         with pytest.raises(ToolExecutionError, match="list_tasks"):
             call(CompleteTaskTool(), {"id": 999}, tool_context)
+
+
+class TestAClosedMatchIsNotAMiss:
+    """ADR-046: "no open task matches" is true and misleading at once.
+
+    Traced on qwen2.5:3b, 4 runs of 15, byte-identical to each other:
+
+        list_tasks()                        model sees ids 1 and 2
+        complete_task(id=1)                 the correct write lands
+        complete_task('Buy oat milk')  ->   "no open task matches 'Buy oat milk'."
+        complete_task(id=2)                 completes Renew passport -- WRONG
+
+    The third step is false: the task exists and had just been completed by the
+    step above it. The model cannot tell "never existed" from "already done", and
+    what it does next is pick a different task.
+
+    ADR-042's rule still binds -- these name the miss and offer no menu. What
+    changes is that they stop denying the task exists.
+    """
+
+    def _closed(self, tasks: TaskStore, title: str, status: TaskStatus) -> None:
+        task = tasks.add(title)
+        assert task.id is not None
+        tasks.update(task.id, status=status)
+
+    # --- complete_task: three branches -----------------------------------
+
+    def test_zero_closed_matches_keeps_the_adr_042_wording_verbatim(
+        self, tool_context, tasks: TaskStore
+    ):
+        """The 7B's only refusal on the target case is this branch, 15/15, so
+        holding it byte-identical is what makes the 7B a causal control."""
+        tasks.add("Renew passport")
+        with pytest.raises(ToolExecutionError) as exc:
+            call(CompleteTaskTool(), {"title": "dentist appointment"}, tool_context)
+        assert str(exc.value) == "no open task matches 'dentist appointment'."
+
+    def test_one_closed_match_says_it_is_already_done(
+        self, tool_context, tasks: TaskStore
+    ):
+        self._closed(tasks, "Buy oat milk", TaskStatus.DONE)
+        tasks.add("Renew passport")
+        with pytest.raises(ToolExecutionError) as exc:
+            call(CompleteTaskTool(), {"title": "oat milk"}, tool_context)
+        message = str(exc.value)
+        assert "Buy oat milk" in message and "already marked done" in message
+        assert "no open task matches" not in message
+        # ADR-042 still holds: the other open task is not offered.
+        assert "Renew passport" not in message
+
+    def test_a_cancelled_match_is_not_reported_as_done(
+        self, tool_context, tasks: TaskStore
+    ):
+        """The status comes from the row, never assumed.
+
+        Saying "already marked done" about a cancelled task would be a false
+        claim about stored state, made by the tool -- which is the class of
+        defect this whole area exists to prevent.
+        """
+        self._closed(tasks, "Buy oat milk", TaskStatus.CANCELLED)
+        with pytest.raises(ToolExecutionError) as exc:
+            call(CompleteTaskTool(), {"title": "oat milk"}, tool_context)
+        message = str(exc.value)
+        assert "cancelled" in message and "cannot be completed" in message
+        assert "done" not in message
+
+    def test_several_closed_matches_name_none_of_them(
+        self, tool_context, tasks: TaskStore
+    ):
+        """Presenting one would rebuild ADR-042's menu on the closed side, and
+        picking one would be the guess find_by_title exists to avoid.
+
+        Not hypothetical: 'Buy oat milk' (done) and 'Buy oat milk again'
+        (cancelled) both match 'oat milk', with *different* terminal statuses --
+        so no single-status sentence could be correct here either.
+        """
+        self._closed(tasks, "Buy oat milk", TaskStatus.DONE)
+        self._closed(tasks, "Buy oat milk again", TaskStatus.CANCELLED)
+        with pytest.raises(ToolExecutionError) as exc:
+            call(CompleteTaskTool(), {"title": "oat milk"}, tool_context)
+        message = str(exc.value)
+        assert "2 closed tasks" in message
+        assert "Buy oat milk" not in message
+        assert "again" not in message
+
+    # --- update_task: same branches, deliberately different sentences -----
+
+    def test_update_zero_closed_matches_keeps_the_adr_042_wording(
+        self, tool_context, tasks: TaskStore
+    ):
+        tasks.add("Renew passport")
+        with pytest.raises(ToolExecutionError) as exc:
+            call(UpdateTaskTool(), {"find": "dentist", "notes": "x"}, tool_context)
+        assert str(exc.value) == "no open task matches 'dentist'."
+
+    def test_update_reports_the_constraint_not_a_satisfied_request(
+        self, tool_context, tasks: TaskStore
+    ):
+        """The two tools share the lookup, not the constraint.
+
+        For `complete_task` a done match means the request is already satisfied.
+        For `update_task` it means the opposite -- the request is *not* satisfied
+        and this selector cannot reach the task. One sentence for both would have
+        to be wrong about one of them.
+        """
+        self._closed(tasks, "Buy oat milk", TaskStatus.DONE)
+        with pytest.raises(ToolExecutionError) as exc:
+            call(UpdateTaskTool(), {"find": "oat milk", "notes": "x"}, tool_context)
+        message = str(exc.value)
+        assert "is done, not open" in message
+        assert "update_task matches open tasks by title" in message
+        assert "nothing to change" not in message
+
+    def test_update_several_closed_matches_name_none_of_them(
+        self, tool_context, tasks: TaskStore
+    ):
+        self._closed(tasks, "Buy oat milk", TaskStatus.DONE)
+        self._closed(tasks, "Buy oat milk again", TaskStatus.CANCELLED)
+        with pytest.raises(ToolExecutionError) as exc:
+            call(UpdateTaskTool(), {"find": "oat milk", "notes": "x"}, tool_context)
+        assert "2 closed tasks" in str(exc.value)
+
+    # --- properties that must survive ------------------------------------
+
+    def test_the_two_tools_do_not_share_a_sentence(
+        self, tool_context, tasks: TaskStore
+    ):
+        """Asserted directly, so a later tidy-up cannot collapse them."""
+        self._closed(tasks, "Buy oat milk", TaskStatus.DONE)
+        with pytest.raises(ToolExecutionError) as complete_exc:
+            call(CompleteTaskTool(), {"title": "oat milk"}, tool_context)
+        with pytest.raises(ToolExecutionError) as update_exc:
+            call(UpdateTaskTool(), {"find": "oat milk", "notes": "x"}, tool_context)
+        assert str(complete_exc.value) != str(update_exc.value)
+
+    def test_the_failure_stays_recoverable(self, tool_context, tasks: TaskStore):
+        """ADR-042's property: a failed first step must not stop a valid second
+        one, so this is a ToolExecutionError the loop hands back, not a raise
+        that ends the run."""
+        self._closed(tasks, "Buy oat milk", TaskStatus.DONE)
+        tasks.add("Renew passport")
+        with pytest.raises(ToolExecutionError):
+            call(CompleteTaskTool(), {"title": "oat milk"}, tool_context)
+        still_works = call(CompleteTaskTool(), {"title": "passport"}, tool_context)
+        assert still_works.status is TaskStatus.DONE
+
+    def test_a_finished_task_still_does_not_block_a_new_one(
+        self, tool_context, tasks: TaskStore
+    ):
+        """Scope check: `add_task`'s duplicate guard is untouched. A completed
+        'Renew passport' must not stop renewing it next decade."""
+        self._closed(tasks, "Renew passport", TaskStatus.DONE)
+        created = call(AddTaskTool(), {"title": "Renew passport"}, tool_context)
+        assert created.status is TaskStatus.TODO
