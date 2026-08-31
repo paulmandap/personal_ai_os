@@ -227,6 +227,99 @@ class TestShippedManifests:
         assert spec.tools == ["fetch_page"]
         assert PermissionLevel.WRITE not in spec.permissions
 
+    # --- ADR-053: isolation by reachability, not by sweep -----------------
+    #
+    # ADR-052 removed `reads_untrusted_content` because a 165-run-per-model
+    # sweep read below band on `tool_calling::survives_a_bad_start` -- a case
+    # running `task_agent`, which the flag cannot reach. The sweep could not
+    # tell a coupling bug from 3B noise, and the same arm swung two other cases
+    # upward past their all-time highs.
+    #
+    # PROJECT_STATE rule 7 says scope canaries by causal reachability BEFORE
+    # running them. There are exactly two channels by which a clause added to
+    # the Research Agent could reach another agent: shared prompt text, or a
+    # flipped base-class default. Both are decidable statically, so they are
+    # asserted here instead of measured on a GPU.
+    #
+    # ADR-034's sweep WAS necessary, because that change touched every agent.
+    # This one cannot, and these tests are what makes that a fact rather than
+    # a claim.
+
+    def _shipped_prompts(self) -> dict[str, str]:
+        """Each shipped agent's default prompt, keyed by manifest name.
+
+        Imported explicitly rather than derived, so adding an agent breaks the
+        completeness check below and forces this test to be updated -- an
+        agent nobody added here would otherwise be silently unguarded.
+        """
+        from personal_ai_os.agents.builtin.finance_agent import FINANCE_SYSTEM_PROMPT
+        from personal_ai_os.agents.builtin.master import MASTER_SYSTEM_PROMPT
+        from personal_ai_os.agents.builtin.ping import PING_SYSTEM_PROMPT
+        from personal_ai_os.agents.builtin.research_agent import (
+            RESEARCH_SYSTEM_PROMPT,
+        )
+        from personal_ai_os.agents.builtin.task_agent import TASK_SYSTEM_PROMPT
+
+        return {
+            "finance": FINANCE_SYSTEM_PROMPT,
+            "master": MASTER_SYSTEM_PROMPT,
+            "ping": PING_SYSTEM_PROMPT,
+            "research": RESEARCH_SYSTEM_PROMPT,
+            "task_agent": TASK_SYSTEM_PROMPT,
+        }
+
+    def test_every_shipped_agent_has_a_prompt_under_test(self, shipped):
+        """Completeness guard: a new agent must be added above, or the two
+        isolation tests below would quietly stop covering the system."""
+        assert sorted(self._shipped_prompts()) == sorted(shipped.names())
+
+    def test_the_research_prompt_reaches_no_other_agent(self, shipped):
+        """Channel 1: shared prompt text.
+
+        Whatever a research arm puts in `RESEARCH_SYSTEM_PROMPT` must appear
+        in `research` and nowhere else. Substantial lines only -- a shared
+        short line like "How to work:" is formatting, not a clause.
+        """
+        prompts = self._shipped_prompts()
+        research_lines = [
+            line.strip()
+            for line in prompts["research"].splitlines()
+            if len(line.strip()) > 25
+        ]
+        assert research_lines, "the research prompt has no substantial lines"
+
+        for name, prompt in prompts.items():
+            if name == "research":
+                continue
+            leaked = [line for line in research_lines if line in prompt]
+            assert not leaked, f"research prompt text reached {name}: {leaked}"
+
+    def test_no_agent_hard_codes_the_untrusted_content_clause(self, shipped):
+        """`CONTENT_IS_DATA` is appended at run time for flagged agents only.
+        A copy pasted into a prompt constant would escape that gate and reach
+        an agent whose flag says it should not have it."""
+        from personal_ai_os.agents.base import CONTENT_IS_DATA
+
+        for name, prompt in self._shipped_prompts().items():
+            assert CONTENT_IS_DATA.strip() not in prompt, name
+
+    def test_untrusted_content_flags_are_pinned_per_agent(self, shipped):
+        """Channel 2: a flipped base-class default.
+
+        `research` is deliberately NOT pinned -- it is the variable ADR-053's
+        arms move. Everything else is, so an arm that reaches beyond the
+        Research Agent fails here rather than in a benchmark three suites away.
+        """
+        flags = {
+            name: shipped.resolve_class(shipped.get(name)).reads_untrusted_content
+            for name in shipped.names()
+        }
+        assert flags["task_agent"] is True, "ADR-028's rule, measured in ADR-034"
+        assert flags["master"] is False
+        assert flags["finance"] is False
+        assert flags["ping"] is False
+        assert BaseAgent.reads_untrusted_content is False, "base default"
+
     def test_finance_declares_write_but_not_spend_money(self, shipped):
         """These tools record facts about money; none of them move any."""
         spec = shipped.get("finance")
