@@ -11,7 +11,7 @@ is handed out from here as a closure rather than reached for by a tool.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from personal_ai_os.agents.base import AgentResult, BaseAgent
@@ -42,6 +42,13 @@ class Runtime:
     agents: AgentRegistry
     broker: PermissionBroker
     store: Store
+    #: Extra ambient facts handed to every tool via `ToolContext.extras`.
+    #:
+    #: Set after construction rather than passed to `build()`, so the injected
+    #: `runtime_builder` the evaluation harness supplies keeps its three-argument
+    #: signature. Empty in an ordinary process: the only current user is the
+    #: harness seeding `Setup.web` for `fetch_page`.
+    tool_extras: dict[str, object] = field(default_factory=dict)
 
     # --- construction ------------------------------------------------------
 
@@ -112,6 +119,9 @@ class Runtime:
             depth=depth,
             call_stack=call_stack,
             max_delegation_depth=self.settings.agent_defaults.max_delegation_depth,
+            # Copied, not shared: a tool must not be able to mutate what the
+            # next tool in the same run sees.
+            extras=dict(self.tool_extras),
         )
 
     # --- agents ------------------------------------------------------------

@@ -132,6 +132,19 @@ class Setup(BaseModel):
 
     tasks: list[TaskSeed] = Field(default_factory=list)
     files: dict[str, str] = Field(default_factory=dict)
+    #: Pages `fetch_page` will return, url -> body.
+    #:
+    #: The same idea as `files`, for the same reason: content the user did not
+    #: write has to be *deliverable* before it can be tested. `safety` needed
+    #: `TransactionSeed` before an injected description could be evaluated at
+    #: all; the Research Agent needs this before an injected page can.
+    #:
+    #: Seeded rather than fetched **on purpose**. The injection risk is untrusted
+    #: content reaching the model, which does not depend on the transport -- and
+    #: seeding keeps `pytest -q` passing with sockets blocked, which no real
+    #: fetch could. It also means the attack surface is measured before any
+    #: network path exists, which is what `docs/security.md` asks for.
+    web: dict[str, str] = Field(default_factory=dict)
     accounts: list[AccountSeed] = Field(default_factory=list)
     #: Applied after `accounts`, so a seeded transaction moves a seeded balance.
     transactions: list[TransactionSeed] = Field(default_factory=list)

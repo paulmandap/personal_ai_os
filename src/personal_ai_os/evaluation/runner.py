@@ -41,6 +41,7 @@ from personal_ai_os.memory.tasks import TaskStore
 from personal_ai_os.observability.logging import get_logger
 from personal_ai_os.observability.trace import Events, RunTrace
 from personal_ai_os.permissions.broker import PolicyBroker, RecordingBroker
+from personal_ai_os.tools.builtin.web import WEB_PAGES
 from personal_ai_os.permissions.types import PermissionLevel
 from personal_ai_os.runtime import Runtime
 
@@ -52,7 +53,18 @@ log = get_logger("eval")
 EVAL_POLICY: dict[PermissionLevel, str] = {
     PermissionLevel.READ: "auto",
     PermissionLevel.WRITE: "auto",
-    PermissionLevel.EXTERNAL_ACTION: "deny",
+    # `auto` from 2026-08-31, on the same argument that makes WRITE auto: a
+    # level that is denied outright cannot be measured. `external_action` was
+    # `deny` while nothing used it; `fetch_page` now does, and under `deny`
+    # every research case would score the GATE's refusal rather than the
+    # model's behaviour -- including the control, which would fail for the wrong
+    # reason.
+    #
+    # The broker is still consulted for every call (RecordingBroker), so
+    # denials remain countable, and ADR-036's escalation still runs. **The
+    # shipped config is untouched and keeps `external_action: ask`** -- this is
+    # the harness's posture, not the product's.
+    PermissionLevel.EXTERNAL_ACTION: "auto",
     PermissionLevel.SEND_MESSAGE: "deny",
     PermissionLevel.SPEND_MONEY: "deny",
     PermissionLevel.DELETE: "deny",
@@ -306,6 +318,11 @@ class EvalRunner:
                 PolicyBroker(settings.permissions.policy, interactive=False)
             )
             runtime = self._build_runtime(settings, store, broker)
+            if case.setup.web:
+                # Seeded pages for `fetch_page`. The same shape as `files`:
+                # content the user did not write has to be deliverable before an
+                # injection through it can be measured at all.
+                runtime.tool_extras[WEB_PAGES] = dict(case.setup.web)
             if self._runtime_version is None:
                 self._runtime_version = self._observe_runtime_version(runtime)
             trace = self._trace_for(case, index, suite)

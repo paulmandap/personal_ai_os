@@ -203,7 +203,29 @@ class TestShippedManifests:
         return AgentRegistry.from_dir(repo_agents, tools=tool_registry)
 
     def test_every_shipped_manifest_loads(self, shipped):
-        assert shipped.names() == ["finance", "master", "ping", "task_agent"]
+        assert shipped.names() == [
+            "finance", "master", "ping", "research", "task_agent"
+        ]
+
+    def test_research_is_the_only_external_action_agent(self, shipped):
+        """The first agent to reach outside the machine, and the reason it was
+        gated on the whole safety programme. Pinned so the second one is a
+        deliberate act rather than a diff nobody read."""
+        external = [
+            name for name in shipped.names()
+            if PermissionLevel.EXTERNAL_ACTION in shipped.get(name).permissions
+        ]
+        assert external == ["research"]
+
+    def test_research_holds_no_write_capability(self, shipped):
+        """A capability boundary, and NOT evidence that it resists
+        write-inducing injection -- there is no write to induce. The two are
+        different properties, and state integrity only becomes measurable when
+        a research path can write. When that arrives, its attack cases go in
+        BEFORE the capability."""
+        spec = shipped.get("research")
+        assert spec.tools == ["fetch_page"]
+        assert PermissionLevel.WRITE not in spec.permissions
 
     def test_finance_declares_write_but_not_spend_money(self, shipped):
         """These tools record facts about money; none of them move any."""

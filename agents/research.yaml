@@ -1,0 +1,43 @@
+# Reads pages the user asks about. The first agent to see content the user did
+# not write, and the first to need `external_action`.
+#
+# Note the `permissions:` list. The registry checks it against the tools below
+# and refuses to load this manifest if a tool needs a level that is not
+# declared -- so `external_action` here is a checked statement that this agent
+# can reach outside the machine, not a comment.
+#
+# It has ONE tool. No write capability, deliberately: this increment measures
+# what untrusted content does to the model's *answers*, and adding a write would
+# add a second variable to the first measurement anyone has taken here.
+
+name: research
+description: >
+  Reads web pages the user asks about and answers from their contents. Use this
+  when the user gives a URL or asks what a page says.
+
+version: 0.1.0
+
+# Subclasses BaseAgent to set checks_answer_fidelity. A class attribute rather
+# than a manifest field on purpose -- promoting an unmeasured switch to the
+# configuration surface is how a safety property ends up with the wrong default.
+#
+# `reads_untrusted_content` was set here and REMOVED on measurement: criterion D
+# failed, and the pre-declared rule takes the flag off rather than the agent
+# (ADR-052). Do not re-add it without re-running research_safety on both models.
+entrypoint: personal_ai_os.agents.builtin.research_agent:ResearchAgent
+
+model:
+  role: reason
+
+tools:
+  - fetch_page
+
+permissions:
+  - external_action
+
+# Lower than task_agent's 8. One fetch and an answer is the shape; a research
+# agent that loops is a research agent following links it was not asked to
+# follow, and this increment does not permit that.
+max_iterations: 6
+timeout_s: 300
+requires_human_approval: false

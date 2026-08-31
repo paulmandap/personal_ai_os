@@ -99,12 +99,14 @@ def default_registry() -> ToolRegistry:
         ListTasksTool,
         UpdateTaskTool,
     )
+    from personal_ai_os.tools.builtin.web import FetchPageTool
     from personal_ai_os.tools.delegate import DelegateTool
 
     return ToolRegistry(
         [
             ReadFileTool(),
             ListDirTool(),
+            FetchPageTool(),
             AddTaskTool(),
             ListTasksTool(),
             UpdateTaskTool(),

@@ -1,0 +1,1530 @@
+{
+  "version": 5,
+  "suite": "planning",
+  "model": "qwen2.5:7b-instruct",
+  "runtime_version": "0.33.2",
+  "code_version": "8c6118f-dirty",
+  "kind": "benchmark",
+  "started_at": "2026-08-31T04:09:56Z",
+  "finished_at": "2026-08-31T04:13:27Z",
+  "split": "train+validation",
+  "cases": [
+    {
+      "case": "three_dependent_steps",
+      "description": "Three creations then a count. The count is only correct if all three landed, so a partial job cannot report success.\n",
+      "agent": "task_agent",
+      "category": "multi_step",
+      "split": "train",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['add_task', 'add_task', 'add_task', 'list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=add_task"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "3, expected 3",
+              "failure": "F012",
+              "label": "task_count=3"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 4,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 20821.6,
+            "prompt_tokens": 3313,
+            "completion_tokens": 123,
+            "tokens_per_second": 21.61
+          },
+          "output_preview": "You have added three tasks to your task list. Here they are:\n\n- Buy milk\n- Call the dentist\n- Submit the report\n\nIn total, you now have 3 tasks."
+        },
+        {
+          "index": 2,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['add_task', 'add_task', 'add_task', 'list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=add_task"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "3, expected 3",
+              "failure": "F012",
+              "label": "task_count=3"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 4,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7007.4,
+            "prompt_tokens": 3314,
+            "completion_tokens": 118,
+            "tokens_per_second": 29.37
+          },
+          "output_preview": "You have added three tasks: buy milk, call the dentist, and submit the report. Currently, you have a total of 3 tasks in your list."
+        },
+        {
+          "index": 3,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['add_task', 'add_task', 'add_task', 'list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=add_task"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "3, expected 3",
+              "failure": "F012",
+              "label": "task_count=3"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 4,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 8650.4,
+            "prompt_tokens": 3313,
+            "completion_tokens": 135,
+            "tokens_per_second": 24.97
+          },
+          "output_preview": "You have added three tasks to your task list. Here they are:\n\n- [ ] #1 buy milk\n- [ ] #2 call the dentist\n- [ ] #3 submit the report\n\nIn total, you now have 3 tasks."
+        },
+        {
+          "index": 4,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['add_task', 'add_task', 'add_task', 'list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=add_task"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "3, expected 3",
+              "failure": "F012",
+              "label": "task_count=3"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 4,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7150.8,
+            "prompt_tokens": 3313,
+            "completion_tokens": 123,
+            "tokens_per_second": 29.7
+          },
+          "output_preview": "You now have 3 tasks in total. Here they are:\n\n- [ ] #1 buy milk\n- [ ] #2 call the dentist\n- [ ] #3 submit the report"
+        },
+        {
+          "index": 5,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['add_task', 'add_task', 'add_task', 'list_tasks']",
+              "failure": "F003",
+              "label": "called_tool=add_task"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "3, expected 3",
+              "failure": "F012",
+              "label": "task_count=3"
+            },
+            {
+              "name": "no_unsupported_task_claims",
+              "passed": true,
+              "detail": "every claim traces to real data",
+              "failure": "F005",
+              "label": "no_unsupported_task_claims"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 4,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7601.9,
+            "prompt_tokens": 3314,
+            "completion_tokens": 136,
+            "tokens_per_second": 29.56
+          },
+          "output_preview": "You have added three tasks to your task list. Here they are:\n\n- [ ] #1 buy milk\n- [ ] #2 call the dentist\n- [ ] #3 submit the report\n\nIn total, you now have 3 tasks."
+        }
+      ]
+    },
+    {
+      "case": "ordering_matters",
+      "description": "Complete one task, then create another. Doing only the second is the likely shortcut, and the counts would still look plausible.\n",
+      "agent": "task_agent",
+      "category": "multi_step",
+      "split": "train",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['complete_task', 'add_task']",
+              "failure": "F003",
+              "label": "called_tool=complete_task"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'oat milk'.status='done', expected 'done'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'oat milk', 'field': 'status', 'value': 'done'})"
+            },
+            {
+              "name": "answer_matches_task_status",
+              "passed": true,
+              "detail": "answer agrees with the stored status",
+              "failure": "F007",
+              "label": "answer_matches_task_status({'title': 'oat milk'})"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['Plan the week', 'Buy oat milk']",
+              "failure": "F012",
+              "label": "task_title_contains=plan the week"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "2, expected 2",
+              "failure": "F012",
+              "label": "task_count=2"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7025.1,
+            "prompt_tokens": 2891,
+            "completion_tokens": 126,
+            "tokens_per_second": 28.98
+          },
+          "output_preview": "The task \"Buy oat milk\" has been marked as done. A new task \"Plan the week\" has been added and is set to be done. Here are your current tasks:\n\n```plaintext\n1. Plan the week (status: todo, priority: n"
+        },
+        {
+          "index": 2,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['complete_task', 'add_task']",
+              "failure": "F003",
+              "label": "called_tool=complete_task"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'oat milk'.status='done', expected 'done'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'oat milk', 'field': 'status', 'value': 'done'})"
+            },
+            {
+              "name": "answer_matches_task_status",
+              "passed": true,
+              "detail": "answer agrees with the stored status",
+              "failure": "F007",
+              "label": "answer_matches_task_status({'title': 'oat milk'})"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['Plan the week', 'Buy oat milk']",
+              "failure": "F012",
+              "label": "task_title_contains=plan the week"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "2, expected 2",
+              "failure": "F012",
+              "label": "task_count=2"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 6160.6,
+            "prompt_tokens": 2887,
+            "completion_tokens": 102,
+            "tokens_per_second": 28.8
+          },
+          "output_preview": "The oat milk task has been marked as done, and the new task 'Plan the week' has been added to your task list. Here are your current tasks:\n\n1. Plan the week (status: todo, priority: normal)\n2. Buy oat"
+        },
+        {
+          "index": 3,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['complete_task', 'add_task']",
+              "failure": "F003",
+              "label": "called_tool=complete_task"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'oat milk'.status='done', expected 'done'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'oat milk', 'field': 'status', 'value': 'done'})"
+            },
+            {
+              "name": "answer_matches_task_status",
+              "passed": true,
+              "detail": "answer agrees with the stored status",
+              "failure": "F007",
+              "label": "answer_matches_task_status({'title': 'oat milk'})"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['Plan the week', 'Buy oat milk']",
+              "failure": "F012",
+              "label": "task_title_contains=plan the week"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "2, expected 2",
+              "failure": "F012",
+              "label": "task_count=2"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7092.8,
+            "prompt_tokens": 2891,
+            "completion_tokens": 108,
+            "tokens_per_second": 24.19
+          },
+          "output_preview": "The oat milk task has been marked as done, and the new task 'Plan the week' has been added to your task list. Here are your updated tasks:\n\n1. Plan the week (status: todo, priority: normal)\n2. Buy oat"
+        },
+        {
+          "index": 4,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['complete_task', 'add_task']",
+              "failure": "F003",
+              "label": "called_tool=complete_task"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'oat milk'.status='done', expected 'done'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'oat milk', 'field': 'status', 'value': 'done'})"
+            },
+            {
+              "name": "answer_matches_task_status",
+              "passed": true,
+              "detail": "answer agrees with the stored status",
+              "failure": "F007",
+              "label": "answer_matches_task_status({'title': 'oat milk'})"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['Plan the week', 'Buy oat milk']",
+              "failure": "F012",
+              "label": "task_title_contains=plan the week"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "2, expected 2",
+              "failure": "F012",
+              "label": "task_count=2"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7058.5,
+            "prompt_tokens": 2887,
+            "completion_tokens": 103,
+            "tokens_per_second": 23.64
+          },
+          "output_preview": "The oat milk task has been marked as done, and a new task titled 'Plan the week' has been added to your task list. Here are your current tasks:\n\n1. Plan the week (status: todo, priority: normal)\n2. Bu"
+        },
+        {
+          "index": 5,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "called_tool",
+              "passed": true,
+              "detail": "called ['complete_task', 'add_task']",
+              "failure": "F003",
+              "label": "called_tool=complete_task"
+            },
+            {
+              "name": "task_matching",
+              "passed": true,
+              "detail": "'oat milk'.status='done', expected 'done'",
+              "failure": "F012",
+              "label": "task_matching({'title': 'oat milk', 'field': 'status', 'value': 'done'})"
+            },
+            {
+              "name": "answer_matches_task_status",
+              "passed": true,
+              "detail": "answer agrees with the stored status",
+              "failure": "F007",
+              "label": "answer_matches_task_status({'title': 'oat milk'})"
+            },
+            {
+              "name": "task_title_contains",
+              "passed": true,
+              "detail": "titles: ['Plan the week', 'Buy oat milk']",
+              "failure": "F012",
+              "label": "task_title_contains=plan the week"
+            },
+            {
+              "name": "task_count",
+              "passed": true,
+              "detail": "2, expected 2",
+              "failure": "F012",
+              "label": "task_count=2"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7692.2,
+            "prompt_tokens": 2891,
+            "completion_tokens": 119,
+            "tokens_per_second": 23.65
+          },
+          "output_preview": "The task \"Buy oat milk\" has been marked as done. A new task \"Plan the week\" has been added and set to be done. Here are your current tasks:\n\n```plaintext\n1. Plan the week (status: todo, priority: norm"
+        }
+      ]
+    },
+    {
+      "case": "two_writes_in_one_request",
+      "description": "Two different finance tools in one objective. Doing one and describing both is the failure this catches.\n",
+      "agent": "finance",
+      "category": "multi_step",
+      "split": "train",
+      "runs": [
+        {
+          "index": 1,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 set_balance call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=set_balance"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 add_transaction call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=add_transaction"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 250000, expected 250000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2500'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 8971.1,
+            "prompt_tokens": 3487,
+            "completion_tokens": 123,
+            "tokens_per_second": 27.66
+          },
+          "output_preview": "Your cash balance has been updated to 2,500 PHP after spending 500 PHP on transport."
+        },
+        {
+          "index": 2,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 set_balance call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=set_balance"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 add_transaction call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=add_transaction"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 250000, expected 250000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2500'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7836.3,
+            "prompt_tokens": 3481,
+            "completion_tokens": 129,
+            "tokens_per_second": 25.7
+          },
+          "output_preview": "Your cash balance has been updated to PHP 2,500.00 after recording your transport expenses of PHP 500.00."
+        },
+        {
+          "index": 3,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 set_balance call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=set_balance"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 add_transaction call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=add_transaction"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 250000, expected 250000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2500'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7403.3,
+            "prompt_tokens": 3481,
+            "completion_tokens": 125,
+            "tokens_per_second": 26.7
+          },
+          "output_preview": "Your cash balance is now PHP 2,500.00 after spending PHP 500.00 on transport."
+        },
+        {
+          "index": 4,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 set_balance call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=set_balance"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 add_transaction call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=add_transaction"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 250000, expected 250000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2500'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7978.7,
+            "prompt_tokens": 3481,
+            "completion_tokens": 125,
+            "tokens_per_second": 24.02
+          },
+          "output_preview": "Your cash balance is now PHP 2,500.00 after spending PHP 500.00 on transport."
+        },
+        {
+          "index": 5,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 set_balance call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=set_balance"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 add_transaction call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=add_transaction"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 250000, expected 250000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2500'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 8545.0,
+            "prompt_tokens": 3481,
+            "completion_tokens": 125,
+            "tokens_per_second": 21.77
+          },
+          "output_preview": "Your cash balance is now PHP 2,500.00 after spending PHP 500.00 on transport."
+        },
+        {
+          "index": 6,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 set_balance call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=set_balance"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 add_transaction call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=add_transaction"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 250000, expected 250000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2500'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 8414.6,
+            "prompt_tokens": 3478,
+            "completion_tokens": 124,
+            "tokens_per_second": 22.12
+          },
+          "output_preview": "Your cash balance is now PHP 2,500.00 after spending PHP 500.00 on transport."
+        },
+        {
+          "index": 7,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 set_balance call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=set_balance"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 add_transaction call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=add_transaction"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 250000, expected 250000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2500'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 8993.3,
+            "prompt_tokens": 3487,
+            "completion_tokens": 129,
+            "tokens_per_second": 21.03
+          },
+          "output_preview": "Your cash balance has been updated to PHP 2,500.00 after spending PHP 500.00 on transport."
+        },
+        {
+          "index": 8,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 set_balance call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=set_balance"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 add_transaction call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=add_transaction"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 250000, expected 250000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2500'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 8808.8,
+            "prompt_tokens": 3481,
+            "completion_tokens": 125,
+            "tokens_per_second": 20.9
+          },
+          "output_preview": "Your cash balance is now PHP 2,500.00 after spending PHP 500.00 on transport."
+        },
+        {
+          "index": 9,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 set_balance call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=set_balance"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 add_transaction call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=add_transaction"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 250000, expected 250000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2500'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 8338.7,
+            "prompt_tokens": 3481,
+            "completion_tokens": 125,
+            "tokens_per_second": 22.79
+          },
+          "output_preview": "Your cash balance is now PHP 2,500.00 after spending PHP 500.00 on transport."
+        },
+        {
+          "index": 10,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 set_balance call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=set_balance"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 add_transaction call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=add_transaction"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 250000, expected 250000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2500'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7245.1,
+            "prompt_tokens": 3486,
+            "completion_tokens": 127,
+            "tokens_per_second": 28.3
+          },
+          "output_preview": "Your cash balance is now PHP 2,500.00 after spending PHP 500.00 on transport."
+        },
+        {
+          "index": 11,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 set_balance call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=set_balance"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 add_transaction call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=add_transaction"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 250000, expected 250000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2500'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7655.2,
+            "prompt_tokens": 3486,
+            "completion_tokens": 123,
+            "tokens_per_second": 24.91
+          },
+          "output_preview": "Your cash balance has been updated to 2,500 PHP after spending 500 PHP on transport."
+        },
+        {
+          "index": 12,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 set_balance call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=set_balance"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 add_transaction call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=add_transaction"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 250000, expected 250000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2500'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7490.6,
+            "prompt_tokens": 3481,
+            "completion_tokens": 125,
+            "tokens_per_second": 26.22
+          },
+          "output_preview": "Your cash balance is now PHP 2,500.00 after spending PHP 500.00 on transport."
+        },
+        {
+          "index": 13,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 set_balance call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=set_balance"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 add_transaction call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=add_transaction"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 250000, expected 250000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2500'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 8475.5,
+            "prompt_tokens": 3481,
+            "completion_tokens": 125,
+            "tokens_per_second": 22.08
+          },
+          "output_preview": "Your cash balance is now PHP 2,500.00 after spending PHP 500.00 on transport."
+        },
+        {
+          "index": 14,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 set_balance call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=set_balance"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 add_transaction call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=add_transaction"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 250000, expected 250000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2500'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7318.0,
+            "prompt_tokens": 3487,
+            "completion_tokens": 127,
+            "tokens_per_second": 27.48
+          },
+          "output_preview": "Your cash balance is now PHP 2,500.00 after spending PHP 500.00 on transport."
+        },
+        {
+          "index": 15,
+          "passed": true,
+          "stop_reason": "answered",
+          "error": null,
+          "checks": [
+            {
+              "name": "answered",
+              "passed": true,
+              "detail": "",
+              "failure": "F006",
+              "label": "answered"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 set_balance call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=set_balance"
+            },
+            {
+              "name": "tool_succeeded",
+              "passed": true,
+              "detail": "1/1 add_transaction call(s) succeeded",
+              "failure": "F003",
+              "label": "tool_succeeded=add_transaction"
+            },
+            {
+              "name": "no_invalid_arguments",
+              "passed": true,
+              "detail": "0 rejected call(s)",
+              "failure": "F013",
+              "label": "no_invalid_arguments"
+            },
+            {
+              "name": "account_balance_is",
+              "passed": true,
+              "detail": "cash = 250000, expected 250000 (minor units)",
+              "failure": "F012",
+              "label": "account_balance_is({'name': 'cash', 'value': '2500'})"
+            },
+            {
+              "name": "no_unsupported_amounts",
+              "passed": true,
+              "detail": "every figure traces to a tool result",
+              "failure": "F014",
+              "label": "no_unsupported_amounts"
+            }
+          ],
+          "metrics": {
+            "iterations": 2,
+            "tool_calls": 2,
+            "invalid_arguments": 0,
+            "permission_denials": 0,
+            "wall_ms": 7471.2,
+            "prompt_tokens": 3478,
+            "completion_tokens": 124,
+            "tokens_per_second": 26.34
+          },
+          "output_preview": "Your cash balance is now PHP 2,500.00 after spending PHP 500.00 on transport."
+        }
+      ]
+    }
+  ]
+}
