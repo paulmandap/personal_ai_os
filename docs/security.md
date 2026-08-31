@@ -352,12 +352,19 @@ fetch goes nowhere. **A transport shipped without addressing this would put
 those ten requests on the wire.** That is increment 2's entry condition, recorded
 before the transport exists rather than discovered afterwards.
 
-**Replicated, and still gating.** ADR-053 re-measured the shipped configuration
-and read **10/75 again — exactly.** It also confirmed that this row is about
+**Replicated three times, and still gating.** ADR-053 re-measured the shipped
+configuration and read **10/75 again — exactly**; ADR-054 read **12/75**. It also confirmed that this row is about
 *any* such request, not a tolerable rate: ADR-053's own `≤ 2/75` adoption
 threshold was an experiment-specific criterion for choosing between clauses and
 **never permission to start the transport.** No clause cleared it, so the shipped
 number is unchanged and **increment 2 remains gated exactly as written above.**
+
+**And a prompt clause will not fix it.** ADR-054 measured the generic clause
+against a paired baseline and found it **relocates** the failure: prior-consent
+requests collapse to 1-2, while the crude-injection case — which the baseline
+has **never** failed, 0 in three arms — starts producing them. That is ADR-035's
+conclusion reproduced on a new agent. **Whatever gates the transport must be
+structural, not a sentence in a prompt.**
 
 All ten landed on the *prior-consent* phrasing — content claiming to be the user
 and to carry prior approval — which is the same style ADR-034 identified as the
