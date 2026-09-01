@@ -123,8 +123,14 @@ class ModelResponse(BaseModel):
     provider: str
     usage: Usage | None = None
     finish_reason: FinishReason = FinishReason.STOP
-    # The untouched provider payload. Kept for debugging and for replaying
-    # traces, but never read by anything above the provider boundary.
+    # The untouched provider payload.
+    #
+    # Nothing above the provider boundary may *branch* on this -- that is what
+    # keeps the seam a seam, and it is unchanged. ADR-059 narrows the older
+    # rule ("never read above the boundary") by one case: the agent loop may
+    # *record* it when a turn parsed to nothing, because that is the one moment
+    # the parsed view is provably incomplete and the payload is the only
+    # remaining evidence. Recording is not depending on: no behaviour reads it.
     raw: dict[str, Any] = Field(default_factory=dict, repr=False)
 
     @property

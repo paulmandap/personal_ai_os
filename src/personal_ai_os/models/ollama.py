@@ -131,6 +131,15 @@ class OllamaModel(AgentModel):
             fn = raw.get("function") or {}
             name = fn.get("name")
             if not name:
+                # Dropping is right -- a call with no name cannot be executed,
+                # and inventing one would be worse. What was wrong until
+                # ADR-059 is that dropping was *invisible*: this warning went to
+                # a log nobody reads, and if it emptied the turn the run was
+                # then recorded as "the model produced nothing".
+                #
+                # The evidence survives because it stays in `ModelResponse.raw`,
+                # which `model.empty_payload` records on exactly that turn. Do
+                # not "tidy" this by stripping the payload before it is stored.
                 log.warning("dropping tool call with no function name: %r", raw)
                 continue
             calls.append(

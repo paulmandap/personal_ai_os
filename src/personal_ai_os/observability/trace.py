@@ -118,6 +118,15 @@ class Events:
     #: model rather than giving up. Traced because a run that needed a nudge is
     #: not the same as one that did not, and only the trace can tell them apart.
     EMPTY_RETRY = "model.empty_retry"
+    #: What the provider actually returned on a turn that looked empty (ADR-059).
+    #:
+    #: `model.response` records the *parsed* turn, so an empty one reads as
+    #: `content='' tool_calls=[]` and the evidence stops there. It was not
+    #: nothing: all 83 stored 3B `empty_response` runs emitted 25-79 completion
+    #: tokens. This is the only event that can say what those tokens were, and
+    #: it fires only when the parsed turn is empty -- the one moment the payload
+    #: is otherwise unrecoverable.
+    EMPTY_PAYLOAD = "model.empty_payload"
     #: The drafted answer claimed an action the trace does not record, and the
     #: agent was given one turn to rewrite it (ADR-051). Traced because a run
     #: that needed a correction is not the same as one that did not, and only

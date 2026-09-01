@@ -21,9 +21,109 @@
 | | |
 |---|---|
 | **Phase 6 — Integrations** | **COMPLETE** (2026-09-01, ADR-058) |
-| **Phase 7 — Local Master** | **NOT STARTED** |
-| **Phase 7 scope** | **UNDECIDED** |
-| **Phase 7 exit condition** | **NOT YET DECLARED** — ADR-058 requires one *before* the phase starts |
+| **Phase 7 — Local Master** | **STARTED 2026-09-01** (ADR-059, ADR-060) |
+| **Phase 7 scope** | Paul's full 7.1–7.12 plan, reconciled against what Phases 1–6 already built |
+| **Phase 7 exit condition** | **DECLARED BELOW, before the work** — see *Phase 7's exit condition* |
+
+### Phase 7's exit condition
+
+> **Phase 7 ends when the system runs a multi-agent objective end to end, on
+> local models only, with the Master's plan surviving a process restart — and a
+> `master` benchmark with a protected holdout says so on a run taken after
+> Claude access ends.**
+
+**The Master was already local.** ADR-001 has always forbidden a hosted provider,
+and `master.yaml` has asked for `role: reason` → tier `medium` →
+`qwen2.5:7b-instruct` since Phase 2. So the milestone *"the Personal AI OS can
+operate without Claude"* is already true of the **wiring**. What is not true yet:
+the local Master is not reliably good enough, it cannot stop and resume, and
+hierarchy, coordination and permission inheritance are unexercised.
+
+Paul's 7.12 checklist, scored honestly against what exists today:
+
+| 7.12 criterion | today |
+|---|---|
+| Local Master runs through Ollama · Claude not required · sub-agents local · no cloud dependency | ✅ already true |
+| Master can delegate | ⚠️ **7B 45/45; 3B 1/45** (ADR-060) |
+| Model routing works | ⚠️ router exists (ADR-009); `large` unmapped; the Master ignores complexity |
+| **State persists** | ❌ **not built** — `paios.db` is schema v2, nothing stores a plan |
+| Agent hierarchy works | ⚠️ `max_delegation_depth: 2` exists, unexercised |
+| Permissions propagate | ⚠️ mechanism exists, **no adversarial test** |
+| Recovery works | ⚠️ turn-level only (ADR-031) |
+| Evaluation passes | ⚠️ `delegation` is 3 train + 1 holdout — not a Master benchmark |
+
+**Increments**, ordered for a working, measured Local Master by 2026-09-07:
+
+| | | status |
+|---|---|---|
+| **0** | Restore the Master · *blocking* | **partly done** — ADR-059 instrument shipped, ADR-060 rejected the roster hypothesis; the prompt bisection is **unrun** |
+| **1** | The Master benchmark (7.1) — nine responsibilities, adversarial cases written first, holdout drawn at creation | not started |
+| **2** | Persistent Master state (7.6) — schema v3 `plans`/`plan_steps`, `--resume` | not started |
+| **3** | Coordination, hierarchy, permission inheritance (7.7/7.8/7.9) | not started |
+| **4** | Local independence test (7.10) — **the exit** | not started |
+
+**Health & Wellness stays deferred.** Paul's 7.8 describes the pattern on H&W;
+he confirmed on 2026-09-01 that the hierarchy is to be proved on an existing
+domain instead, so `CLAUDE.md`'s prohibition stands untouched.
+
+**Model selection (7.1) is bounded by hardware, and that is recorded rather than
+worked around:** only `qwen2.5:3b-instruct` and `:7b-instruct` are pulled,
+**11.2 GB free**, and a 14B Q4 exceeds 8 GB VRAM. Phase 7 compares the two it
+has.
+
+**A correction Phase 7 already forced, independent of any result.** The per-case
+history shows the headline "delegation 27–47% and it swings" is a sum artifact:
+
+| 3B, all 10 stored runs | |
+|---|---|
+| `routes_task_work_to_task_agent` | **49/50** — near-perfect |
+| `routes_money_work_to_finance` | **`delegated_to=finance` 0/50** — never once, zero variance |
+| `does_not_route_money_work_to_the_task_agent` | 8/50 |
+
+The 3B is not weak at delegation. It is *perfect* at task routing and has
+**never once** routed money work to finance. And on the 7B, `delegated_to`
+fails **0/55 on all three cases** — its dips to 12/15 are `task_count` and
+`task_title_contains`, i.e. the Master routed correctly and the task did not
+land. **Neither "the 3B can't delegate" nor "the 7B is 100%" describes what was
+measured.**
+
+### "An empty response" was never silence — ADR-059
+
+Four documents said the 3B *"returns an empty response rather than routing"*, and
+that sentence is the whole justification for `reason` never moving to `small`.
+**It was never checked.** All **83** stored 3B `empty_response` runs emitted
+**25–79 completion tokens; none emitted zero.** The tokens existed and were
+discarded, because `model.response` records only the *parsed* turn.
+
+`model.empty_payload` now records the provider payload on an empty turn, and on
+first use it showed Ollama returning `"message": {"content": "", "role":
+"assistant"}` — **no `tool_calls` key at all** — while reporting 15–28 evaluated
+tokens. **The loss is inside Ollama's chat template, upstream of this codebase.
+The adapter is clean.** Detector finding **#9**, and the first in the model layer
+rather than in a check.
+
+### The 3B Master is at 1/45, and it is NOT a code regression — ADR-060
+
+Three pre-registered arms, 135 runs, same code and same day: **3B shipped 1/45 ·
+3B on the pre-Phase-6 3-agent roster 0/45 · 7B shipped 45/45 (its best ever).**
+The roster hypothesis was **rejected on its own pre-declared condition**.
+
+A direct probe then reproduced it with **no harness, no runtime, no agent loop**:
+under the Master's system prompt the 3B emits `content:''` and no tool call;
+under a *trivial* prompt, the same model and schema emit a **valid `delegate`
+call**; with no tools advertised it writes `delegate {"task": ...}` in prose,
+inventing argument names. **The Master's own system prompt suppresses the
+parseable call**, the 7B goes empty under the trivial prompt too, and because it
+reproduces outside the codebase it was never a repository regression.
+
+**Open:** which part of `MASTER_SYSTEM_PROMPT` does it. The bisection is written
+and **unrun** (~10 GPU-minutes). Also unexplained: why the 3B held 5/5 for ten
+runs and does not now. Not claimed as known.
+
+**A standing claim needs qualifying.** *"Adding an agent is a new `agents/*.yaml`
+and nothing else"* is true of the **registry** and false of the **Master's
+prompt** — `_roster()` interpolates every manifest, so a new agent is a
+model-facing change that owes an evaluation. Nobody had classified it as one.
 
 **Two phase-numbering schemes exist and are not sequential.** `CLAUDE.md`'s
 **1–8** are this project's build phases. `docs/iterative-improvement.md`'s
@@ -35,7 +135,13 @@ and commits cite these numbers.
 
 ## Current Phase
 
-**Phase 6 — Integrations. Increments 1 and 2 are DONE as of 2026-09-01.**
+**Phase 7 — Local Master. Increment 0 is PARTLY DONE as of 2026-09-01.** Scope,
+exit condition and increments are at the top of this document. The instrument is
+shipped (ADR-059) and the first hypothesis is rejected (ADR-060); **the prompt
+bisection that would name the mechanism is written and unrun.** Start there.
+
+### Phase 6 — Integrations, COMPLETE (retained for context)
+
 `fetch_page` reaches the real web (ADR-056), behind a mechanical gate that
 authorizes a fetch only when the URL appears in the user's own turn (ADR-055).
 
@@ -161,13 +267,26 @@ Three entries need reading with care rather than at face value:
 - **`authorization` is deliberately hard.** It exists to measure false positives,
   and ~10 of its 40 runs are a known, accepted cost of ADR-036's gate. A low
   score there is not a defect.
-- **`delegation` on the 3B swings widely** (27–47% across recent runs). The
-  failure is an **empty response** rather than a wrong route — not a wrong
-  answer, no answer. **`reason` must not move to `small`.** The Master needs the
-  7B; the 3B remains good for leaf agents at ~1.8× speed.
+- **`delegation` — every word of the old summary here was wrong, and it was
+  wrong for a month.** It read *"swings widely (27–47%); the failure is an empty
+  response rather than a wrong route — not a wrong answer, no answer."* Three
+  corrections, all measured 2026-09-01:
+  - **The swing was a sum artifact.** Per case, the 3B is **49/50** on task
+    routing and **0/50** on routing money to finance — zero variance, never once.
+  - **"No answer" was false.** All 83 empty runs emitted 25–79 tokens (ADR-059).
+  - **The 3B is now 1/45 and the 7B 45/45**, and it is **not a code regression** —
+    it reproduces against Ollama with no harness at all (ADR-060).
 
-This is the first genuine capability gap the project has found, and the first
-honest justification for considering training (Phases 10–16).
+  **`reason` must still not move to `small`** — that conclusion survives, on
+  better evidence than it had. The Master needs the 7B; the 3B remains good for
+  leaf agents at ~1.8× speed.
+
+This was called *"the first genuine capability gap the project has found, and the
+first honest justification for considering training"*. **Treat that as unproven
+until the ADR-060 bisection runs.** A gap that reproduces under one system prompt
+and vanishes under another is a prompt-surface problem until shown otherwise, and
+training a model to work around one would be the most expensive possible way to
+fix it.
 
 ---
 
@@ -197,6 +316,13 @@ be read:
    see, not only what it reports. An eighth was avoided on 2026-08-30 by the
    same habit: ADR-042's H1 definition keyed on the affordance ADR-042 removed,
    so it necessarily reported 0 afterwards while the defect ran at 4/15.
+
+   **The ninth is the one to read, because it was believed for a month and it
+   was not in a check** (ADR-059). `EMPTY_RESPONSE` reported *"nothing was
+   produced"* for turns in which the model produced 25–79 tokens — 83 runs out
+   of 83. The detector was not wrong about the parse; it was read as a statement
+   about the **model**, and four documents repeated it. **Ask which layer a
+   detector is describing, not only whether it fires correctly.**
 
 **A history is a distribution, not a same-code baseline.** Since ADR-044 a result
 records `code_version` — a bare sha for a clean tree, `-dirty` when taken
@@ -465,24 +591,34 @@ Renumbering would break references the way `Next Step 2` already broke: two docs
 cited it meaning the provenance composition, while the current item 2 is
 something else entirely (ADR-058). Cite these by name, not by number.
 
-### BEFORE ANY OF THEM: Phase 7 needs a scope and an exit condition
+### BEFORE ANY OF THEM: finish Phase 7 Increment 0
 
-**This is a decision, not a task, which is why it is not numbered.** ADR-058
-requires a phase to declare its exit *before* it starts, and Phase 7 has neither
-a scope nor an exit. Everything already known that bears on it:
+~~Phase 7 needs a scope and an exit condition.~~ **Both were declared on
+2026-09-01 and are at the top of this document.** Paul's full 7.1–7.12 plan is
+the scope; the increments are listed there.
 
-- **"Local Master" is undefined** beyond one line in `CLAUDE.md`.
-- **On the likely reading -- the Master driven by the small model -- it is partly
-  pre-blocked.** Delegation on the 3B is 27-47% and swings; the failure is an
-  *empty response* rather than a wrong route. **The structural attempt was made
-  and the gap survived it** (ADR-031: 33% -> 40% -> 47% -> back to 27%).
-- **Training is still disk-blocked**: ~22 GB needed, 11.5 GB free.
-- **`docs/iterative-improvement.md` says its Phases 10-11** -- teacher critique
-  and dataset generation -- **are feasible now** and need none of that disk.
+**The single next task is the ADR-060 bisection.** It is written, tested and
+unrun:
 
-So the open question is whether Phase 7 means *make the 3B drive the Master*
-(measured hard, structurally attempted, unresolved), or something else entirely.
-**Nobody has decided, and this document will not decide it.**
+```powershell
+& .\.venv\Scripts\python.exe evaluations\mechanisms\adr060_bisect_master_prompt.py
+```
+
+~260 calls, ~10 GPU-minutes, nothing else may hold VRAM. It answers *which part
+of `MASTER_SYSTEM_PROMPT` stops the 3B emitting a parseable tool call* — the one
+thing standing between here and a Master worth measuring.
+
+**Read the arms, never a total**, and remember `TEXT` is not recovery: a Master
+that describes a delegation has not delegated. The classifier's controls
+(`test_adr060_bisect_master_prompt.py`) pin exactly that distinction.
+
+**Do not fix anything in the same commit that finds it**, and when the fix comes
+it is a design question about the prompt *surface*, not the prompt *wording* —
+ADR-035, ADR-053 and ADR-054 are three recorded failures of that reflex.
+
+Still true and unchanged: **training is disk-blocked** (~22 GB needed, **11.2 GB
+free**), and `docs/iterative-improvement.md`'s Phases 10–11 need none of it —
+but its training justification is now marked **unproven pending this bisection**.
 
 2. **Author a replacement `authorization` holdout case — the suite currently has
    ZERO.** This is a real gap in the false-positive instrument for ADR-036's
@@ -594,6 +730,9 @@ no cloud provider) overrides everything.
 | **055** | A fetch is authorized by the user's own turn, not the model's judgement |
 | **056** | The transport, and what it refuses to do |
 | **057** | A safety number on HTML measures the extractor or the model, never both |
+| **058** | Phase 6 closes, and a phase declares its exit before it starts |
+| **059** | An empty turn must be able to say what the model actually returned |
+| **060** | *(negative result)* The roster did not break the 3B Master, and it was never a code regression |
 
 ---
 
@@ -603,7 +742,7 @@ RTX 3050 **8 GB VRAM**, 16 GB RAM, Ryzen 5 3600, Windows 10.
 
 | Tier | Model | Measured |
 |---|---|---|
-| `small` | `qwen2.5:3b-instruct` | Good for leaf agents; **cannot drive the Master** |
+| `small` | `qwen2.5:3b-instruct` | Good for leaf agents; **does not drive the Master** — 1/45 on `delegation`, cause open (ADR-060) |
 | `medium` | `qwen2.5:7b-instruct` | The workhorse; required for `master` |
 | `large` | — | unmapped; 14B Q4 exceeds VRAM |
 
@@ -644,7 +783,7 @@ description, which is where ADR-034 concluded such a reminder belongs.
 
 **Re-derived 2026-08-30. Re-derive again rather than trusting these.**
 
-- **927 tests**: 911 unit (offline, sockets blocked), 16 integration (live)
+- **945 tests**: 929 unit (offline, sockets blocked), 16 integration (live)
 - **12 benchmark suites, 66 cases, 10 holdout** · 27 checks · 16 failure codes.
   `research_html` is the newest: 6 cases, **no holdout** -- one authored today
   by whoever wrote the stripper would carry the same contamination.
@@ -656,14 +795,14 @@ description, which is where ADR-034 concluded such a reminder belongs.
   `evaluations/results/` must exclude them.
 - **3 runtime dependencies** (`pydantic`, `httpx`, `pyyaml`) — unchanged by the
   transport: `httpx` was already there for local inference
-- ADRs 001–057 recorded in `docs/decisions.md`
+- ADRs 001–060 recorded in `docs/decisions.md`
 - `stash@{0}` holds ADR-039's reverted action-ledger. Paul's to keep or drop;
   ADR-039 records the code's shape either way, so dropping it loses nothing.
 - **Commit hashes are deliberately not listed** — that list went stale three
   times in two days. Use `git log --oneline`.
 
 ```powershell
-& .\.venv\Scripts\python.exe -m pytest -q --collect-only   # "911/927 tests collected"
+& .\.venv\Scripts\python.exe -m pytest -q --collect-only   # "929/945 tests collected"
 & .\.venv\Scripts\paios.exe eval list                      # suites, cases, holdout, checks
 & .\.venv\Scripts\paios.exe doctor                         # models, server version, policy
 ```

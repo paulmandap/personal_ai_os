@@ -10,10 +10,16 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel
 
-from personal_ai_os.agents.base import BaseAgent, StopReason
+from personal_ai_os.agents.base import EMPTY_PAYLOAD_CHARS, BaseAgent, StopReason
 from personal_ai_os.agents.spec import AgentSpec
 from personal_ai_os.core.errors import ModelUnavailableError
-from personal_ai_os.core.types import Message, Role
+from personal_ai_os.core.types import (
+    FinishReason,
+    Message,
+    ModelResponse,
+    Role,
+    Usage,
+)
 from personal_ai_os.models.fake import ScriptedModel, text_response, tool_call_response
 from personal_ai_os.observability.trace import Events, RunTrace
 from personal_ai_os.permissions.broker import (
@@ -531,6 +537,149 @@ class TestEmptyResponse:
         agent = make_agent([text_response("42")], context=tool_context)
         result = agent.run("what is the answer?")
         assert result.ok and result.stop_reason is StopReason.ANSWERED
+
+
+class TestEmptyPayloadIsRecorded:
+    """An empty turn must be able to say what the provider actually returned.
+
+    ADR-059. `model.response` records the *parsed* turn, so an empty one reads
+    as `content='' tool_calls=[]` and stops there -- which is why "the 3B
+    returns an empty response" stood unexamined from Phase 5 until the stored
+    results were checked and every one of 83 such runs turned out to have
+    emitted 25-79 completion tokens.
+    """
+
+    @staticmethod
+    def _empty_with_raw(raw: dict) -> ModelResponse:
+        """A turn that parses to nothing while the payload holds something."""
+        return ModelResponse(
+            message=Message.assistant(""),
+            model="scripted",
+            provider="fake",
+            usage=Usage(prompt_tokens=0, completion_tokens=15),
+            finish_reason=FinishReason.STOP,
+            raw=raw,
+        )
+
+    def _events(self, trace: RunTrace) -> list:
+        return [e for e in trace.events if e.type == Events.EMPTY_PAYLOAD]
+
+    def test_the_payload_is_recorded_when_a_turn_parses_to_nothing(
+        self, tool_context
+    ):
+        raw = {"message": {"role": "assistant", "content": "", "tool_calls": []}}
+        trace = RunTrace.disabled(agent="test_agent")
+        agent = make_agent(
+            [self._empty_with_raw(raw), text_response("ok")],
+            context=tool_context,
+            trace=trace,
+        )
+        agent.run("go")
+
+        events = self._events(trace)
+        assert len(events) == 1
+        data = events[0].data
+        assert data["completion_tokens"] == 15
+        assert data["finish_reason"] == "stop"
+        assert data["payload_keys"] == ["message"]
+        assert "tool_calls" in data["payload_json"]
+        assert data["payload_truncated"] is False
+
+    def test_the_turn_that_ends_the_run_is_recorded_too(self, tool_context):
+        """The second empty turn is the one `EMPTY_RETRY` cannot see.
+
+        The retry event fires only when the loop is about to nudge, so before
+        this the *terminal* empty turn -- the one that decides the run failed --
+        left no evidence at all.
+        """
+        raw = {"message": {"content": ""}}
+        trace = RunTrace.disabled(agent="test_agent")
+        agent = make_agent(
+            [self._empty_with_raw(raw), self._empty_with_raw(raw)],
+            context=tool_context,
+            trace=trace,
+        )
+        result = agent.run("go")
+
+        assert result.stop_reason is StopReason.EMPTY_RESPONSE
+        assert len(self._events(trace)) == 2
+        assert len([e for e in trace.events if e.type == Events.EMPTY_RETRY]) == 1
+
+    def test_a_huge_payload_is_capped_and_says_so(self, tool_context):
+        trace = RunTrace.disabled(agent="test_agent")
+        raw = {"junk": "x" * (EMPTY_PAYLOAD_CHARS * 2)}
+        agent = make_agent(
+            [self._empty_with_raw(raw), text_response("ok")],
+            context=tool_context,
+            trace=trace,
+        )
+        agent.run("go")
+
+        data = self._events(trace)[0].data
+        assert len(data["payload_json"]) == EMPTY_PAYLOAD_CHARS
+        assert data["payload_truncated"] is True
+
+    def test_an_unserialisable_payload_does_not_break_the_run(self, tool_context):
+        """The instrument runs on a path that is already failing.
+
+        A diagnostic that can raise inside the failure it is diagnosing turns a
+        recorded defect into a crash, so this asserts the run still completes
+        normally on a payload `json.dumps` cannot handle.
+        """
+        trace = RunTrace.disabled(agent="test_agent")
+        raw = {"obj": object()}
+        agent = make_agent(
+            [self._empty_with_raw(raw), text_response("ok")],
+            context=tool_context,
+            trace=trace,
+        )
+        result = agent.run("go")
+
+        assert result.ok and result.output == "ok"
+        assert len(self._events(trace)) == 1
+
+    def test_nothing_is_recorded_when_a_turn_is_not_empty(self, tool_context):
+        trace = RunTrace.disabled(agent="test_agent")
+        agent = make_agent([text_response("42")], context=tool_context, trace=trace)
+        agent.run("go")
+        assert self._events(trace) == []
+
+    def test_the_instrument_cannot_reach_the_model(self, tool_context):
+        """Causal reachability, proved rather than swept (the ADR-055 precedent).
+
+        This change may not alter behaviour, so no benchmark can move because of
+        it and no sweep is owed -- but that claim has to be checked, not
+        asserted in a commit message. Two things make it true: what the model is
+        sent does not depend on the payload, and nothing from the payload
+        reaches the model at all.
+        """
+        marker = "PAYLOAD_MARKER_THAT_MUST_NOT_REACH_THE_MODEL"
+
+        def run_once(raw: dict):
+            trace = RunTrace.disabled(agent="test_agent")
+            agent = make_agent(
+                [self._empty_with_raw(raw), text_response("ok")],
+                context=tool_context,
+                trace=trace,
+            )
+            result = agent.run("go")
+            sent = [(m.role, m.content) for m in agent.model.last_messages]  # type: ignore[attr-defined]
+            return result, sent, trace
+
+        # Two runs differing ONLY in the payload the instrument records.
+        bare, sent_bare, trace_bare = run_once({"message": {"content": ""}})
+        loud, sent_loud, trace_loud = run_once({"message": {"content": marker}})
+
+        # The instrument saw the difference...
+        assert marker in self._events(trace_loud)[0].data["payload_json"]
+        assert marker not in self._events(trace_bare)[0].data["payload_json"]
+
+        # ...and the model saw none of it.
+        assert sent_bare == sent_loud
+        assert not any(marker in content for _, content in sent_loud)
+        assert bare.output == loud.output
+        assert bare.stop_reason is loud.stop_reason
+        assert bare.iterations == loud.iterations
 
     def test_the_count_is_consecutive_not_cumulative(self, tool_context):
         """A productive turn between two stumbles must reset the count.

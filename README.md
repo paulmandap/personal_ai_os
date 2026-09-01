@@ -15,7 +15,8 @@ fallback.
 
 ## Status
 
-**Phases 1–4 complete.** See [`PROJECT_STATE.md`](PROJECT_STATE.md).
+**Phases 1–6 complete; Phase 7 (Local Master) in progress.** See
+[`PROJECT_STATE.md`](PROJECT_STATE.md) — the table below is older than it is.
 
 Working today: the model abstraction and Ollama provider, a deterministic model
 router, an agent registry driven by YAML manifests, typed tools with a
@@ -23,7 +24,8 @@ filesystem jail, a permission gate, SQLite persistence, delegation between
 agents, a personal finance domain, JSONL run tracing, an evaluation harness,
 and a CLI.
 
-Four agents: `master` (delegates), `task_agent`, `finance`, and `ping`.
+Five agents: `master` (delegates), `task_agent`, `finance`, `research`, and
+`ping`.
 
 Measured, not assumed — seven evaluation suites, five runs each, both models:
 
@@ -38,8 +40,15 @@ Measured, not assumed — seven evaluation suites, five runs each, both models:
 **The models are not interchangeable**, and finding that out took harder
 benchmarks. On the first four suites the 3B matched the 7B exactly — which
 turned out to mean those suites had stopped measuring anything, not that the
-models were equivalent. The 3B cannot drive the Master agent: on `delegation`
-it returns an empty response rather than routing.
+models were equivalent. The 3B cannot drive the Master agent.
+
+**Why it cannot is no longer what this table says.** The `delegation` figure is a
+sum: per case the 3B is 49/50 on task routing and 0/50 on routing money work.
+And *"it returns an empty response"* — repeated here for a month — is false:
+every one of 83 such runs emitted 25–79 tokens, which the runtime discarded
+without recording (ADR-059). Under a *trivial* system prompt the same 3B emits a
+valid delegation call; under the Master's, none (ADR-060). Read
+[`PROJECT_STATE.md`](PROJECT_STATE.md) rather than this table.
 
 Writing those harder suites also found three real defects in a day, including a
 transfer that could half-complete and create money that never existed.

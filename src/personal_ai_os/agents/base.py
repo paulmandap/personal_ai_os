@@ -22,7 +22,9 @@ tenth.
 
 from __future__ import annotations
 
+import json
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -61,6 +63,35 @@ EMPTY_TURN_NUDGE = (
     "That reply was empty. Either call one of the tools available to you, or "
     "answer the user's request directly in words. Do not reply with nothing."
 )
+
+#: How much of a provider payload an empty turn may record (ADR-059).
+#:
+#: Capped because a trace a misbehaving server can make enormous is a trace
+#: nobody keeps. Truncation is reported rather than hidden -- a reader has to be
+#: able to tell a short payload from a clipped one.
+EMPTY_PAYLOAD_CHARS = 2000
+
+
+def _payload_evidence(raw: dict[str, Any]) -> dict[str, Any]:
+    """A bounded, JSON-safe record of what a provider actually returned.
+
+    Only ever called on a turn that parsed to nothing, which is the one moment
+    the parsed view is provably incomplete: `model.response` has already
+    recorded `content=''` and `tool_calls=[]`, and that is all it can say.
+
+    Never raises. This runs on a path that is *already* a failure being
+    diagnosed, and an instrument that can break the run it is measuring is
+    worse than no instrument.
+    """
+    try:
+        text = json.dumps(raw, default=str, sort_keys=True)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        text = repr(raw)
+    return {
+        "payload_keys": sorted(str(key) for key in raw),
+        "payload_json": text[:EMPTY_PAYLOAD_CHARS],
+        "payload_truncated": len(text) > EMPTY_PAYLOAD_CHARS,
+    }
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful assistant running inside a local personal AI system.\n"
@@ -290,6 +321,28 @@ class BaseAgent:
                         "%s returned an empty response on iteration %d",
                         self.spec.name,
                         iteration,
+                    )
+                    # ADR-059. "Empty" is what the *parse* produced, and it has
+                    # been believed as a property of the model since Phase 5:
+                    # ADR-031, README and PROJECT_STATE all say the 3B "returns
+                    # an empty response rather than routing". The stored results
+                    # disagree -- all 83 such runs emitted 25-79 completion
+                    # tokens, none emitted zero -- and nothing recorded what
+                    # they were. This is the last point at which they still
+                    # exist. Recorded on every empty turn, including the second
+                    # one that ends the run, because that is the one the
+                    # `EMPTY_RETRY` event cannot see.
+                    self._trace(
+                        Events.EMPTY_PAYLOAD,
+                        iteration=iteration,
+                        provider=response.provider,
+                        finish_reason=response.finish_reason.value,
+                        completion_tokens=(
+                            response.usage.completion_tokens
+                            if response.usage
+                            else None
+                        ),
+                        **_payload_evidence(response.raw),
                     )
                     # One empty turn is a stumble; two in a row is a failure.
                     # Ending the run on the first one spent an 8-iteration

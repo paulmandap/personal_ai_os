@@ -190,6 +190,37 @@ class TestResponseParsing:
         model = build_model(static(payload))
         assert model.generate([Message.user("x")]).message.tool_calls == []
 
+    def test_a_dropped_call_survives_in_the_raw_payload(self):
+        """The drop is right; losing the evidence of it was not (ADR-059).
+
+        A nameless call plus no content parses to a turn indistinguishable from
+        silence, and the agent loop then records "nothing was produced". `raw`
+        is what lets `model.empty_payload` say otherwise, so stripping the
+        payload before storing it would re-create the blind spot this test
+        exists to pin.
+        """
+        payload = {
+            "model": "m",
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"id": "c", "function": {"arguments": {"a": 1}}}],
+            },
+            "eval_count": 15,
+        }
+        response = build_model(static(payload)).generate([Message.user("x")])
+
+        # The parsed view is empty in both channels -- this is exactly what an
+        # `empty_response` run looks like from above the seam.
+        assert response.message.tool_calls == []
+        assert response.message.content == ""
+        # ...and the payload still holds what was dropped.
+        assert response.raw["message"]["tool_calls"][0]["function"] == {
+            "arguments": {"a": 1}
+        }
+        assert response.usage is not None
+        assert response.usage.completion_tokens == 15
+
 
 class TestRequestBuilding:
     def test_sends_stream_false_and_configured_options(self):

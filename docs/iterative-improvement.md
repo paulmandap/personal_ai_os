@@ -122,7 +122,8 @@ missed constraint here.
 | **Total** | **~22 GB** |
 | **Recommended free** | **30 GB** |
 
-Currently **5.5 GB free**, so ~25 GB must be reclaimed — **but not yet.**
+Currently **11.2 GB free** (re-derived 2026-09-01; the 5.5 GB previously recorded
+here was stale), so ~19 GB must be reclaimed — **but not yet.**
 Phases 9–11 need none of it, and space freed now would sit idle.
 
 ### Target the 3B, not the 7B
@@ -149,9 +150,25 @@ Harder suites broke the tie immediately:
 | `planning` | 93% | **67%** |
 | `delegation` | 100% | **33%** |
 
-**The models are not interchangeable.** On `delegation` the 3B returned an
-empty response rather than routing a money question — not a wrong answer, no
-answer. On `planning` it loses track across dependent steps.
+**The models are not interchangeable.** On `planning` the 3B loses track across
+dependent steps.
+
+> **The `delegation` half of this claim was corrected on 2026-09-01 and the
+> correction matters most to *this* document, because Phases 12–16 were
+> justified by it.**
+>
+> It read: *"the 3B returned an empty response rather than routing a money
+> question — not a wrong answer, no answer."* Three things are now measured:
+> the 33% is a **sum** hiding 49/50 on task routing against 0/50 on money
+> routing; **"no answer" is false** — all 83 empty runs emitted 25–79 tokens the
+> runtime discarded (**ADR-059**); and the failure **reproduces against Ollama
+> with no harness, no runtime and no agent loop**, disappearing when the Master's
+> system prompt is replaced by a trivial one (**ADR-060**).
+>
+> **Do not treat this as an established capability gap until the ADR-060
+> bisection has run.** "Architecture still comes first" is the rule stated below,
+> and this is that rule applying to the one finding that was supposed to justify
+> skipping it.
 
 Two consequences:
 
@@ -159,10 +176,16 @@ Two consequences:
 needs the 7B. The 3B remains fine for the leaf agents it was measured on, and
 is nearly twice as fast there.
 
-**For training.** There is now a concrete, measured target: *make a 3B able to
-drive the Master*. That is exactly the kind of narrow, well-specified capability
-gap distillation is suited to — and unlike the earlier suites, there is a
-number to improve and a holdout to verify it on.
+**For training.** There is a concrete target — *make a 3B able to drive the
+Master* — and it is exactly the kind of narrow, well-specified gap distillation
+suits, with a number to improve and a holdout to verify it on.
+
+**But it is not yet established as a gap that training should close.** ADR-060
+showed the same 3B emitting a valid `delegate` call under a trivial system prompt
+and none under the Master's, with no harness involved. **Training a model to
+overcome a prompt surface would be the most expensive available fix for it**, and
+would bake the defect in as a capability. The bisection that separates the two is
+~10 GPU-minutes and is unrun. **Run it before spending 25 GB.**
 
 ### But architecture still comes first
 

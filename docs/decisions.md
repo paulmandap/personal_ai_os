@@ -944,6 +944,16 @@ gap is real and survives it.
 Where it did help, combined with ADR-030: the 3B's `contradiction_is_surfaced`
 went from 14 of 15 runs producing nothing to 15 of 15 producing an answer.
 
+> **Read with ADR-059 and ADR-060 (2026-09-01).** The decision above stands —
+> `MAX_EMPTY_TURNS = 2` is unchanged and the nudge still fires. What is corrected
+> is the *description*: "produced nothing" and "goes silent" describe the
+> **parse**, not the model. Every one of 83 such runs emitted 25–79 completion
+> tokens, discarded before anything recorded them (ADR-059). "When the 3B goes
+> silent on finance routing it stays silent when nudged" is better read as *the
+> nudge does not recover a turn whose output is being dropped between the model
+> and the wire*. ADR-060 then reproduced the drop with no agent loop present at
+> all.
+
 ---
 
 ## ADR-032 — A tool that changes state returns the state it produced
@@ -4369,6 +4379,194 @@ presentation is not worth another broken reference.
   untouched.
 - **This closes a phase on judgement, not measurement.** There is no number that
   says *"Integrations is done"*, and this ADR does not pretend otherwise.
+
+---
+
+## ADR-059 — An empty turn must be able to say what the model actually returned
+
+**Date:** 2026-09-01 · **Status:** accepted · **Phase:** 7
+
+**Context.** Since Phase 5 this project has said, in `PROJECT_STATE.md`, in
+`README.md`, in `docs/iterative-improvement.md` and in ADR-031 itself, that the
+3B *"returns an empty response rather than routing"* — **"not a wrong answer, no
+answer."** That sentence is the entire justification for `reason` never moving to
+`small`, and the first honest argument this project has for training a model at
+all.
+
+**It was never checked.** Scoping Phase 7 checked it, against the committed
+results rather than against memory:
+
+| checked | finding |
+|---|---|
+| all 83 stored 3B `empty_response` runs | **every one emitted 25–79 completion tokens. None emitted zero.** |
+| 4 retained traces of an empty turn | `finish_reason='stop'`, `content=''`, `tool_calls=[]`, `completion_tokens=15` — *the same 15 across independent runs* |
+
+A model producing genuinely nothing does not reliably burn exactly 15 tokens.
+**The tokens existed and the project discarded them**, because `model.response`
+records the *parsed* turn and an empty parse has nothing left to say.
+
+This is **detector finding #9**, and the first found in the model layer rather
+than in an evaluation check. It is the same habit that caught the other eight:
+ask what a detector *cannot* see, not only what it reports.
+
+**Two places the evidence could have been lost**, both real:
+
+- `ollama.py::_parse_tool_calls` drops a tool call with no `function.name` to a
+  `log.warning`. The drop is correct — a nameless call cannot be executed — and
+  it *was* tested. What was untested is that dropping it can **empty a turn**,
+  after which the run is recorded as "the model produced nothing".
+- `ModelResponse.raw` holds the whole provider payload and **nothing traced it.**
+
+**Decision.** One new trace event, `model.empty_payload`, emitted from the agent
+loop when — and only when — a turn parsed to neither content nor a tool call. It
+records the provider payload, bounded to `EMPTY_PAYLOAD_CHARS = 2000` with
+truncation reported rather than hidden, plus `finish_reason` and
+`completion_tokens`. It fires on **every** empty turn including the second, which
+ends the run and which `model.empty_retry` cannot see.
+
+**The seam invariant is narrowed, not broken.** `ModelResponse.raw` was
+documented as *"never read by anything above the provider boundary"*. It is now
+read in exactly one place, to be **recorded** — never branched on. Nothing above
+the boundary depends on provider-shaped data, which is the property that makes
+the seam a seam. Writing the weaker rule down is better than quietly violating
+the stronger one.
+
+**Reason.** An instrument, not a fix. The claim under investigation was believed
+for a month because the one artefact that could falsify it was thrown away at the
+moment it was created. Recording it costs nothing on any turn that is not already
+failing.
+
+**Scoped by causal reachability, proved rather than swept.** The change adds a
+trace call inside an existing branch and can only run *after* a turn is already
+empty, so it cannot cause emptiness and cannot alter what any model is sent. That
+is asserted by a test that runs two arms differing only in the recorded payload
+and checks the model receives identical messages — the ADR-055 precedent, and the
+reason no benchmark sweep is owed for this commit.
+
+**Consequences.**
+
+- **It paid for itself on first use.** Live capture on the 3B Master:
+  `"message": {"content": "", "role": "assistant"}` — **no `tool_calls` key at
+  all** — while Ollama reported 15–28 evaluated tokens. **The loss is inside
+  Ollama's chat template, upstream of this codebase. The adapter is clean.**
+- Four wordings across four documents are wrong and are corrected: an empty turn
+  is a turn whose output was **discarded**, not a turn the model declined to take.
+- `_payload_evidence` never raises. A diagnostic that can break the failure it is
+  diagnosing turns a recorded defect into a crash.
+- **What it still cannot see:** why Ollama's template consumed the tokens. This
+  ADR moves the question from *"the model said nothing"* to *"something between
+  the model and the wire ate 15–28 tokens"*, which is progress, not an answer.
+
+---
+
+## ADR-060 — *(negative result)* The roster did not break the 3B Master, and it was never a code regression
+
+**Date:** 2026-09-01 · **Status:** accepted · **Phase:** 7
+
+**Context.** The first measurement of Phase 7 found `delegation` on
+`qwen2.5:3b-instruct` at **1/45**, against a historical band of 27–47%.
+`routes_task_work_to_task_agent` — **5/5 in ten consecutive runs** — scored
+**0/15**. `paios eval` flagged it BELOW the historical low.
+
+Nothing in Phase 7 can be measured on a Master in that state, so this was
+Increment 0 and it blocked everything else.
+
+### The hypothesis, and why it was a good one
+
+Only what the Master is *sent* can make its **first** turn empty, and that turn is
+empty before any tool runs. Eliminating on that basis:
+
+| candidate | verdict |
+|---|---|
+| `master.py`, `MASTER_SYSTEM_PROMPT` | unchanged since 2026-08-28 |
+| `delegate.py` schema and description | unchanged since 2026-08-28 |
+| ADR-051 fidelity correction | **cannot reach the Master** — `checks_answer_fidelity` is set by `finance`, `research`, `task_agent`; `MasterAgent` leaves it `False`, and the check runs only on a turn that *has* content |
+| ADR-055 fetch gate | inside `_execute_tool_call`, `EXTERNAL_ACTION` only |
+| `Runtime.tool_extras` | empty for every `delegation` case |
+| Ollama 0.33.2, model blobs | unchanged; both predate the last good run |
+| **`{roster}` grew from 3 agents to 4** | **`agents/research.yaml`, 2026-08-31 (`390c046`)** |
+
+`MasterAgent._roster()` interpolates every registered agent into the system
+prompt, so **adding a manifest is a prompt change to the Master** — and
+`delegation` was last run 2026-08-30, the day before. The project's own rule
+(re-run the eval after a prompt change) was never applied, because nobody
+classified a new agent manifest as one.
+
+**H1: the fourth roster entry caused the collapse.** Pre-registered in
+`evaluations/mechanisms/adr060-prediction.md` with its reading fixed in advance,
+because ADR-053 set a bar from n=1 and that bar disqualified the intervention it
+came from.
+
+### Arms — same code, same day, serial
+
+| arm | roster | result |
+|---|---|---|
+| **A** 3B, shipped | 4 agents | **1/45** |
+| **B** 3B, pre-Phase-6 | 3 agents (`PAIOS_PATHS__AGENTS_DIR`, no file moved) | **0/45** |
+| **C** 7B, shipped | 4 agents | **45/45 — 100%** |
+
+**H1 is rejected on its pre-declared condition** (arm B ≤ 3/15 on the judged
+case; it scored 0/15). The roster is not the cause. Recorded and not chased —
+the prediction's own guard.
+
+Arm C is the more interesting number: the 7B scored **its best result ever**, on
+the same code, the same day, the same roster.
+
+### What it actually is — and it is not a regression
+
+A direct probe against Ollama, with **no harness, no runtime and no agent loop** —
+just `httpx` to `/api/chat` with the Master's system prompt and the `delegate`
+schema:
+
+| 3B, objective *"Add a task to renew my passport."* | result |
+|---|---|
+| Master prompt + `delegate` tool | `content: ''`, `tool_calls: null` |
+| **no tools advertised** | `'delegate {"task": "renew_passport", "task_agent": "task_agent"}'` |
+| **trivial** system prompt + `delegate` tool | **a structurally valid `delegate` call** |
+
+Three things follow.
+
+1. **The 3B is trying to delegate.** With no tool surface it names `delegate` in
+   prose — with invented argument names (`task`, `task_agent`) that match neither
+   `agent` nor `objective`.
+2. **The Master's own system prompt is what suppresses the parseable call.** The
+   same model, same objective, same tool schema produces a valid call under a
+   trivial prompt.
+3. **The 7B went empty under the trivial prompt too.** So this is a
+   prompt-sensitivity cliff both models sit near, not a 3B defect.
+
+**Because it reproduces outside this codebase, it was never a code regression.**
+Nothing in `883bec9..HEAD` reaches the Master's first turn, and arm B removed the
+only repository change that could.
+
+**Decision.** Record the mechanism; change nothing. The fix is a separate commit
+and a separate experiment (CLAUDE.md), and when it comes it is a design question
+about the shape of a tool-calling prompt for a small model — **not prompt
+wording**. ADR-035, ADR-053 and ADR-054 are three recorded failures of that
+reflex; a fourth is not owed a turn.
+
+### A standing architectural claim needs qualifying
+
+> *"Adding an agent must be a new `agents/*.yaml` and nothing else — no edit to
+> the Master, its manifest, or any registry."*
+
+True of the **registry**, which has needed no change across four new agents. But a
+new manifest **does** change the Master's system prompt, so it is a model-facing
+change and owes an evaluation. The claim is about code, and it was being read as
+though it were about behaviour.
+
+### Left open, deliberately
+
+**Which part of `MASTER_SYSTEM_PROMPT` suppresses the call.** A bisection —
+roster at 4/3/1 entries, each *"How to work"* bullet added and removed
+individually, n=10 per arm — is written and unrun. It needs ~10 GPU-minutes and
+is the first task of Increment 0's continuation.
+
+**Also unexplained:** why the 3B held 5/5 for ten runs and does not now, given no
+code path reaches it. Candidates not yet separated: sampling variance at a cliff
+edge, and an untracked change in the local Ollama runtime. **This ADR does not
+claim to know**, and a stored series is a distribution rather than a same-code
+baseline (ADR-044).
 
 ---
 
