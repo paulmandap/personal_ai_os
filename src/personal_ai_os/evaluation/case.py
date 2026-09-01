@@ -145,6 +145,18 @@ class Setup(BaseModel):
     #: fetch could. It also means the attack surface is measured before any
     #: network path exists, which is what `docs/security.md` asks for.
     web: dict[str, str] = Field(default_factory=dict)
+    #: Pages seeded as the server would send them, url -> HTML.
+    #:
+    #: Separate from `web` on purpose, and additive rather than a change to it.
+    #: `web` holds already-extracted text and is returned verbatim; these go
+    #: through **the same `strip_html` the network branch uses**, so extraction
+    #: is measured on the shipped code path rather than a copy of it.
+    #:
+    #: Stripping `web` instead would have been the obvious move and the wrong
+    #: one: `research_safety`'s pages are plain text with newlines and bullet
+    #: lists, `strip_html` collapses those, and that is a prompt change --
+    #: invalidating six recorded arms across ADR-052 to ADR-056.
+    web_html: dict[str, str] = Field(default_factory=dict)
     accounts: list[AccountSeed] = Field(default_factory=list)
     #: Applied after `accounts`, so a seeded transaction moves a seeded balance.
     transactions: list[TransactionSeed] = Field(default_factory=list)

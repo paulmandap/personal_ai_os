@@ -146,6 +146,53 @@ class TestSeededTakesPrecedence:
         assert len(handler.requests) == 1
 
 
+class TestSeededHtmlUsesTheShippedStripper:
+    """`Setup.web_html` exists so extraction can be measured without a network.
+    It must go through the SAME `strip_html` the network branch uses -- a copy
+    would measure something the product does not do."""
+
+    def html_ctx(self, pages, tmp_path):
+        from personal_ai_os.tools.builtin.web import WEB_HTML_PAGES
+        return ToolContext(workspace_root=tmp_path, extras={WEB_HTML_PAGES: pages})
+
+    def test_seeded_html_is_stripped(self, tmp_path):
+        out = call(FetchPageTool(), {"url": "https://example.com/a"},
+                   self.html_ctx({"https://example.com/a":
+                                  "<h1>Title</h1><script>x()</script><p>Body</p>"}, tmp_path))
+        assert out.content == "Title Body"
+
+    def test_plain_seeds_are_still_returned_verbatim(self, tmp_path):
+        """The property six recorded arms depend on. Stripping `Setup.web` would
+        collapse research_safety's newlines and bullet lists -- a prompt change
+        invalidating ADR-052 through ADR-056."""
+        raw = "Line one\n\n- a bullet\n- another"
+        out = call(FetchPageTool(), {"url": "https://example.com/a"},
+                   ctx_with({"https://example.com/a": raw}, tmp_path))
+        assert out.content == raw
+
+    def test_html_and_plain_seeds_coexist(self, tmp_path):
+        from personal_ai_os.tools.builtin.web import WEB_HTML_PAGES
+        ctx = ToolContext(workspace_root=tmp_path, extras={
+            WEB_PAGES: {"https://example.com/plain": "kept <as is>"},
+            WEB_HTML_PAGES: {"https://example.com/markup": "<p>stripped</p>"},
+        })
+        assert call(FetchPageTool(), {"url": "https://example.com/plain"}, ctx).content == "kept <as is>"
+        assert call(FetchPageTool(), {"url": "https://example.com/markup"}, ctx).content == "stripped"
+
+    def test_an_unseeded_url_still_names_only_the_miss(self, tmp_path):
+        with pytest.raises(ToolExecutionError, match="no page is available"):
+            call(FetchPageTool(), {"url": "https://example.com/gone"},
+                 self.html_ctx({"https://example.com/a": "<p>x</p>"}, tmp_path))
+
+    def test_seeded_html_makes_no_network_request(self, tmp_path):
+        handler = page("SHOULD NOT BE FETCHED")
+        from personal_ai_os.tools.builtin.web import WEB_HTML_PAGES
+        ctx = ToolContext(workspace_root=tmp_path,
+                          extras={WEB_HTML_PAGES: {"https://example.com/a": "<p>seeded</p>"}})
+        assert call(mock_tool(handler), {"url": "https://example.com/a"}, ctx).content == "seeded"
+        assert handler.requests == []
+
+
 class TestRedirectsAreReportedNeverFollowed:
     def test_a_302_fails_naming_the_location_and_makes_no_second_request(self, tmp_path):
         """Following would reach a host the broker never approved, and
@@ -286,7 +333,11 @@ class TestHtmlExtraction:
     def test_entities_unescape_and_whitespace_collapses(self):
         assert strip_html("<p>a &amp; b</p>\n\n   <p>c</p>") == "a & b c"
 
-    def test_a_markup_only_page_yields_something(self):
+    def test_a_markup_only_page_extracts_to_the_empty_string(self):
+        """The invariant is *deterministic and defined*, not *non-empty*. A page
+        with no textual content legitimately extracts to "". Renamed from
+        `..._yields_something` so nobody later "fixes" the empty result to
+        satisfy a name that was wrong."""
         assert strip_html("<div><br/></div>") == ""
 
     def test_a_space_is_not_left_before_punctuation(self):

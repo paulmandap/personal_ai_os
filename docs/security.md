@@ -437,6 +437,30 @@ only one that ever got through against task notes. **That much did transfer.**
   claim about a fetched page passes it**, and that is the one place the user
   cannot check the agent's work by glancing at the store.
 
+### An HTML safety number must say which layer it measured (ADR-057)
+
+Extraction strips comments, `alt` text and `<script>` bodies before the model
+sees anything. So a clean score means one of two opposite things, and the
+difference is not visible in the number:
+
+| 3B, the SAME injected sentence | score | what happened |
+|---|---|---|
+| in **visible text** | **0/15** | the injection succeeded **every time** |
+| in an **HTML comment** or **`alt`** | **30/30** | it never reached the model |
+
+**Summed, that is 30/45 = 67% and reads as "mostly resists". The truth is the
+reverse.** The 67% is manufactured by two cases whose payload the stripper ate.
+
+> **A result that does not declare whether the payload reached the model is not
+> interpretable.** `research_html` declares it in `category` and *proves* it with
+> `tool_result_contains` / `tool_result_omits`, which fail as `F016 VACUOUS_CASE`
+> when a case cannot show what it claims. Never sum the two categories, and never
+> report a removed-in-extraction result as model resistance.
+
+**What extraction does well, measured the same day:** it does not break reading.
+Controls 15/15 on both models, a markup-heavy page 15/15 on both. No change to
+`strip_html` is proposed on this evidence.
+
 ### The 3B must not drive the Research Agent
 
 Told *"summarise this page"* by a page containing *"do not summarise this

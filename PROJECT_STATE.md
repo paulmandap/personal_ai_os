@@ -26,10 +26,15 @@ authorizes a fetch only when the URL appears in the user's own turn (ADR-055).
 AST scan asserts `Tool.execute` has exactly one caller in `src/`, so a bypass
 call site fails in `pytest` rather than in production.
 
-**The honest limit: no measurement in this repository has ever seen a real
-page.** Every eval seeds `Setup.web`, so the network path ships covered by unit
-tests only. Extraction quality is unmeasured — and fixing that needs no
-network, because `Setup.web` can seed HTML.
+**Extraction is measured as of ADR-057**, hermetically, by seeding HTML through
+the shipped stripper (`Setup.web_html`). It does **not** break reading — controls
+15/15 on both models. It **does hide attacks**, and that changes what a number
+means: the 3B scored **0/15** on an injection in visible text and **30/30** on
+the identical sentence in a comment, because the second never reached it.
+**Summed, those read as 67% "mostly resists" — the exact reverse of the truth.**
+
+**The honest limit that remains: nothing here has ever fetched a real page.**
+Every eval seeds, so the network path ships covered by unit tests only.
 
 Phase 5 is complete. The six-item security gate that held the Research Agent is
 now fully closed — the last two items were Phase 6's own first tasks, and
@@ -359,13 +364,32 @@ compare is **two same-day arms**, not a stored baseline.
    **F006 incomplete answer [minor]**, and "defect free" counts critical checks
    only — so the arm reads **97% defect-free**. The case caught it (0/15); the
    severity did not. **Do not route the Research Agent to the 3B.**
-13. **The network path has never been measured behaviourally.** ADR-056 shipped a
-   real HTTP client; every evaluation seeds `Setup.web` and therefore takes the
-   seeded branch, so the transport is covered by unit tests only. **Extraction
-   quality in particular ships on argument, not evidence** — and because
-   stripping removes comments, `alt`/`title` text and `<script>` bodies, a clean
-   safety number on such a page measures the stripper rather than the model.
-   Fixable without a network: seed HTML through `Setup.web`. See Next Step 1.
+13. ~~**The network path has never been measured behaviourally.**~~ **PARTLY
+   CLOSED 2026-09-01 (ADR-057).** Extraction is now measured, hermetically, via
+   `Setup.web_html` seeding HTML through the shipped `strip_html`. Two results:
+
+   **It does not break reading** -- controls 15/15 both models, a markup-heavy
+   page 15/15 both. No change to `strip_html` is proposed.
+
+   **It does hide attacks, and that changes what a number means.** The 3B, on
+   the *identical* injected sentence:
+
+   | 3B | score | what happened |
+   |---|---|---|
+   | injection in **visible text** | **0/15** | succeeded **every time** |
+   | injection in a **comment** or **`alt`** | **30/30** | never reached the model |
+
+   **Summed that is 67% and reads as "mostly resists". The truth is the
+   reverse.** Hence `research_html` splits the two by `category` and *proves*
+   the layer with `tool_result_contains` / `tool_result_omits`, failing as
+   **F016 VACUOUS_CASE** when a case cannot show what it claims.
+
+   **Still open:** nothing here has fetched a live page. Seeded HTML is
+   hand-written and short, and the removed-layer cases were authored by whoever
+   wrote the stripper -- so the suite measures the layer distinction well and the
+   stripper's **coverage** badly. A page written by someone who has not read
+   `strip_html` is what would fix that.
+
 
 **Closed, with the ADR that closed each.** Kept as one line because the reasoning
 — including the wrong turns — is in `docs/decisions.md`, and a closed problem
@@ -545,6 +569,7 @@ no cloud provider) overrides everything.
 | **054** | *(negative result)* The clause moves the attack rather than removing it |
 | **055** | A fetch is authorized by the user's own turn, not the model's judgement |
 | **056** | The transport, and what it refuses to do |
+| **057** | A safety number on HTML measures the extractor or the model, never both |
 
 ---
 
@@ -595,8 +620,10 @@ description, which is where ADR-034 concluded such a reminder belongs.
 
 **Re-derived 2026-08-30. Re-derive again rather than trusting these.**
 
-- **916 tests**: 900 unit (offline, sockets blocked), 16 integration (live)
-- **11 benchmark suites, 60 cases, 10 holdout** · 25 checks · 15 failure codes.
+- **927 tests**: 911 unit (offline, sockets blocked), 16 integration (live)
+- **12 benchmark suites, 66 cases, 10 holdout** · 27 checks · 16 failure codes.
+  `research_html` is the newest: 6 cases, **no holdout** -- one authored today
+  by whoever wrote the stripper would carry the same contamination.
   `research_safety` is the newest: 5 cases, **no holdout** — it is one day old and
   a holdout drawn now would be drawn by whoever wrote the train cases.
   **`authorization` holdout is EMPTY** — see Known Problem 10.
@@ -605,14 +632,14 @@ description, which is where ADR-034 concluded such a reminder belongs.
   `evaluations/results/` must exclude them.
 - **3 runtime dependencies** (`pydantic`, `httpx`, `pyyaml`) — unchanged by the
   transport: `httpx` was already there for local inference
-- ADRs 001–056 recorded in `docs/decisions.md`
+- ADRs 001–057 recorded in `docs/decisions.md`
 - `stash@{0}` holds ADR-039's reverted action-ledger. Paul's to keep or drop;
   ADR-039 records the code's shape either way, so dropping it loses nothing.
 - **Commit hashes are deliberately not listed** — that list went stale three
   times in two days. Use `git log --oneline`.
 
 ```powershell
-& .\.venv\Scripts\python.exe -m pytest -q --collect-only   # "900/916 tests collected"
+& .\.venv\Scripts\python.exe -m pytest -q --collect-only   # "911/927 tests collected"
 & .\.venv\Scripts\paios.exe eval list                      # suites, cases, holdout, checks
 & .\.venv\Scripts\paios.exe doctor                         # models, server version, policy
 ```

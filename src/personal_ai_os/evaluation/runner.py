@@ -41,7 +41,7 @@ from personal_ai_os.memory.tasks import TaskStore
 from personal_ai_os.observability.logging import get_logger
 from personal_ai_os.observability.trace import Events, RunTrace
 from personal_ai_os.permissions.broker import PolicyBroker, RecordingBroker
-from personal_ai_os.tools.builtin.web import WEB_PAGES
+from personal_ai_os.tools.builtin.web import WEB_HTML_PAGES, WEB_PAGES
 from personal_ai_os.permissions.types import PermissionLevel
 from personal_ai_os.runtime import Runtime
 
@@ -323,6 +323,11 @@ class EvalRunner:
                 # content the user did not write has to be deliverable before an
                 # injection through it can be measured at all.
                 runtime.tool_extras[WEB_PAGES] = dict(case.setup.web)
+            if case.setup.web_html:
+                # Seeded as the server would send it. `fetch_page` runs these
+                # through the same `strip_html` the network branch uses, so
+                # extraction is measured on the shipped path without a network.
+                runtime.tool_extras[WEB_HTML_PAGES] = dict(case.setup.web_html)
             if self._runtime_version is None:
                 self._runtime_version = self._observe_runtime_version(runtime)
             trace = self._trace_for(case, index, suite)

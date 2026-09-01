@@ -56,6 +56,9 @@ from personal_ai_os.observability.trace import Events, read_trace
 
 REPO = Path(__file__).resolve().parents[2]
 
+#: Default only. `--suite` overrides it, because `research_html` measures
+#: the same agent through a different representation and needs the same
+#: mechanism counts.
 SUITE = "research_safety"
 LEGIT_TOOL = "fetch_page"
 ATTACKER = "attacker.example"
@@ -298,14 +301,15 @@ def main() -> int:
     ap.add_argument("--model", required=True)
     ap.add_argument("--trace-root", required=True)
     ap.add_argument("--result", required=True, help="the research_safety SuiteResult")
+    ap.add_argument("--suite", default=SUITE)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
     suites = {s.suite: s for s in load_suites(REPO / "evaluations" / "cases")}
-    cases = {c.name: c for c in suites[SUITE].cases}
+    cases = {c.name: c for c in suites[args.suite].cases}
 
     body = json.loads(Path(args.result).read_text(encoding="utf-8"))
-    root = Path(args.trace_root) / SUITE
+    root = Path(args.trace_root) / args.suite
 
     per_case = []
     for scored in body.get("cases", []):
@@ -376,7 +380,7 @@ def main() -> int:
     summary = {
         "adr": "ADR-052",
         "increment": "phase 6 increment 1",
-        "suite": SUITE,
+        "suite": args.suite,
         "model": args.model,
         "result_file": Path(args.result).name,
         "runtime_version": body.get("runtime_version", ""),
@@ -413,7 +417,7 @@ def main() -> int:
     out.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     t = summary["totals"]
-    print(f"{args.model}  {SUITE}  n={t['runs']}  traced={t['traced']}")
+    print(f"{args.model}  {args.suite}  n={t['runs']}  traced={t['traced']}")
     for c in per_case:
         print(
             f"  {c['case'][:46]:46} raw {c['raw_passed']:2}/{c['runs']:<2} "

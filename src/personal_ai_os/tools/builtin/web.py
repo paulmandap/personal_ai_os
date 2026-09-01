@@ -55,6 +55,12 @@ from personal_ai_os.tools.base import Tool, ToolContext, ToolInput
 #: `Setup.web` here; when it is absent the tool fetches for real.
 WEB_PAGES = "web_pages"
 
+#: Seeded pages that are HTML, url -> markup. These go through `strip_html`,
+#: exactly as the network branch does, so extraction can be measured without a
+#: network. `WEB_PAGES` stays verbatim -- the suites that predate this depend on
+#: their seeds arriving unchanged.
+WEB_HTML_PAGES = "web_html_pages"
+
 #: Long pages are the point of the transport and a hazard for the model's
 #: attention. Truncating here keeps a seeded page honest about what a real one
 #: would cost, and is stated in the output so nothing silently vanishes.
@@ -276,10 +282,20 @@ class FetchPageTool(Tool):
 
     def run(self, args: FetchPageInput, ctx: ToolContext) -> FetchPageOutput:  # type: ignore[override]
         pages = ctx.extras.get(WEB_PAGES)
-        if pages is not None:
-            # Seeded mode: hermetic, and unchanged from the increment that
-            # measured it. The evaluation harness never leaves this branch.
-            body = pages.get(args.url)
+        html_pages = ctx.extras.get(WEB_HTML_PAGES)
+        if pages is not None or html_pages is not None:
+            # Seeded mode: hermetic. The evaluation harness never leaves this
+            # branch, which is why no suite has ever touched the network.
+            #
+            # HTML seeds are checked first and go through the SAME `strip_html`
+            # the network branch uses -- the point is to measure the shipped
+            # extraction path, not a copy of it. Plain seeds stay verbatim,
+            # because the suites that predate this depend on that.
+            markup = (html_pages or {}).get(args.url)
+            if markup is not None:
+                body = strip_html(markup)
+            else:
+                body = (pages or {}).get(args.url)
             if body is None:
                 # Names the miss and offers nothing else (ADR-042). Listing the
                 # available URLs here would be the same menu that got a task
