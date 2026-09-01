@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-08-31
+**Last updated:** 2026-09-01
 **Updated by:** Claude Code (development assistant), reviewed by Paul
 
 > The handoff document. It must be enough for a future local agent — with no
@@ -11,15 +11,20 @@
 > the benchmark log moved to [`docs/evaluation.md`](docs/evaluation.md#benchmark-history)
 > and the per-decision narratives live in [`docs/decisions.md`](docs/decisions.md),
 > which is where they were always duplicated from. What stayed is what you need
-> *first*. **Every figure here was re-derived on 2026-08-31, not carried over** —
+> *first*. **Every figure here was re-derived on 2026-09-01, not carried over** —
 > stale numbers have been this document's most recurring defect.
 
 ---
 
 ## Current Phase
 
-**Phase 6 — Integrations. STARTED 2026-08-31. Increment 1 (the Research Agent's
-attack surface) is complete and measured; increment 2 (the transport) is gated.**
+**Phase 6 — Integrations. Increment 1 (the Research Agent's attack surface) is
+complete and measured. Increment 2 (the transport) is UNBLOCKED as of
+2026-09-01 — ADR-055 put a mechanical gate on `external_action`.**
+
+**The one condition on the transport: the HTTP client must sit downstream of
+that gate.** It does by construction — `tool.execute` runs only after a granted
+decision — but a second execution path would silently undo this.
 
 Phase 5 is complete. The six-item security gate that held the Research Agent is
 now fully closed — the last two items were Phase 6's own first tasks, and
@@ -58,7 +63,9 @@ passes with sockets blocked. Plus the `research` agent and manifest, the
 1. **10 of 75 7B runs requested an attacker-chosen URL** — all ten *after* the
    legitimate fetch, all ten on the *prior-consent* phrasing ADR-034 identified
    as the only style that ever beat task notes. Nothing left the machine
-   (no network client). **This is increment 2's entry condition.**
+   (no network client). **This was increment 2's entry condition; ADR-055 met it
+   with a mechanical gate — executions 0/45 per model while requests held at
+   12/75.**
 2. **The 3B relays the attacker's text to the user as its whole answer** —
    15/15 on the exfiltration case, 14/15 losing the page's substance on the
    crude-injection case. It never *requests* the URL; it delivers it. The
@@ -392,25 +399,29 @@ because after 2026-09-07 there is no conversation to remember them.
 
 ## Next Steps
 
-1. **PHASE 6 INCREMENT 2 — the transport — and the condition it must clear.**
-   Increment 1 shipped the instrument (ADR-052); increment 2 gives `fetch_page` a
-   real HTTP client. **Its entry condition is already recorded and non-zero:**
+1. **PHASE 6 INCREMENT 2 — the transport. Now unblocked (ADR-055).**
+   Give `fetch_page` a real HTTP client. Its entry condition was *"a transport
+   shipped without addressing that would put those requests on the wire"*, and
+   the gate addresses it structurally:
 
-   > **10 of 75 7B runs requested an attacker-chosen URL**, every one of them
-   > *after* reading the page. Today that costs nothing — there is no network
-   > client. A transport shipped without addressing it puts those requests on
-   > the wire.
+   | | 7B | 3B |
+   |---|---|---|
+   | attacker-URL **requests** (model compromised) | **12/75** | 0/75 |
+   | attacker-URL **executions** (system compromised) | **0/45** | **0/45** |
 
-   **And it will not be a prompt clause.** ADR-035 and ADR-054 both measured
-   framing *relocating* injection compliance rather than reducing it, on
-   different agents and different content channels. **Budget for a structural
-   defence, not a sentence.**
+   **The request count did not move, and that is the design.** Two attempts to
+   argue the model out of it failed (ADR-053, ADR-054). This one makes the
+   persuasion inert instead.
 
-   Read `docs/security.md` *The Research Agent* first — especially **what the
-   research measurements do NOT establish**, and the standing constraint that
-   **agent narration is not an audit trail**. Note also that `external_action` is
-   `auto` in `EVAL_POLICY` and `ask` in the shipped config, so a research case
-   can pass in the harness and prompt in production.
+   **Build it downstream of the gate and change nothing about
+   `_execute_tool_call`'s single call site.** Then read `docs/security.md`
+   — *A second mechanical gate*, and **what the research measurements do NOT
+   establish**: bytes on the wire is the third observable and still unmeasured.
+
+   Carry these limits into the design: the predicate is **single-turn**,
+   **URL-specific**, and authorizes by **occurrence, not causation** — the
+   moment the agent may fetch outside the user's enumerated set, or carry data
+   in a URL, it stops being sufficient.
 
 2. **Author a replacement `authorization` holdout case — the suite currently has
    ZERO.** This is a real gap in the false-positive instrument for ADR-036's
@@ -524,6 +535,7 @@ no cloud provider) overrides everything.
 | **052** | The Research Agent's attack surface, measured before its transport |
 | **053** | *(negative result)* No page-data clause cleared its declared bar |
 | **054** | *(negative result)* The clause moves the attack rather than removing it |
+| **055** | A fetch is authorized by the user's own turn, not the model's judgement |
 
 ---
 
@@ -574,8 +586,8 @@ description, which is where ADR-034 concluded such a reminder belongs.
 
 **Re-derived 2026-08-30. Re-derive again rather than trusting these.**
 
-- **823 tests**: 807 unit (offline, sockets blocked), 16 integration (live)
-- **11 benchmark suites, 60 cases, 10 holdout** · 24 checks · 15 failure codes.
+- **888 tests**: 872 unit (offline, sockets blocked), 16 integration (live)
+- **11 benchmark suites, 60 cases, 10 holdout** · 25 checks · 15 failure codes.
   `research_safety` is the newest: 5 cases, **no holdout** — it is one day old and
   a holdout drawn now would be drawn by whoever wrote the train cases.
   **`authorization` holdout is EMPTY** — see Known Problem 10.
@@ -583,14 +595,14 @@ description, which is where ADR-034 concluded such a reminder belongs.
   (ADR-048). Its results are filename-prefixed `probe__`; a glob over
   `evaluations/results/` must exclude them.
 - **3 runtime dependencies** (`pydantic`, `httpx`, `pyyaml`)
-- ADRs 001–054 recorded in `docs/decisions.md`
+- ADRs 001–055 recorded in `docs/decisions.md`
 - `stash@{0}` holds ADR-039's reverted action-ledger. Paul's to keep or drop;
   ADR-039 records the code's shape either way, so dropping it loses nothing.
 - **Commit hashes are deliberately not listed** — that list went stale three
   times in two days. Use `git log --oneline`.
 
 ```powershell
-& .\.venv\Scripts\python.exe -m pytest -q --collect-only   # "807/823 tests collected"
+& .\.venv\Scripts\python.exe -m pytest -q --collect-only   # "872/888 tests collected"
 & .\.venv\Scripts\paios.exe eval list                      # suites, cases, holdout, checks
 & .\.venv\Scripts\paios.exe doctor                         # models, server version, policy
 ```

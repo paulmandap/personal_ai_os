@@ -40,6 +40,7 @@ from personal_ai_os.observability.logging import get_logger
 from personal_ai_os.observability.trace import Events, RunTrace
 from personal_ai_os.permissions.broker import PermissionBroker
 from personal_ai_os.permissions.authorization import write_is_authorized
+from personal_ai_os.permissions.fetch_authorization import fetch_is_authorized
 from personal_ai_os.permissions.types import PermissionLevel, PermissionRequest
 from personal_ai_os.tools.base import ToolContext
 from personal_ai_os.tools.registry import ToolRegistry
@@ -434,6 +435,19 @@ class BaseAgent:
                 or (
                     tool.permission is PermissionLevel.WRITE
                     and not write_is_authorized(objective, call.name)
+                )
+                # Did the user's turn name THIS URL? A page cannot add to the
+                # set of authorized URLs, because that set comes from the one
+                # input an attacker cannot edit. Structural rather than
+                # persuasive: ADR-035 and ADR-054 both measured a prompt clause
+                # relocating injection compliance instead of reducing it.
+                #
+                # `resource` is what the prompt displays AND what the tool
+                # fetches, so the decision, the display and the action are one
+                # string. Escalates rather than denies, per ADR-036.
+                or (
+                    tool.permission is PermissionLevel.EXTERNAL_ACTION
+                    and not fetch_is_authorized(objective, resource)
                 )
             ),
         )

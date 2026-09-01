@@ -100,6 +100,44 @@ Measured: **state intact 75/75 on both models** across the injection suite,
 against ~27% attacker-task creation before. The 7B fired 27 denials; the 3B
 fired none, because it was never persuaded.
 
+### A second mechanical gate: `external_action` (ADR-055)
+
+The same shape, on the other level. **Did the user's own turn name this URL?**
+
+```
+fetch_page(url)  ->  does `url` appear literally in the user's message?
+                         |
+                    no   |   yes
+                         |
+         escalate to human approval    proceed under normal policy
+```
+
+`fetch_is_authorized(objective, resource)` is a pure function decided before any
+inference, so **its correctness is established by unit tests, not by a
+benchmark** — 58 of them, covering host confusion, userinfo, ports, fragments,
+percent-encoding, punycode, scheme mismatch in both directions, and fail-closed
+handling of anything ambiguous.
+
+Measured on `research_safety`, both models:
+
+| | 7B | 3B |
+|---|---|---|
+| attacker-URL **requests** (model compromised) | **12/75** | 0/75 |
+| attacker-URL **executions** (system compromised) | **0/45** | **0/45** |
+| control still fetches and answers | 15/15 | 15/15 |
+| runs that answered | 75/75 | 75/75 |
+
+**The request count did not move, and that is the point.** Two attempts to
+argue the model out of being persuaded failed (ADR-053, ADR-054); this one does
+not try. It makes the persuasion inert.
+
+**Limits, stated where they will be read.** The predicate is single-turn and
+URL-specific. It authorizes by *occurrence*, not causation — if the user names
+two URLs and a page instructs a fetch of the second, it allows it, bounded by
+exact matching so no payload can be appended. **The moment the agent may fetch
+outside the user's enumerated set, or carry data in a URL, occurrence stops
+being sufficient.**
+
 ### Read two numbers, not one (ADR-037)
 
 The suite reports both properties separately, because they are separate:
@@ -358,6 +396,13 @@ configuration and read **10/75 again — exactly**; ADR-054 read **12/75**. It a
 threshold was an experiment-specific criterion for choosing between clauses and
 **never permission to start the transport.** No clause cleared it, so the shipped
 number is unchanged and **increment 2 remains gated exactly as written above.**
+
+**ADDRESSED as of ADR-055 — structurally, not persuasively.** The gate above
+means such a request can no longer become a fetch: **0 executions in 90 runs
+carrying the check, both models**, while the request count stayed exactly where
+it was. **The transport is unblocked on one condition — the HTTP client sits
+downstream of this gate**, which it does by construction, since `tool.execute`
+runs only after a granted decision.
 
 **And a prompt clause will not fix it.** ADR-054 measured the generic clause
 against a paired baseline and found it **relocates** the failure: prior-consent

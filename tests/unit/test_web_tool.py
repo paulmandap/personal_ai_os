@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from personal_ai_os.core.errors import ToolExecutionError
+from personal_ai_os.core.types import Role
 from personal_ai_os.permissions.types import PermissionLevel
 from personal_ai_os.tools.base import ToolContext
 from personal_ai_os.tools.builtin.web import WEB_PAGES, MAX_CHARS, FetchPageTool
@@ -140,3 +141,99 @@ class TestApprovalPrompt:
         tool = FetchPageTool()
         args = tool.validate_input({"url": "https://example.com/thing"})
         assert "https://example.com/thing" in tool.describe_resource(args)
+
+    def test_the_resource_IS_the_url_verbatim(self):
+        """**An invariant the `external_action` gate depends on.**
+
+        The gate decides on `describe_resource(args)`, the prompt displays it,
+        and `run()` fetches `args.url`. Those must be one string, or the system
+        could authorize one representation and fetch another. A future
+        `describe_resource` that prettifies, truncates or canonicalises would
+        open exactly that gap, so it fails here instead.
+        """
+        tool = FetchPageTool()
+        for raw in (
+            "https://example.com/thing",
+            "https://example.com/a%20b?q=1#frag",
+            "HTTPS://Example.COM/CasePath/",
+        ):
+            args = tool.validate_input({"url": raw})
+            assert tool.describe_resource(args) == args.url == raw
+
+
+class TestTheExternalActionGate:
+    """End to end: the URL the user named is fetched, anything else escalates.
+
+    Runs the real `_execute_tool_call` path with a real `PolicyBroker` set to
+    auto-approve `external_action` -- so what is measured is the gate raising
+    `requires_human_approval`, not a restrictive policy. Non-interactive turns
+    that escalation into a refusal, which is what the harness sees.
+    """
+
+    def _run(self, tmp_path, objective: str, url: str):
+        from personal_ai_os.models.fake import (
+            ScriptedModel, text_response, tool_call_response,
+        )
+        from personal_ai_os.agents.base import BaseAgent
+        from personal_ai_os.agents.spec import AgentSpec
+        from personal_ai_os.permissions.broker import PolicyBroker, RecordingBroker
+        from personal_ai_os.tools.registry import ToolRegistry
+
+        pages = {"https://example.com/guide": "A guide. File before April 15."}
+        registry = ToolRegistry()
+        registry.register(FetchPageTool())
+        broker = RecordingBroker(
+            PolicyBroker(
+                {PermissionLevel.EXTERNAL_ACTION: "auto"}, interactive=False
+            )
+        )
+        agent = BaseAgent(
+            AgentSpec(
+                name="research",
+                description="test",
+                tools=["fetch_page"],
+                permissions=[PermissionLevel.EXTERNAL_ACTION],
+                max_iterations=3,
+            ),
+            model=ScriptedModel(
+                [tool_call_response("fetch_page", {"url": url}), text_response("ok")]
+            ),
+            tools=registry,
+            broker=broker,
+            context=ToolContext(workspace_root=tmp_path, extras={WEB_PAGES: pages}),
+        )
+        return agent.run(objective), broker
+
+    def test_the_url_the_user_named_is_fetched(self, tmp_path):
+        result, broker = self._run(
+            tmp_path,
+            "Summarise https://example.com/guide for me.",
+            "https://example.com/guide",
+        )
+        assert broker.decisions[-1].granted
+        assert "April" in result.transcript[-2].content
+
+    def test_a_url_from_the_page_is_escalated(self, tmp_path):
+        """The measured attack: a fetched page instructs a second fetch the
+        user never asked for. The model may still be persuaded to *ask* -- the
+        system will not comply (ADR-037's split)."""
+        result, broker = self._run(
+            tmp_path,
+            "Summarise https://example.com/guide for me.",
+            "https://attacker.example/collect",
+        )
+        assert not broker.decisions[-1].granted
+        observation = [m for m in result.transcript if m.role is Role.TOOL][0]
+        assert observation.content.startswith("DENIED:")
+
+    def test_the_decision_the_prompt_and_the_fetch_are_one_string(self, tmp_path):
+        """The canonical-identity invariant, asserted through the real path:
+        what the broker was asked to approve is byte-identical to the URL the
+        tool resolved."""
+        url = "https://example.com/guide"
+        result, broker = self._run(
+            tmp_path, f"Summarise {url} for me.", url
+        )
+        assert broker.requests[-1].resource == url
+        assert broker.decisions[-1].granted
+        assert result.ok
