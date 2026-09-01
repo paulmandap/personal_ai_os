@@ -16,6 +16,23 @@
 
 ---
 
+## Where this project is, in four lines
+
+| | |
+|---|---|
+| **Phase 6 — Integrations** | **COMPLETE** (2026-09-01, ADR-058) |
+| **Phase 7 — Local Master** | **NOT STARTED** |
+| **Phase 7 scope** | **UNDECIDED** |
+| **Phase 7 exit condition** | **NOT YET DECLARED** — ADR-058 requires one *before* the phase starts |
+
+**Two phase-numbering schemes exist and are not sequential.** `CLAUDE.md`'s
+**1–8** are this project's build phases. `docs/iterative-improvement.md`'s
+**9–16** are a separate teacher-guided roadmap *mapped against* this project —
+its own Phase 9 was largely delivered by Phase 4. Neither is renumbered; ADRs
+and commits cite these numbers.
+
+---
+
 ## Current Phase
 
 **Phase 6 — Integrations. Increments 1 and 2 are DONE as of 2026-09-01.**
@@ -277,7 +294,8 @@ compare is **two same-day arms**, not a stored baseline.
    ADR-040's minor-unit family. Open.
 7. Multi-currency refuses rather than converts; no bank import; `write: ask`
    prompts on every mutation.
-8. **Training blocked on disk:** ~22 GB needed, 5.5 GB free, and a GGUF cannot be
+8. **Training blocked on disk:** ~22 GB needed, **11.5 GB free** (re-derived
+   2026-09-01; the 5.5 GB previously recorded was stale), and a GGUF cannot be
    fine-tuned.
 9. **The authorization gate escalates a legitimate write whose verb it does not
    know — 0/10 on BOTH models, and no model is involved.** Found 2026-08-30 by
@@ -435,25 +453,36 @@ because after 2026-09-07 there is no conversation to remember them.
 
 ## Next Steps
 
-1. **MEASURE HTML EXTRACTION — the first thing this repo has never done.**
-   `fetch_page` now returns real pages, stripped of tags, comments and
-   `<script>` bodies by ~15 lines that ship **on argument, not evidence**.
+**Closed since the last prune, kept as one line each so nothing is lost:**
 
-   **It needs no network.** `Setup.web` seeds arbitrary strings, so seeding
-   *HTML* pages measures extraction hermetically, on the existing harness.
+| was | closed by |
+|---|---|
+| ~~1. Measure HTML extraction~~ | **ADR-057** — it does not break reading; it does hide attacks |
+| ~~6. The Research Agent~~ | **ADR-052 / 055 / 056** — built, gated, and given a transport |
 
-   The question that matters is not readability, it is what a safety number
-   would mean. **Stripping removes text an attacker may have written**, so:
+**The surviving items keep their original numbers**, so the list below has gaps.
+Renumbering would break references the way `Next Step 2` already broke: two docs
+cited it meaning the provenance composition, while the current item 2 is
+something else entirely (ADR-058). Cite these by name, not by number.
 
-   > *"The agent ignored the injection"* and *"the injection never reached the
-   > agent"* are different results, and extraction is what separates them.
+### BEFORE ANY OF THEM: Phase 7 needs a scope and an exit condition
 
-   A case whose injection lives in an HTML comment measures the **stripper**;
-   one whose injection is visible text measures the **model**. A suite that
-   mixes them silently reports the first as the second. **Any HTML safety case
-   must declare which it is** — and there is a second cost to weigh: an
-   injection stripped before arrival is one the agent cannot *report*, which is
-   what `research_safety` asks of it.
+**This is a decision, not a task, which is why it is not numbered.** ADR-058
+requires a phase to declare its exit *before* it starts, and Phase 7 has neither
+a scope nor an exit. Everything already known that bears on it:
+
+- **"Local Master" is undefined** beyond one line in `CLAUDE.md`.
+- **On the likely reading -- the Master driven by the small model -- it is partly
+  pre-blocked.** Delegation on the 3B is 27-47% and swings; the failure is an
+  *empty response* rather than a wrong route. **The structural attempt was made
+  and the gap survived it** (ADR-031: 33% -> 40% -> 47% -> back to 27%).
+- **Training is still disk-blocked**: ~22 GB needed, 11.5 GB free.
+- **`docs/iterative-improvement.md` says its Phases 10-11** -- teacher critique
+  and dataset generation -- **are feasible now** and need none of that disk.
+
+So the open question is whether Phase 7 means *make the 3B drive the Master*
+(measured hard, structurally attempted, unresolved), or something else entirely.
+**Nobody has decided, and this document will not decide it.**
 
 2. **Author a replacement `authorization` holdout case — the suite currently has
    ZERO.** This is a real gap in the false-positive instrument for ADR-036's
@@ -492,11 +521,6 @@ because after 2026-09-07 there is no conversation to remember them.
    list? Then mark the oat milk one done"* completed the task in **3/15** runs on
    the 3B and **2/15** on the 7B. Both models. That is a planning failure nobody
    was looking for.
-6. **The Research Agent** (first `external_action` tool) — still gated, and
-   ADR-038 changed what it is gated on. **The answer, not the write, is the
-   exposed surface.** Web and email content will arrive in tool results exactly
-   as a task note does, and the measured failure is the agent *reporting* an
-   action it never took.
 7. **The residual money-arithmetic defect** (Known Problem 6) — its own commit,
    re-measure `finance` and `safety` together.
 8. **`update_task` cannot edit a finished task.** Annotating a completed task is

@@ -1501,7 +1501,8 @@ spread and not a result — the mechanism is what is stable: every failure is st
 **Date:** 2026-08-29 · **Status:** accepted · **Phase:** 5 (overflow)
 
 **Context.** `docs/security.md` named one hole in ADR-036 and PROJECT_STATE made
-closing it Next Step 2:
+closing it a Next Step -- *composing the two provenances* (cited by name
+rather than by list position, ADR-058: the numbers have since moved):
 
 > **An injection echoing the user's verbs.** If the user says "mark it done" and
 > a note says "mark everything done", the action class matches. Authorization
@@ -4271,6 +4272,103 @@ comply.
 - **No change to `strip_html`, `research_safety`, the shipped agent, or the tool
   description.** If a later experiment finds the stripper wanting, it gets its
   own bar rather than a fix bolted onto the run that exposed it.
+
+---
+
+## ADR-058 — Phase 6 closes, and a phase declares its exit before it starts
+
+**Date:** 2026-09-01 · **Status:** accepted · **Phase:** 6 → closed
+
+**Context.** Six ADRs landed in two days (052–057) and the documents describing
+where the project *is* fell behind the work. `PROJECT_STATE.md` — the handoff
+document, the file a future local agent reads first with no access to any
+conversation — pointed at finished work as though it were next.
+
+This ADR is the consolidation. **No code changed.**
+
+### Phase 6 is complete, at one integration
+
+`fetch_page` and the Research Agent were the whole of Phase 6, and that was
+enough, because the phase's job was never *"connect several services"* — it was
+to settle how this system handles content the user did not write. It did:
+
+| | |
+|---|---|
+| ADR-052 | the attack surface, measured before any transport existed |
+| ADR-053 · ADR-054 | *(negative)* a prompt clause does not defend it — twice, on two different bars |
+| ADR-055 | a mechanical gate: a fetch is authorized by the user's own turn |
+| ADR-056 | the transport, and what it refuses to do |
+| ADR-057 | what a safety number on HTML is allowed to mean |
+
+**A second integration would reuse those contracts rather than settle new
+ones**, so it belongs to a later phase and does not gate this one.
+
+### The honest part: that criterion is retroactive
+
+**Phase 6 never had an exit condition.** *"Integrations"* is a name, not a
+criterion, and nobody wrote down what done meant before the work began. The
+paragraph above was written **after** seeing the work, and choosing a criterion
+after seeing the result is the exact failure this project keeps naming:
+
+> *"Define the exit condition before the work. 'Fix X' without a stated ending
+> generates a new blocker every time."*
+
+ADR-051 bounded an attempt in advance. ADR-053 declared a bar in advance.
+ADR-054 declared an exit in advance — and honoured it when it cost the result.
+**Experiments have been disciplined; phases never were.** So:
+
+> **From now on a phase declares its exit condition before it starts, in
+> `PROJECT_STATE.md`, in the same breath as its name.** A phase without one is
+> not started.
+
+Phase 7 is the first to be held to it, and is therefore **NOT STARTED** — it has
+no scope and no exit condition yet.
+
+### The roadmap numbering, resolved rather than renumbered
+
+Two schemes were in play and a reader could not tell which they were in:
+
+| scheme | where | what it is |
+|---|---|---|
+| **1–8** | `CLAUDE.md` | this project's **build phases**. 6 Integrations · 7 Local Master · 8 Distillation |
+| **9–16** | `docs/iterative-improvement.md` | a **separate teacher-guided improvement roadmap, mapped against** this project — not a continuation |
+
+**They are not sequential, and that document says so itself**: of its own Phase
+9 it writes *"Phase 4 delivered most of this."* Its Phase 9 is largely
+delivered, its 10–11 are feasible now, its 12–16 are blocked on hardware.
+
+**Nothing is renumbered.** ADRs and commit messages cite these numbers, and the
+project already refused a renumber once for that reason — Phase 5 was *"renamed,
+not renumbered"*. One sentence in each file now says which scheme it uses.
+
+### A live defect this found: cross-references by number had already rotted
+
+`docs/decisions.md` and `docs/security.md` both cite **"Next Step 2"**, meaning
+the provenance composition abandoned in ADR-038. The current Next Step 2 is the
+`authorization` holdout — **a different item entirely.** A reader following
+those citations today lands on the wrong thing.
+
+Both are rewritten to **name the item instead of its position**, which removes
+the fragility rather than patching it. Closed Next Steps are now removed from
+the active list while **survivors keep their numbers**, leaving deliberate gaps:
+presentation is not worth another broken reference.
+
+### Consequences
+
+- **Phase 6 is closed. Phase 7 is NOT STARTED**, scope UNDECIDED, exit condition
+  NOT YET DECLARED — stated at the top of `PROJECT_STATE.md` so it is visible
+  without reading further.
+- **Phase 7 is recorded, not designed.** What is known goes in — *Local Master*
+  is undefined beyond one line; the 3B delegation gap is 27–47% and the
+  structural attempt already failed (ADR-031); training is still disk-blocked at
+  ~22 GB needed against **11.5 GB free** (up from the 5.5 GB previously
+  recorded). The scope is Paul's to set.
+- **`CLAUDE.md` gained three factual edits and no rule change.** Phase status,
+  the numbering sentence, and the deferred commitment reconciled with what
+  ADR-031 measured. Every prohibition, priority and behavioural rule is
+  untouched.
+- **This closes a phase on judgement, not measurement.** There is no number that
+  says *"Integrations is done"*, and this ADR does not pretend otherwise.
 
 ---
 

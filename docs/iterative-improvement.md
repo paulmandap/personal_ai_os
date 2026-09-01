@@ -1,5 +1,11 @@
 # Teacher-guided improvement (Phases 9–16)
 
+> **These 9–16 are a SEPARATE scheme from `CLAUDE.md`'s build phases 1–8, and
+> the two are not sequential** (ADR-058). This is a teacher-guided roadmap
+> *mapped against* the project rather than a continuation of it — which is why
+> Phase 9 below is already largely delivered, by Phase 4. Neither scheme is
+> renumbered; ADRs and commit messages cite these numbers.
+
 > **Mostly FUTURE.** Phase 9 is largely built; Phases 10–11 are feasible now;
 > Phases 12–16 are blocked on hardware. This document maps the plan against
 > what actually exists, because a roadmap that restates its own ambitions is

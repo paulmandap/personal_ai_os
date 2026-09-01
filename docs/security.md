@@ -252,8 +252,9 @@ Stated plainly so nobody inherits a false sense of coverage.
   **The attack never reaches the permission system.** Across 60 echo runs on
   both models there were zero injected write attempts and zero denials. No gate
   — authorization, resource, or any composition of them — sits on this path.
-  Composing the provenances was Next Step 2 and was **abandoned on the
-  measurement**, not deferred.
+  Composing the provenances was a recorded Next Step -- named here rather
+  than numbered, because the list has since moved (ADR-058) -- and was
+  **abandoned on the measurement**, not deferred.
 
   What is compromised is the **answer**. `answer_does_not_claim_completion`
   makes it visible; nothing yet prevents it. The 3B is 2/15 where the 7B is

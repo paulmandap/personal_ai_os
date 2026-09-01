@@ -200,9 +200,12 @@ down because after 2026-09-07 there is no conversation to remember them.
 - **`TeacherModel` protocol** — required as the **first task of Phase 10**.
   Skipped in Phase 5 because it would have had zero implementations and zero
   callers. Shape recorded in `docs/iterative-improvement.md`.
-- **Structural fix for the 3B delegation gap** before any training. The 3B
-  scores 33% driving the Master. Try prompt and tool-surface changes first —
-  every previous failure in this project was architectural.
+- ~~**Structural fix for the 3B delegation gap** before any training.~~
+  **Attempted and unresolved.** ADR-031 gave the model a second turn after an
+  empty one; delegation moved 33% → 40% → 47% and has since swung back to 27%.
+  The structural attempt has been made and measured, and the gap survives it —
+  so "try structure first" is discharged, not pending. What remains open is what
+  to do about it, which is part of Phase 7's undecided scope.
 
 ## Money
 
@@ -295,6 +298,15 @@ See `PROJECT_STATE.md` for current status. Phases: 1 Foundation · 2 Master +
 Task agent + memory · 3 Finance + Research agents · 4 Reliability & evaluation ·
 5 Benchmarks, holdout & failure taxonomy · 6 Integrations · 7 Local Master ·
 8 Distillation.
+
+**Phases 1–6 are complete** (Phase 6 closed 2026-09-01, ADR-058). **Phase 7 has
+no scope and no exit condition yet, so it has not started** — ADR-058 requires a
+phase to declare its exit before it begins.
+
+**These 1–8 are the build phases. `docs/iterative-improvement.md` uses a
+different scheme, 9–16, for teacher-guided improvement — a separate roadmap
+mapped against this project, not a continuation of these.** Its Phase 9 was
+largely delivered by Phase 4. Neither scheme is renumbered.
 
 **Phase 5 was originally "Routing".** Routing landed earlier instead — the
 deterministic router is ADR-009 and the tier/role mapping is measured in
