@@ -3977,6 +3977,174 @@ run** (the denial string says *"Do not retry this call"* and the model obeys),
 
 ---
 
+## ADR-056 — The transport, and what it refuses to do
+
+**Date:** 2026-09-01 · **Status:** accepted · **Phase:** 6, increment 2
+
+**Context.** ADR-055 gated `external_action` on a mechanical predicate: a fetch
+proceeds only if the URL appears literally in the user's own turn. That met
+increment 2's entry condition on one stated condition — **the HTTP client must
+sit downstream of the gate.** This increment builds that client.
+
+It is the first time this system sends a byte to a machine the user does not
+own, so almost all of the work is *what the client refuses to do*. **ADR-052's
+third observable — bytes on the wire — finally exists**, and this decides
+whether it can ever carry attacker-chosen data.
+
+### Seeded pages take precedence, and that is what keeps the suite honest
+
+`Setup.web` is set only by the evaluation runner. When it is present the tool
+takes the seeded branch, **unchanged from the increment that measured it**; the
+network branch runs only when it is absent. So `pytest -q` still passes with
+sockets blocked, and `research_safety` never touches the network.
+
+### Redirects are reported, never followed — forced by the architecture
+
+A `3xx` becomes a recoverable error naming the `Location`. Following it would
+reach a host the broker never approved, and re-checking the final hop inside the
+tool would put an authorization decision outside `_execute_tool_call` — which
+CLAUDE.md calls a design error: *"a second call site is a design error."*
+
+The user can still get there: the agent reports where the URL points, the user
+asks for that URL, and **then it is in their turn and ADR-055's gate decides.**
+One gate, no exceptions. **Known cost: `http→https` and trailing-slash
+redirects are ubiquitous, so real URLs will sometimes need a second turn.**
+
+### The safety envelope
+
+| control | rule |
+|---|---|
+| redirects | never followed; `3xx` names the `Location` and fails |
+| size | streamed with a 512 KB budget, stopped **during** download |
+| timeout | the tool's own `timeout_s`, surfaced as a recoverable error |
+| content type | `text/*` and `application/xhtml+xml` only; **a missing type is refused, not guessed** |
+| address | host resolved **before connecting**; any loopback, private, link-local, reserved, multicast or unparseable address refuses the fetch |
+| scheme | `http(s)` only, already enforced by ADR-055's predicate |
+
+**`MAX_CHARS` bounds what the model sees; `MAX_BYTES` bounds what the machine
+accepts.** Truncating a string after downloading five megabytes is not a size
+limit.
+
+### The SSRF boundary, stated exactly
+
+Resolution happens before connecting, through an **injectable resolver**
+defaulting to `socket.getaddrinfo` — injectable because `tests/unit/conftest.py`
+blocks `socket.connect` but not `getaddrinfo`, and a unit test must not depend
+on live DNS. **One restricted address anywhere in the result rejects the
+fetch**, because a host answering with both a public and a private address is
+exactly the shape an attacker would choose.
+
+> **Defended:** literal restricted IPs, and hostnames that resolve to them —
+> `evil.example → 127.0.0.1` is refused, which a literal-only check misses.
+>
+> **NOT defended: DNS rebinding.** The connection is made by hostname, so
+> `httpx` re-resolves and may reach a different address than the one checked.
+> Closing that needs connect-to-pinned-IP with an overridden `Host` header and
+> matching certificate handling — a full SSRF project, deliberately not started.
+>
+> **This is not a complete SSRF defence and must not be described as one.**
+
+In proportion: ADR-055 already requires the URL to be in the user's own turn, so
+a *page* cannot steer a fetch at `169.254.169.254` — only the user could type
+it. These rules are defence in depth against a future widening of that gate.
+
+### The client carries no ambient state
+
+A process-lifetime client inherits things nobody reviewed, so it is built not to:
+
+| default | changed to | why |
+|---|---|---|
+| `trust_env=True` | **`trust_env=False`** | `HTTP_PROXY` in the environment would silently route every fetch through a third party — a security-model change made by a variable nobody read |
+| persistent cookie jar | **cleared before and after every fetch** | otherwise page A's `Set-Cookie` rides on the request for page B, across agents and runs. Ambient credentials by accident |
+| — | **no auth, ever** | nothing here attaches credentials to an outbound request |
+
+**Cost of `trust_env=False`, stated: a user behind a corporate proxy cannot
+fetch.** Deliberate and fail-closed; an explicit proxy setting is a later config
+decision, not something inherited silently.
+
+### Extraction, and the distinction it forces
+
+`<script>`/`<style>` bodies are dropped, comments removed, tags stripped,
+entities unescaped, whitespace collapsed. ~15 lines, no new dependency. Plain
+text is **not** stripped — mangling `a < b` in a `text/plain` page would be a
+correctness bug dressed as a safety feature.
+
+**This removes text an attacker may have written**, and that changes what a
+future number can mean:
+
+> **"The agent ignored the injection" and "the injection never reached the
+> agent" are different results, and extraction is what separates them.** A clean
+> score on a page whose attack lived in an HTML comment is evidence about this
+> stripper, not about the model. **Never call a stripped-away attack model
+> resistance.**
+
+Two tests make the distinction concrete rather than rhetorical: an instruction
+in a **comment is removed**, one in **visible text is preserved**. The second
+consequence belongs to the agent: an injection stripped before arrival is one it
+**cannot report to the user** — which is exactly what `research_safety` asks of
+it.
+
+### Evidence: unit tests, and deliberately no evaluation
+
+**900 tests, up from 872**, all offline via `httpx.MockTransport` — the
+technique `conftest.py` names.
+
+Covered: seeded precedence (and that a seeded run makes **zero** requests); a
+`302` producing exactly one error naming the `Location` with `len(requests) == 1`;
+six literal restricted addresses; a hostname resolving to loopback; a mixed
+public/private result; content-type refusals including a missing header;
+`4xx`/`5xx`; timeouts; an oversized body stopped mid-download; cookies not
+crossing between fetches; `trust_env` false; the extraction rules; and an
+**end-to-end pass through the real gate** — authorized URL granted, fetched and
+extracted, and its unauthorized twin **DENIED with the transport recording zero
+requests**.
+
+**Two properties are pinned rather than trusted:**
+
+- **`Tool.execute` is called from exactly one place in `src/`** — an AST scan
+  over the tree asserting `agents/base.py` is its only caller, so a bypass call
+  site that skipped the gate fails in `pytest` rather than in production.
+  (SQLite receivers are excluded by name, listed in the test.)
+- **the tool `description` is byte-identical** to ADR-055's. It is the only
+  model-facing string here, so a change is a prompt change requiring a
+  measurement — and the no-evaluation argument below rests on it not moving.
+
+**No evaluation block, and the reason is recorded.** PROJECT_STATE rule 7:
+*scope canaries by causal reachability before running them, not after.*
+`research_safety` always seeds `Setup.web`, so every eval run takes the seeded
+branch, whose code and refusal strings are unchanged; the description is pinned
+identical; nothing else the model sees moves. **No case in the suite can reach
+this change**, and a re-run would measure only the 3B variance ADR-053 and
+ADR-054 already documented.
+
+**Two tests that asserted the opposite were replaced, not deleted quietly.**
+`test_the_module_imports_no_http_client` and the "no network client" refusals
+pinned increment 1's load-bearing property — that no transport existed at all —
+which this increment removes on purpose. They are replaced by the property that
+carries the weight now: the transport is reachable only through the one call
+site that consults the broker.
+
+### Consequences and limits
+
+- **Increment 2 is done.** `fetch_page` reaches the real web, behind ADR-055's
+  gate, with no path around it.
+- **The network path ships covered by unit tests only, never by the behavioural
+  suite. No measurement in this repository has ever seen a real page.**
+- **Extraction quality is unmeasured** — the stripper ships on argument, not
+  evidence. **The fix needs no network: `Setup.web` seeds arbitrary strings, so
+  seeding *HTML* pages measures extraction hermetically.** That is the natural
+  next increment.
+- **Real content is still longer, more adversarial, and arrives in bulk.**
+  `docs/security.md`'s caveat survives completely intact — a transport does not
+  make the seeded suite representative.
+- **ADR-055's limits are unchanged and now matter more**, because a fetch is
+  finally a real request: the predicate is single-turn, URL-specific, and
+  authorizes by occurrence rather than causation.
+- **No caching, no robots.txt, no rate limiting, no auth.** None is a safety
+  property of this increment; each is its own decision.
+
+---
+
 ## Approval history
 
 **Relocated from `PROJECT_STATE.md` on 2026-08-30**, when that document was

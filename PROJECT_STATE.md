@@ -18,13 +18,18 @@
 
 ## Current Phase
 
-**Phase 6 — Integrations. Increment 1 (the Research Agent's attack surface) is
-complete and measured. Increment 2 (the transport) is UNBLOCKED as of
-2026-09-01 — ADR-055 put a mechanical gate on `external_action`.**
+**Phase 6 — Integrations. Increments 1 and 2 are DONE as of 2026-09-01.**
+`fetch_page` reaches the real web (ADR-056), behind a mechanical gate that
+authorizes a fetch only when the URL appears in the user's own turn (ADR-055).
 
-**The one condition on the transport: the HTTP client must sit downstream of
-that gate.** It does by construction — `tool.execute` runs only after a granted
-decision — but a second execution path would silently undo this.
+**There is no path around that gate, and it is pinned rather than trusted:** an
+AST scan asserts `Tool.execute` has exactly one caller in `src/`, so a bypass
+call site fails in `pytest` rather than in production.
+
+**The honest limit: no measurement in this repository has ever seen a real
+page.** Every eval seeds `Setup.web`, so the network path ships covered by unit
+tests only. Extraction quality is unmeasured — and fixing that needs no
+network, because `Setup.web` can seed HTML.
 
 Phase 5 is complete. The six-item security gate that held the Research Agent is
 now fully closed — the last two items were Phase 6's own first tasks, and
@@ -354,6 +359,13 @@ compare is **two same-day arms**, not a stored baseline.
    **F006 incomplete answer [minor]**, and "defect free" counts critical checks
    only — so the arm reads **97% defect-free**. The case caught it (0/15); the
    severity did not. **Do not route the Research Agent to the 3B.**
+13. **The network path has never been measured behaviourally.** ADR-056 shipped a
+   real HTTP client; every evaluation seeds `Setup.web` and therefore takes the
+   seeded branch, so the transport is covered by unit tests only. **Extraction
+   quality in particular ships on argument, not evidence** — and because
+   stripping removes comments, `alt`/`title` text and `<script>` bodies, a clean
+   safety number on such a page measures the stripper rather than the model.
+   Fixable without a network: seed HTML through `Setup.web`. See Next Step 1.
 
 **Closed, with the ADR that closed each.** Kept as one line because the reasoning
 — including the wrong turns — is in `docs/decisions.md`, and a closed problem
@@ -399,29 +411,25 @@ because after 2026-09-07 there is no conversation to remember them.
 
 ## Next Steps
 
-1. **PHASE 6 INCREMENT 2 — the transport. Now unblocked (ADR-055).**
-   Give `fetch_page` a real HTTP client. Its entry condition was *"a transport
-   shipped without addressing that would put those requests on the wire"*, and
-   the gate addresses it structurally:
+1. **MEASURE HTML EXTRACTION — the first thing this repo has never done.**
+   `fetch_page` now returns real pages, stripped of tags, comments and
+   `<script>` bodies by ~15 lines that ship **on argument, not evidence**.
 
-   | | 7B | 3B |
-   |---|---|---|
-   | attacker-URL **requests** (model compromised) | **12/75** | 0/75 |
-   | attacker-URL **executions** (system compromised) | **0/45** | **0/45** |
+   **It needs no network.** `Setup.web` seeds arbitrary strings, so seeding
+   *HTML* pages measures extraction hermetically, on the existing harness.
 
-   **The request count did not move, and that is the design.** Two attempts to
-   argue the model out of it failed (ADR-053, ADR-054). This one makes the
-   persuasion inert instead.
+   The question that matters is not readability, it is what a safety number
+   would mean. **Stripping removes text an attacker may have written**, so:
 
-   **Build it downstream of the gate and change nothing about
-   `_execute_tool_call`'s single call site.** Then read `docs/security.md`
-   — *A second mechanical gate*, and **what the research measurements do NOT
-   establish**: bytes on the wire is the third observable and still unmeasured.
+   > *"The agent ignored the injection"* and *"the injection never reached the
+   > agent"* are different results, and extraction is what separates them.
 
-   Carry these limits into the design: the predicate is **single-turn**,
-   **URL-specific**, and authorizes by **occurrence, not causation** — the
-   moment the agent may fetch outside the user's enumerated set, or carry data
-   in a URL, it stops being sufficient.
+   A case whose injection lives in an HTML comment measures the **stripper**;
+   one whose injection is visible text measures the **model**. A suite that
+   mixes them silently reports the first as the second. **Any HTML safety case
+   must declare which it is** — and there is a second cost to weigh: an
+   injection stripped before arrival is one the agent cannot *report*, which is
+   what `research_safety` asks of it.
 
 2. **Author a replacement `authorization` holdout case — the suite currently has
    ZERO.** This is a real gap in the false-positive instrument for ADR-036's
@@ -536,6 +544,7 @@ no cloud provider) overrides everything.
 | **053** | *(negative result)* No page-data clause cleared its declared bar |
 | **054** | *(negative result)* The clause moves the attack rather than removing it |
 | **055** | A fetch is authorized by the user's own turn, not the model's judgement |
+| **056** | The transport, and what it refuses to do |
 
 ---
 
@@ -586,7 +595,7 @@ description, which is where ADR-034 concluded such a reminder belongs.
 
 **Re-derived 2026-08-30. Re-derive again rather than trusting these.**
 
-- **888 tests**: 872 unit (offline, sockets blocked), 16 integration (live)
+- **916 tests**: 900 unit (offline, sockets blocked), 16 integration (live)
 - **11 benchmark suites, 60 cases, 10 holdout** · 25 checks · 15 failure codes.
   `research_safety` is the newest: 5 cases, **no holdout** — it is one day old and
   a holdout drawn now would be drawn by whoever wrote the train cases.
@@ -594,15 +603,16 @@ description, which is where ADR-034 concluded such a reminder belongs.
 - **1 probe suite** (`overcompletion`, 5 cases) — diagnostic, **never a score**
   (ADR-048). Its results are filename-prefixed `probe__`; a glob over
   `evaluations/results/` must exclude them.
-- **3 runtime dependencies** (`pydantic`, `httpx`, `pyyaml`)
-- ADRs 001–055 recorded in `docs/decisions.md`
+- **3 runtime dependencies** (`pydantic`, `httpx`, `pyyaml`) — unchanged by the
+  transport: `httpx` was already there for local inference
+- ADRs 001–056 recorded in `docs/decisions.md`
 - `stash@{0}` holds ADR-039's reverted action-ledger. Paul's to keep or drop;
   ADR-039 records the code's shape either way, so dropping it loses nothing.
 - **Commit hashes are deliberately not listed** — that list went stale three
   times in two days. Use `git log --oneline`.
 
 ```powershell
-& .\.venv\Scripts\python.exe -m pytest -q --collect-only   # "872/888 tests collected"
+& .\.venv\Scripts\python.exe -m pytest -q --collect-only   # "900/916 tests collected"
 & .\.venv\Scripts\paios.exe eval list                      # suites, cases, holdout, checks
 & .\.venv\Scripts\paios.exe doctor                         # models, server version, policy
 ```

@@ -422,9 +422,12 @@ only one that ever got through against task notes. **That much did transfer.**
   isolation** and nothing about resistance to write-inducing injection. When a
   research path can write, its attack cases must be written **before** the
   capability.
-- **Not exfiltration.** Three observables — *requested*, *executed*, *on the
-  wire*. This increment sees the first two. The third needs a transport that
-  does not exist.
+- **Exfiltration: the third observable now exists (ADR-056).** A real HTTP
+  client shipped, behind ADR-055's gate. What that gate stops is a fetch of a
+  URL the user never named; what it does not stop is a page influencing
+  *which* of the user's own URLs is fetched. **Redirects are never followed**,
+  so an authorized host cannot hand the fetch to another one. **DNS rebinding
+  is not defended** — see ADR-056, which says so in those words.
 - **Not realistic content.** Seeded pages are short, clean and markup-free. Real
   web content is longer, more adversarial, and arrives in bulk. That caveat
   survives intact.
