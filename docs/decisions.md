@@ -4716,6 +4716,142 @@ pre-registration.
 
 ---
 
+## ADR-062 — The silent turn is a discarded tool call, and the tool block is malformed
+
+**Date:** 2026-09-01 · **Status:** accepted · **Phase:** 7
+
+**Context.** ADR-059 found that a turn scored `empty_response` is not silence:
+`/api/chat` returns `content: ""` with no `tool_calls` key while reporting 15–28
+evaluated tokens. It could not say what those tokens were. ADR-061 eliminated
+every explanation inside this repository and left the question open.
+
+**This closes it.** Pre-registered in `evaluations/mechanisms/adr062-prediction.md`
+— gates, pairing, outcome table and *what each outcome does not prove* — all
+fixed before the first call.
+
+### Method
+
+`/api/generate` with `raw: true` returns the completion verbatim, splitting the
+chain at generation:
+
+```
+template rendering → model generation → tool-call parsing → chat serialization
+```
+
+**Prompt identity was obtained, not assumed.** The installed Ollama 0.33.2
+supports `_debug_render_only` — verified on this machine, not inferred from
+upstream source. `/api/chat` with that field returns
+`_debug_info.rendered_template` and generates nothing, so **the exact string
+`/api/chat` renders was fed to `/api/generate`** (2632 chars,
+sha256 `b2c8c98b…`). Gate 2 confirmed both endpoints tokenise it to **550**.
+
+**Pairs, not windows.** 15 pairs, each one CHAT and one RAW execution sharing
+model digest, prompt hash, options and **seed**, with order randomised per pair.
+Causal claims only from within-pair disagreement, because ADR-061 established
+that this system drifts between windows.
+
+**Gate 1** confirmed the failing regime was present: 0/15 CALL.
+
+### Result — T1, 15 of 15 pairs
+
+| | |
+|---|---|
+| within-pair disagreements | **15/15** |
+| RAW `TOOL_CALL_LIKE` | **15/15** |
+| CHAT `call_any` | **0/15** |
+| RAW malformed or truncated | **0/15** |
+| RAW closed, valid-JSON tool call | **15/15** |
+
+**The model is not silent. It emits a clean, closed, valid-JSON tool call every
+time**, and `/api/chat` reports nothing at all — neither the call nor any text.
+
+### The mechanism
+
+Every one of the 15 completions has the same defect:
+
+```json
+<tool_call>
+{"name": "task_agent", "arguments": {"agent": "task_agent",
+ "objective": "add task to renew passport with deadline in 5 years"}}
+</tool_call>
+```
+
+**`"name"` holds the *agent* name, not the tool name.** `wrong_tool_name` fires
+15/15; the only tool advertised is `delegate`. The `arguments` are otherwise
+sensible — correct agent, coherent objective.
+
+So the chat path parses a syntactically valid `<tool_call>` naming a tool that was
+never advertised, discards it, and surfaces neither the call nor the raw text.
+**Those are ADR-059's 15–28 tokens.** The runtime then records `empty_response`,
+and this project has spent three ADRs calling it silence.
+
+### Why the model gets the name wrong — the tools block is not JSON
+
+The rendered prompt's tool block, obtained verbatim:
+
+```
+{"type": "function", "function": {delegate Hand a piece of work to a specialised
+agent and get its result back. … {object <nil> <nil> [agent objective]
+{"agent":{…},"objective":{…}}}}}
+```
+
+That is a Go struct printed with `%v` — `<nil>` placeholders, `[agent objective]`
+as a Go slice — sitting where the template promises a JSON function signature.
+**The function's name is buried inside an unparseable blob rather than presented
+as a field**, so a model must infer the tool's name from surrounding prose.
+
+This is **consistent with, and not proven to be, the cause** of the wrong `name`.
+The 7B reads the same malformed block and is 45/45, and the 3B was 13/15 in
+ADR-061's calling window — so the malformation is not sufficient on its own. What
+it plausibly does is make the tool name *inferable rather than stated*, and the
+3B infers it unreliably.
+
+**This is Ollama's defect, not this repository's.** Nothing here can render that
+block.
+
+### What this does and does not establish
+
+**Establishes:** on this configuration, the silent turn arises **after** model
+generation. A well-formed completion exists and does not reach the parsed chat
+response.
+
+**Does not establish parser loss outright.** Two causes were pre-registered and
+one remains formally open:
+
+1. the completion is generated and discarded by the chat parsing path;
+2. the two endpoints generate differently, so CHAT never produced it.
+
+**Cause (2) is substantially weakened but not excluded.** CHAT and RAW returned
+**pairwise identical `eval_count` in all 15 pairs** — `[37, 34, 37, 34, 37, 38,
+34, 37, 37, 37, 40, 34, 37, 37, 34]` on both endpoints, matching pair for pair
+across four distinct values. That is consistent with identical generation and
+hard to reconcile with materially different completions. **Per the
+pre-registration it is recorded as description and is not treated as proof of
+sampling equivalence** — equal counts are not equal token sequences. The
+disambiguating experiment (`/api/chat` *without* `tools` against RAW on the same
+rendered prompt) is named and not run.
+
+**Scope.** One model, one objective, one roster, one tool schema, one first-turn
+configuration, one machine, one regime. Nothing generalises past that.
+
+### Consequences
+
+- **ADR-059's open question is answered.** "Something between the model and the
+  wire ate 15–28 tokens" was right, and the something is a tool call bearing an
+  unadvertised name.
+- **ADR-061's bimodality gets a candidate shape:** whether the 3B emits `name:
+  "delegate"` or `name: "<agent>"`. That does not explain what *selects* the
+  mode, which stays open.
+- **Do not train against this.** The 3B produces a clean, well-argued tool call
+  with correct arguments; it picks the wrong value for one field of a schema it
+  is shown malformed. Training would be an extraordinarily expensive way to fix
+  a serialization bug in another program.
+- **No fix here.** ADR-062 is diagnostic and changes no behaviour. Any response —
+  and the options are Ollama-side, not ours — is a separate commit.
+- **`reason` still must not move to `small`.**
+
+---
+
 ## Approval history
 
 **Relocated from `PROJECT_STATE.md` on 2026-08-30**, when that document was

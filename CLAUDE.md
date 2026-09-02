@@ -216,10 +216,14 @@ down because after 2026-09-07 there is no conversation to remember them.
   payload**, with prompt, roster, seed, interleaving, load order and runner state
   all eliminated by measurement.
 
-  **The 3B is bimodal and nothing in this repository selects the mode.** Do not
-  treat this as a capability gap and **do not train against it** — a model that
-  delegates 15/15 in one mode has an availability problem, not a missing skill.
-  The next experiment is the template layer, not a training run.
+  **ADR-062 then found what the failing mode is.** The 3B emits a clean,
+  valid-JSON tool call 15/15 — with the *agent* name in the `name` field instead
+  of `delegate` — and Ollama discards it because no such tool was advertised.
+  Ollama renders the tools block as a **Go struct, not JSON**, so the tool's name
+  is inferable rather than stated.
+
+  **Do not train against this.** The defect is upstream, the model's reasoning is
+  correct, and the shipped config already routes the Master to the 7B (45/45).
 
 ## Money
 

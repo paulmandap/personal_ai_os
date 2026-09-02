@@ -142,8 +142,43 @@ for ten runs then 0/45 is the same bimodality across days, not a regression.
 **`reason` still must not move to `small`** — on better grounds: not "the 3B
 cannot delegate" but "its delegation is not reliably available".
 
-**Open, and named:** the template layer (ADR-061's closing section). Best run
-while the system sits in the failing mode, which it currently does.
+### The silent turn is a DISCARDED TOOL CALL — ADR-062
+
+**Run 2026-09-01, and it closes ADR-059's open question.** The prompt was
+*obtained* rather than reconstructed: the installed Ollama 0.33.2 supports
+`_debug_render_only`, so the exact string `/api/chat` renders (2632 chars, sha256
+`b2c8c98b…`) was fed verbatim to `/api/generate raw:true`. Both tokenise to 550.
+15 seed-matched pairs, order randomised.
+
+| | |
+|---|---|
+| within-pair disagreements | **15/15** |
+| RAW well-formed, closed, valid-JSON tool call | **15/15** |
+| CHAT `call_any` | **0/15** |
+
+**The model is not silent.** It emits a clean tool call every time — and puts the
+**agent** name in the `name` field:
+
+```json
+{"name": "task_agent", "arguments": {"agent": "task_agent", "objective": "…"}}
+```
+
+The only advertised tool is `delegate`. Ollama parses a valid call naming a tool
+that does not exist, discards it, and surfaces neither the call nor the text.
+**Those are ADR-059's 15–28 tokens.**
+
+**Why the name is wrong — the rendered tools block is not JSON.** It is a Go
+struct printed with `%v` (`<nil>` placeholders, `[agent objective]` as a slice)
+where the template promises a function signature, so the tool's name is
+*inferable* rather than stated. Consistent with, not proven to be, the cause —
+the 7B reads the same block and is 45/45. **This is Ollama's defect; nothing here
+renders that block.**
+
+**Establishes:** the silent turn arises **after** generation. **Does not
+establish** parser loss outright — endpoint-specific generation differences are
+weakened (CHAT and RAW returned **pairwise identical `eval_count` in all 15
+pairs**) but not formally excluded; equal counts are not equal token sequences.
+The disambiguating run (`/api/chat` without `tools`) is named and unrun.
 
 **A standing claim needs qualifying.** *"Adding an agent is a new `agents/*.yaml`
 and nothing else"* is true of the **registry** and false of the **Master's
@@ -650,26 +685,35 @@ something else entirely (ADR-058). Cite these by name, not by number.
 2026-09-01 and are at the top of this document.** Paul's full 7.1–7.12 plan is
 the scope; the increments are listed there.
 
-~~The single next task is the ADR-060 bisection.~~ **Run 2026-09-01 — ADR-061.**
-Valid on its own terms, and it **does not reproduce**. The 3B is bimodal and
-nothing here selects the mode. **No mechanism was named, deliberately.**
+~~The ADR-060 bisection.~~ **Run — ADR-061.** Valid, and it does not reproduce.
+~~The template-layer experiment.~~ **Run — ADR-062, and it found the mechanism:
+the silent turn is a well-formed tool call carrying the wrong `name`, discarded
+by Ollama because the name was never advertised.**
 
-**The single next task is now the template-layer experiment.** ADR-059 localised
-the loss to inside Ollama's chat template — `content: ""` with no `tool_calls`
-key while 15–28 tokens were evaluated. Compare `/api/chat` against
-`/api/generate` with the Qwen2.5 template applied by hand, and see whether the
-silent turns contain a `<tool_call>` block the template consumes.
+**The single next task is to decide what, if anything, to do about it.** That is
+a decision, not an experiment, and the options are narrow because **the defect is
+Ollama's**:
 
-**Run it while the system is in the failing mode**, which it currently is. Its
-own design and its own pre-registration, in the shape ADR-061 used:
-deterministic arm construction, thresholds and control-failure rules fixed
-before execution, one stage, no rewording.
+1. **Nothing.** Route `master` to the 7B, which is already the shipped config and
+   is 45/45. Record and move on. **This is the honest default.**
+2. **Measure whether a stated tool name helps.** The tools block leaves the name
+   *inferable*; `MASTER_SYSTEM_PROMPT` already says *"Your only tool is
+   `delegate`"*. Whether restating it more explicitly changes the 3B's `name`
+   field is a **pre-registered experiment**, not an edit — and ADR-035/053/054
+   are three recorded failures of the prompt-wording reflex, so the bar is high
+   and the expected value is low.
+3. **Report upstream.** The `%v`-formatted tools block is a genuine Ollama
+   rendering defect, reproducible in one call with `_debug_render_only`.
 
-`adr060_bisect_master_prompt.py` stays as it is — a working instrument, and the
-one that would detect the calling mode returning.
+**Do not fix anything in the same commit that finds it.** Whatever is chosen gets
+its own pre-registration.
 
-**Do not fix anything in the same commit that finds it**, and no prompt-wording
-search — ADR-035, ADR-053 and ADR-054 are three recorded failures of that reflex.
+**Still open and untouched by ADR-062:** what *selects* the mode (ADR-061). The
+disambiguating run for ADR-062's cause (2) — `/api/chat` without `tools` against
+RAW on the same rendered prompt — is named and unrun.
+
+`adr060_bisect_master_prompt.py` and `adr062_template_layer.py` both stay: the
+first detects the calling mode returning, the second re-runs in one command.
 
 Still true and unchanged: **training is disk-blocked** (~22 GB needed, **11.2 GB
 free**), and `docs/iterative-improvement.md`'s Phases 10–11 need none of it —
@@ -789,6 +833,7 @@ no cloud provider) overrides everything.
 | **059** | An empty turn must be able to say what the model actually returned |
 | **060** | *(negative result)* The roster did not break the 3B Master, and it was never a code regression — **two claims superseded by ADR-061** |
 | **061** | *(negative result)* The bisection is valid, and it does not reproduce — the 3B Master is bimodal |
+| **062** | The silent turn is a discarded tool call, and the tool block is malformed |
 
 ---
 

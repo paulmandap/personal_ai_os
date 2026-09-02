@@ -1,0 +1,915 @@
+{
+  "conditions": {
+    "base_seed": 20260901,
+    "debug_render_only": {
+      "field": "_debug_render_only",
+      "ignored_spellings": [
+        "debug_render_only",
+        "DebugRenderOnly"
+      ],
+      "supported": true,
+      "verified_on": "installed build, 2026-09-01"
+    },
+    "gate1_n": 15,
+    "git_head": "9e48bf269bd51d3f3a7817c98ee117a800c6f950",
+    "model": "qwen2.5:3b-instruct",
+    "model_digests": {
+      "qwen2.5:3b-instruct": "357c53fb659c"
+    },
+    "n_pairs": 15,
+    "objective": "Add a task to renew my passport.",
+    "options": {
+      "keep_alive": "5m",
+      "num_ctx": 8192,
+      "temperature": 0.3
+    },
+    "order_seed": 20260902,
+    "rendered_template": "<|im_start|>system\nYou are the Master agent of a local personal AI system. You coordinate; you do not do specialised work yourself.\n\nYour only tool is `delegate`, which hands an objective to a specialised agent and returns its result.\n\nAgents you can delegate to:\n  - finance: Analyses the user's own financial data: balances, spending, recurring bills, savings goals, and whether a purchase is affordable. Use this for any question about money, budgets, or what the user can spend.\n  - ping: Verifies that local tool calling works end to end. Reads and lists files inside the workspace to answer simple questions about it.\n  - research: Reads web pages the user asks about and answers from their contents. Use this when the user gives a URL or asks what a page says.\n  - task_agent: Creates, updates, completes and reports on the user's tasks. Use this for anything about what the user has to do, deadlines, or things to remember.\n\nHow to work:\n- Decide which agent should handle the request. If several steps are needed, delegate them one at a time and use each result to decide the next.\n- The agent you call cannot see this conversation. Write a complete, self-contained objective containing every detail it needs.\n- Use what the agent actually returned. Never invent a result, and never claim work was done if the delegation failed.\n- If a delegation fails or is refused, say so plainly and report what you could not complete.\n- When the request is fully handled, reply to the user directly with no further tool calls. Summarise what was done in plain language.\n\n\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{\"type\": \"function\", \"function\": {delegate Hand a piece of work to a specialised agent and get its result back. Prefer this over trying to do specialised work yourself. The agent you call cannot see this conversation, so write a complete instruction. {object <nil> <nil> [agent objective] {\"agent\":{\"type\":\"string\",\"description\":\"Name of the agent to hand this work to. Must be one of the agents listed in your instructions.\"},\"objective\":{\"type\":\"string\",\"description\":\"A complete, self-contained instruction for that agent. It cannot see this conversation, so include every detail it needs.\"}}}}}\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call><|im_end|>\n<|im_start|>user\nAdd a task to renew my passport.<|im_end|>\n<|im_start|>assistant\n",
+    "rendered_template_len": 2632,
+    "rendered_template_sha256": "b2c8c98b4d527287c102ad06c227dfc7a1dd194104f6039cec4dcca5dd7d1afd",
+    "server_version": "0.33.2",
+    "state_reset_between_gate1_and_measurement": false,
+    "state_reset_reason": "`ollama stop` risks losing the perishable failing regime, and ADR-061 showed a fresh load does not restore the calling mode. Recorded because unrecorded runtime state has misled this project twice.",
+    "suppressed_max": 3,
+    "unpinned_sampling_defaults": [
+      "top_p",
+      "top_k",
+      "repeat_penalty"
+    ],
+    "utc": "2026-09-02T05:50:08.221577+00:00"
+  },
+  "gate1": {
+    "call_any": 0,
+    "chat_prompt_eval_count": 550,
+    "n": 15,
+    "note": "Regime check only. NEVER pooled with the paired CHAT arm.",
+    "passed": true,
+    "trials": [
+      {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 37,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": null,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3779.1
+      },
+      {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 37,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": null,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3012.4
+      },
+      {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 44,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": null,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3343.9
+      },
+      {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 48,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": null,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3299.8
+      },
+      {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 43,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": null,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3123.9
+      },
+      {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 37,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": null,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 2984.7
+      },
+      {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 37,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": null,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3064.0
+      },
+      {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 37,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": null,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3040.2
+      },
+      {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 40,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": null,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3075.7
+      },
+      {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 46,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": null,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3291.8
+      },
+      {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 37,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": null,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3120.4
+      },
+      {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 37,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": null,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3328.1
+      },
+      {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 37,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": null,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3259.0
+      },
+      {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 37,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": null,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3089.0
+      },
+      {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 44,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": null,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3633.7
+      }
+    ]
+  },
+  "gate2": {
+    "chat_prompt_eval_count": 550,
+    "note": "The RAW prompt IS the string /api/chat reports rendering, so identity is by construction. This check corroborates that rendered_template is what actually gets tokenised -- corroboration, not proof.",
+    "passed": true,
+    "probe": {
+      "closed_tool_call": true,
+      "done_reason": "stop",
+      "endpoint": "RAW",
+      "eval_count": 37,
+      "has_tool_call_tag": true,
+      "malformed_or_truncated": false,
+      "primary": "TOOL_CALL_LIKE",
+      "prompt_eval_count": 550,
+      "response": "<tool_call>\n{\"name\": \"task_agent\", \"arguments\": {\"agent\": \"task_agent\", \"objective\": \"add task to renew passport with deadline in 6 months\"}}\n</tool_call>",
+      "seed": null,
+      "tool_name": "task_agent",
+      "valid_delegate_call": false,
+      "valid_json_call": true,
+      "wall_ms": 3282.2,
+      "wrong_tool_name": true
+    },
+    "raw_prompt_eval_count": 550
+  },
+  "pairs": [
+    {
+      "CHAT": {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 37,
+        "executed_position": 0,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": 20260902,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 2923.9
+      },
+      "RAW": {
+        "closed_tool_call": true,
+        "done_reason": "stop",
+        "endpoint": "RAW",
+        "eval_count": 37,
+        "executed_position": 1,
+        "has_tool_call_tag": true,
+        "malformed_or_truncated": false,
+        "primary": "TOOL_CALL_LIKE",
+        "prompt_eval_count": 550,
+        "response": "<tool_call>\n{\"name\": \"task_agent\", \"arguments\": {\"agent\": \"task_agent\", \"objective\": \"add task to renew passport with deadline in 5 years\"}}\n</tool_call>",
+        "seed": 20260902,
+        "tool_name": "task_agent",
+        "valid_delegate_call": false,
+        "valid_json_call": true,
+        "wall_ms": 3034.5,
+        "wrong_tool_name": true
+      },
+      "order": [
+        "CHAT",
+        "RAW"
+      ],
+      "pair_id": 1,
+      "seed": 20260902
+    },
+    {
+      "CHAT": {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 34,
+        "executed_position": 0,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": 20260903,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3032.3
+      },
+      "RAW": {
+        "closed_tool_call": true,
+        "done_reason": "stop",
+        "endpoint": "RAW",
+        "eval_count": 34,
+        "executed_position": 1,
+        "has_tool_call_tag": true,
+        "malformed_or_truncated": false,
+        "primary": "TOOL_CALL_LIKE",
+        "prompt_eval_count": 550,
+        "response": "<tool_call>\n{\"name\": \"task_agent\", \"arguments\": {\"agent\": \"task_agent\", \"objective\": \"add task to renew passport with due date\"}}\n</tool_call>",
+        "seed": 20260903,
+        "tool_name": "task_agent",
+        "valid_delegate_call": false,
+        "valid_json_call": true,
+        "wall_ms": 3014.9,
+        "wrong_tool_name": true
+      },
+      "order": [
+        "CHAT",
+        "RAW"
+      ],
+      "pair_id": 2,
+      "seed": 20260903
+    },
+    {
+      "CHAT": {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 37,
+        "executed_position": 1,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": 20260904,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3029.4
+      },
+      "RAW": {
+        "closed_tool_call": true,
+        "done_reason": "stop",
+        "endpoint": "RAW",
+        "eval_count": 37,
+        "executed_position": 0,
+        "has_tool_call_tag": true,
+        "malformed_or_truncated": false,
+        "primary": "TOOL_CALL_LIKE",
+        "prompt_eval_count": 550,
+        "response": "<tool_call>\n{\"name\": \"task_agent\", \"arguments\": {\"agent\": \"task_agent\", \"objective\": \"add task to renew passport with deadline in 6 months\"}}\n</tool_call>",
+        "seed": 20260904,
+        "tool_name": "task_agent",
+        "valid_delegate_call": false,
+        "valid_json_call": true,
+        "wall_ms": 3040.8,
+        "wrong_tool_name": true
+      },
+      "order": [
+        "RAW",
+        "CHAT"
+      ],
+      "pair_id": 3,
+      "seed": 20260904
+    },
+    {
+      "CHAT": {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 34,
+        "executed_position": 1,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": 20260905,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 2971.7
+      },
+      "RAW": {
+        "closed_tool_call": true,
+        "done_reason": "stop",
+        "endpoint": "RAW",
+        "eval_count": 34,
+        "executed_position": 0,
+        "has_tool_call_tag": true,
+        "malformed_or_truncated": false,
+        "primary": "TOOL_CALL_LIKE",
+        "prompt_eval_count": 550,
+        "response": "<tool_call>\n{\"name\": \"task_agent\", \"arguments\": {\"agent\": \"task_agent\", \"objective\": \"add task to renew passport with due date\"}}\n</tool_call>",
+        "seed": 20260905,
+        "tool_name": "task_agent",
+        "valid_delegate_call": false,
+        "valid_json_call": true,
+        "wall_ms": 2914.9,
+        "wrong_tool_name": true
+      },
+      "order": [
+        "RAW",
+        "CHAT"
+      ],
+      "pair_id": 4,
+      "seed": 20260905
+    },
+    {
+      "CHAT": {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 37,
+        "executed_position": 0,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": 20260906,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3006.4
+      },
+      "RAW": {
+        "closed_tool_call": true,
+        "done_reason": "stop",
+        "endpoint": "RAW",
+        "eval_count": 37,
+        "executed_position": 1,
+        "has_tool_call_tag": true,
+        "malformed_or_truncated": false,
+        "primary": "TOOL_CALL_LIKE",
+        "prompt_eval_count": 550,
+        "response": "<tool_call>\n{\"name\": \"task_agent\", \"arguments\": {\"agent\": \"task_agent\", \"objective\": \"add task to renew passport with deadline in 6 months\"}}\n</tool_call>",
+        "seed": 20260906,
+        "tool_name": "task_agent",
+        "valid_delegate_call": false,
+        "valid_json_call": true,
+        "wall_ms": 3036.8,
+        "wrong_tool_name": true
+      },
+      "order": [
+        "CHAT",
+        "RAW"
+      ],
+      "pair_id": 5,
+      "seed": 20260906
+    },
+    {
+      "CHAT": {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 38,
+        "executed_position": 1,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": 20260907,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3181.9
+      },
+      "RAW": {
+        "closed_tool_call": true,
+        "done_reason": "stop",
+        "endpoint": "RAW",
+        "eval_count": 38,
+        "executed_position": 0,
+        "has_tool_call_tag": true,
+        "malformed_or_truncated": false,
+        "primary": "TOOL_CALL_LIKE",
+        "prompt_eval_count": 550,
+        "response": "<tool_call>\n{\"name\": \"task_agent\", \"arguments\": {\"agent\": \"task_agent\", \"objective\": \"Add a task to renew your passport with the specified deadline.\"}}\n</tool_call>",
+        "seed": 20260907,
+        "tool_name": "task_agent",
+        "valid_delegate_call": false,
+        "valid_json_call": true,
+        "wall_ms": 3136.4,
+        "wrong_tool_name": true
+      },
+      "order": [
+        "RAW",
+        "CHAT"
+      ],
+      "pair_id": 6,
+      "seed": 20260907
+    },
+    {
+      "CHAT": {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 34,
+        "executed_position": 0,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": 20260908,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3019.1
+      },
+      "RAW": {
+        "closed_tool_call": true,
+        "done_reason": "stop",
+        "endpoint": "RAW",
+        "eval_count": 34,
+        "executed_position": 1,
+        "has_tool_call_tag": true,
+        "malformed_or_truncated": false,
+        "primary": "TOOL_CALL_LIKE",
+        "prompt_eval_count": 550,
+        "response": "<tool_call>\n{\"name\": \"task_agent\", \"arguments\": {\"agent\": \"task_agent\", \"objective\": \"add task to renew passport with due date\"}}\n</tool_call>",
+        "seed": 20260908,
+        "tool_name": "task_agent",
+        "valid_delegate_call": false,
+        "valid_json_call": true,
+        "wall_ms": 3075.0,
+        "wrong_tool_name": true
+      },
+      "order": [
+        "CHAT",
+        "RAW"
+      ],
+      "pair_id": 7,
+      "seed": 20260908
+    },
+    {
+      "CHAT": {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 37,
+        "executed_position": 0,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": 20260909,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3070.8
+      },
+      "RAW": {
+        "closed_tool_call": true,
+        "done_reason": "stop",
+        "endpoint": "RAW",
+        "eval_count": 37,
+        "executed_position": 1,
+        "has_tool_call_tag": true,
+        "malformed_or_truncated": false,
+        "primary": "TOOL_CALL_LIKE",
+        "prompt_eval_count": 550,
+        "response": "<tool_call>\n{\"name\": \"task_agent\", \"arguments\": {\"agent\": \"task_agent\", \"objective\": \"add_task('renew passport', '1 year')\"}}\n</tool_call>",
+        "seed": 20260909,
+        "tool_name": "task_agent",
+        "valid_delegate_call": false,
+        "valid_json_call": true,
+        "wall_ms": 3026.7,
+        "wrong_tool_name": true
+      },
+      "order": [
+        "CHAT",
+        "RAW"
+      ],
+      "pair_id": 8,
+      "seed": 20260909
+    },
+    {
+      "CHAT": {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 37,
+        "executed_position": 0,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": 20260910,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3110.7
+      },
+      "RAW": {
+        "closed_tool_call": true,
+        "done_reason": "stop",
+        "endpoint": "RAW",
+        "eval_count": 37,
+        "executed_position": 1,
+        "has_tool_call_tag": true,
+        "malformed_or_truncated": false,
+        "primary": "TOOL_CALL_LIKE",
+        "prompt_eval_count": 550,
+        "response": "<tool_call>\n{\"name\": \"task_agent\", \"arguments\": {\"agent\": \"task_agent\", \"objective\": \"add task to renew passport with deadline in 6 months\"}}\n</tool_call>",
+        "seed": 20260910,
+        "tool_name": "task_agent",
+        "valid_delegate_call": false,
+        "valid_json_call": true,
+        "wall_ms": 3130.6,
+        "wrong_tool_name": true
+      },
+      "order": [
+        "CHAT",
+        "RAW"
+      ],
+      "pair_id": 9,
+      "seed": 20260910
+    },
+    {
+      "CHAT": {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 37,
+        "executed_position": 0,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": 20260911,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3113.4
+      },
+      "RAW": {
+        "closed_tool_call": true,
+        "done_reason": "stop",
+        "endpoint": "RAW",
+        "eval_count": 37,
+        "executed_position": 1,
+        "has_tool_call_tag": true,
+        "malformed_or_truncated": false,
+        "primary": "TOOL_CALL_LIKE",
+        "prompt_eval_count": 550,
+        "response": "<tool_call>\n{\"name\": \"task_agent\", \"arguments\": {\"agent\": \"task_agent\", \"objective\": \"add task to renew passport with deadline in 6 months\"}}\n</tool_call>",
+        "seed": 20260911,
+        "tool_name": "task_agent",
+        "valid_delegate_call": false,
+        "valid_json_call": true,
+        "wall_ms": 3064.1,
+        "wrong_tool_name": true
+      },
+      "order": [
+        "CHAT",
+        "RAW"
+      ],
+      "pair_id": 10,
+      "seed": 20260911
+    },
+    {
+      "CHAT": {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 40,
+        "executed_position": 0,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": 20260912,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3144.6
+      },
+      "RAW": {
+        "closed_tool_call": true,
+        "done_reason": "stop",
+        "endpoint": "RAW",
+        "eval_count": 40,
+        "executed_position": 1,
+        "has_tool_call_tag": true,
+        "malformed_or_truncated": false,
+        "primary": "TOOL_CALL_LIKE",
+        "prompt_eval_count": 550,
+        "response": "<tool_call>\n{\"name\": \"task_agent\", \"arguments\": {\"agent\": \"task_agent\", \"objective\": \"add_task(\\\"renew passport\\\", 24, 'reminder')\"}}\n</tool_call>",
+        "seed": 20260912,
+        "tool_name": "task_agent",
+        "valid_delegate_call": false,
+        "valid_json_call": true,
+        "wall_ms": 3093.8,
+        "wrong_tool_name": true
+      },
+      "order": [
+        "CHAT",
+        "RAW"
+      ],
+      "pair_id": 11,
+      "seed": 20260912
+    },
+    {
+      "CHAT": {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 34,
+        "executed_position": 1,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": 20260913,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3028.5
+      },
+      "RAW": {
+        "closed_tool_call": true,
+        "done_reason": "stop",
+        "endpoint": "RAW",
+        "eval_count": 34,
+        "executed_position": 0,
+        "has_tool_call_tag": true,
+        "malformed_or_truncated": false,
+        "primary": "TOOL_CALL_LIKE",
+        "prompt_eval_count": 550,
+        "response": "<tool_call>\n{\"name\": \"task_agent\", \"arguments\": {\"agent\": \"task_agent\", \"objective\": \"add task to renew passport with due date\"}}\n</tool_call>",
+        "seed": 20260913,
+        "tool_name": "task_agent",
+        "valid_delegate_call": false,
+        "valid_json_call": true,
+        "wall_ms": 3048.4,
+        "wrong_tool_name": true
+      },
+      "order": [
+        "RAW",
+        "CHAT"
+      ],
+      "pair_id": 12,
+      "seed": 20260913
+    },
+    {
+      "CHAT": {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 37,
+        "executed_position": 0,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": 20260914,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3045.6
+      },
+      "RAW": {
+        "closed_tool_call": true,
+        "done_reason": "stop",
+        "endpoint": "RAW",
+        "eval_count": 37,
+        "executed_position": 1,
+        "has_tool_call_tag": true,
+        "malformed_or_truncated": false,
+        "primary": "TOOL_CALL_LIKE",
+        "prompt_eval_count": 550,
+        "response": "<tool_call>\n{\"name\": \"task_agent\", \"arguments\": {\"agent\": \"task_agent\", \"objective\": \"add task to renew passport with deadline in 5 years\"}}\n</tool_call>",
+        "seed": 20260914,
+        "tool_name": "task_agent",
+        "valid_delegate_call": false,
+        "valid_json_call": true,
+        "wall_ms": 3058.4,
+        "wrong_tool_name": true
+      },
+      "order": [
+        "CHAT",
+        "RAW"
+      ],
+      "pair_id": 13,
+      "seed": 20260914
+    },
+    {
+      "CHAT": {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 37,
+        "executed_position": 1,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": 20260915,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3057.6
+      },
+      "RAW": {
+        "closed_tool_call": true,
+        "done_reason": "stop",
+        "endpoint": "RAW",
+        "eval_count": 37,
+        "executed_position": 0,
+        "has_tool_call_tag": true,
+        "malformed_or_truncated": false,
+        "primary": "TOOL_CALL_LIKE",
+        "prompt_eval_count": 550,
+        "response": "<tool_call>\n{\"name\": \"task_agent\", \"arguments\": {\"agent\": \"task_agent\", \"objective\": \"add task to renew passport with deadline in 6 months\"}}\n</tool_call>",
+        "seed": 20260915,
+        "tool_name": "task_agent",
+        "valid_delegate_call": false,
+        "valid_json_call": true,
+        "wall_ms": 3131.9,
+        "wrong_tool_name": true
+      },
+      "order": [
+        "RAW",
+        "CHAT"
+      ],
+      "pair_id": 14,
+      "seed": 20260915
+    },
+    {
+      "CHAT": {
+        "call_any": false,
+        "content": "",
+        "done_reason": "stop",
+        "endpoint": "CHAT",
+        "eval_count": 34,
+        "executed_position": 1,
+        "primary": "EMPTY",
+        "prompt_eval_count": 550,
+        "seed": 20260916,
+        "tool_calls": null,
+        "valid_delegation": false,
+        "wall_ms": 3068.3
+      },
+      "RAW": {
+        "closed_tool_call": true,
+        "done_reason": "stop",
+        "endpoint": "RAW",
+        "eval_count": 34,
+        "executed_position": 0,
+        "has_tool_call_tag": true,
+        "malformed_or_truncated": false,
+        "primary": "TOOL_CALL_LIKE",
+        "prompt_eval_count": 550,
+        "response": "<tool_call>\n{\"name\": \"task_agent\", \"arguments\": {\"agent\": \"task_agent\", \"objective\": \"add task to renew passport with due date\"}}\n</tool_call>",
+        "seed": 20260916,
+        "tool_name": "task_agent",
+        "valid_delegate_call": false,
+        "valid_json_call": true,
+        "wall_ms": 3061.2,
+        "wrong_tool_name": true
+      },
+      "order": [
+        "RAW",
+        "CHAT"
+      ],
+      "pair_id": 15,
+      "seed": 20260916
+    }
+  ],
+  "summary": {
+    "chat_call_any": 0,
+    "chat_eval_counts": [
+      37,
+      34,
+      37,
+      34,
+      37,
+      38,
+      34,
+      37,
+      37,
+      37,
+      40,
+      34,
+      37,
+      37,
+      34
+    ],
+    "raw_classes": {
+      "TOOL_CALL_LIKE": 15
+    },
+    "raw_eval_counts": [
+      37,
+      34,
+      37,
+      34,
+      37,
+      38,
+      34,
+      37,
+      37,
+      37,
+      40,
+      34,
+      37,
+      37,
+      34
+    ],
+    "raw_malformed_or_truncated": 0,
+    "raw_tool_call_like": 15,
+    "raw_valid_delegate_calls": 0,
+    "within_pair_disagreements": 15
+  },
+  "verdict": "COMPLETE -- both gates passed"
+}

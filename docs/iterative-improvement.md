@@ -193,14 +193,27 @@ roster, seed, interleaving, model load order, runner freshness.
 > capability gap.** It has an availability problem that nothing in this
 > repository controls.
 
-**Do not train against this.** Training data drawn from the failing mode would
-teach a model to fix something the model already does correctly in the other
-mode, and the phenomenon that actually varies — whatever selects the mode —
-cannot be represented in a supervised example at all. The 25 GB would buy a
-model shaped around a measurement artefact.
+**ADR-062 then found what the failing mode actually is, and it is not a
+capability gap either.** In the silent regime the 3B emits a clean, closed,
+valid-JSON tool call **15/15** — with the *agent* name in the `name` field
+instead of `delegate`:
 
-**The unblocking experiment is the template layer** (ADR-061's closing section),
-not a training run.
+```json
+{"name": "task_agent", "arguments": {"agent": "task_agent", "objective": "…"}}
+```
+
+Ollama discards it because no such tool was advertised, and the runtime records
+`empty_response`. The model reasons correctly and fills one field of a schema
+**it is shown malformed** — Ollama renders the tools block as a Go struct
+(`<nil>` placeholders and all) rather than JSON.
+
+**Do not train against this.** The 25 GB would be spent teaching a model to work
+around a serialization bug in another program, and would bake that workaround in
+as a capability. The defect is upstream, it is one call to reproduce, and the
+shipped config already routes the Master to the 7B, which is 45/45.
+
+**Nothing in Phases 12–16 is unblocked by this**, and the concrete target they
+were justified by no longer exists in the form it was written.
 
 ### But architecture still comes first
 
