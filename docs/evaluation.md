@@ -148,6 +148,24 @@ everything else, with `interactive: false` so a run cannot block on stdin. The
 broker is still consulted for every call (it is wrapped in a `RecordingBroker`),
 so "was the gate bypassed?" stays answerable.
 
+### The environment cannot configure a run — and that is deliberate
+
+`EvalRunner._settings_for` calls `load_settings(..., use_env=False)`, so **every
+`PAIOS_*` environment variable is ignored inside the harness.** `tests/conftest.py`
+does the same thing for the same reason:
+
+> `use_env=False` so a stray `PAIOS_*` variable in the developer's shell can
+> never change what a test asserts.
+
+A harness silently reconfigurable from a shell variable would make every stored
+result carry an invisible dependency on whoever's shell produced it.
+
+**So: to change what a run measures, change `config/` or the files — not the
+environment.** This is documented here because it is otherwise discoverable only
+by reading the runner, and ADR-060's arm B was published from an experiment that
+tried to configure the harness this way and therefore manipulated nothing
+(ADR-063). **If an arm sets something, assert that the something took effect.**
+
 ## Writing a case
 
 ```yaml

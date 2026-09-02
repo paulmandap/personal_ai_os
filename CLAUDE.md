@@ -178,6 +178,13 @@ it fluently. Only checking the database caught it.
   not the model** (ADR-022). Reach for structure before prompt wording. Every
   failure found so far has been architectural; none would have been fixed by
   training.
+- **Verify that your manipulation actually happened before reporting what it
+  did** (ADR-063). An arm that changes nothing produces a beautifully clean null
+  result and nothing about it looks wrong. ADR-060's arm B tried to configure the
+  eval harness with a `PAIOS_*` variable; the harness ignores the environment
+  **by design**, so the arm was byte-identical to its control and *"H1 rejected"*
+  was published from an experiment that manipulated nothing. **An environment
+  variable cannot configure an eval run** — change config or files.
 - **When an argument names something the user never said, expect a model to
   invent it.**
 - **Models emit every field they are shown, using `null` for the unknown ones.**

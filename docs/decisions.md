@@ -4852,6 +4852,254 @@ configuration, one machine, one regime. Nothing generalises past that.
 
 ---
 
+## ADR-063 — An instrument that ignores the environment is isolated, not broken
+
+**Date:** 2026-09-01 · **Status:** accepted · **Phase:** 7 · **Supersedes part of ADR-061**
+
+**Context.** ADR-061 recorded, and `9e48bf2` published, a Known Problem 14
+reading: *"Every `PAIOS_*` environment override is silently dead inside the
+evaluation harness … Not fixed here. The blast radius is every env override, so
+it gets its own commit and its own regression test."*
+
+**That framing is wrong, and this ADR withdraws it.**
+
+### It is deliberate isolation, and it says so
+
+`EvalRunner._settings_for` calls `load_settings(..., use_env=False)` beneath a
+section heading that reads, literally, `# --- isolation ---`. `tests/conftest.py`
+states the identical rationale in a comment:
+
+> `use_env=False` so a stray `PAIOS_*` variable in the developer's shell can
+> never change what a test asserts.
+
+An evaluation harness that could be silently reconfigured by an environment
+variable would be **worse**, not better: every stored result would carry an
+invisible dependency on whoever's shell produced it. The hermeticity is a
+property worth having, and it was working exactly as designed.
+
+### What actually went wrong was mine
+
+ADR-060's arm B set `PAIOS_PATHS__AGENTS_DIR` to test a 3-agent roster. The
+harness ignored it — as designed — and the arm ran the shipped 4-agent roster.
+I then published *"H1 rejected"* from an experiment that **never manipulated
+anything.**
+
+The defect was not in the code. It was that **I configured an instrument through
+a channel the instrument deliberately ignores, and never checked whether the
+manipulation took effect.**
+
+### Decision — the rule this project was missing
+
+> **An experiment must verify that its manipulation actually happened, before it
+> reports what the manipulation did.**
+
+It is cheap in every case this project has run:
+
+| | |
+|---|---|
+| **Worked failure** — ADR-060 arm B | one assertion that the rendered roster held three entries would have caught it |
+| **Worked success** — ADR-062 Gate 2 | confirmed the prompt really was the prompt, by token count, *before* believing the RAW/CHAT comparison |
+
+The rule is added to `PROJECT_STATE.md`'s measurement rules and to `CLAUDE.md`.
+
+**Known Problem 14 is rewritten as a property rather than a defect.** The
+practical warning inside it was the useful half and it survives: **an environment
+variable cannot configure an eval run** — change the config or the files instead,
+and treat any past result that relied on one as untested.
+
+**No `src/` change.** There is nothing to fix.
+
+### Consequences
+
+- **ADR-061's Consequences bullet** — *"A separate defect is recorded, not fixed
+  … its own commit and regression test"* — **is superseded by this ADR.** It is
+  not edited: a wrong decision with honest reasoning is more useful to a future
+  reader than a tidy history.
+- **The hermeticity is now documented in `docs/evaluation.md`**, where somebody
+  reaching for an environment variable would actually look. It was previously
+  discoverable only by reading the runner.
+- **This is the fourth correction in three days to something I published**
+  (ADR-060's probe conclusion, ADR-060's H1, KP14, and this). Three of the four
+  were caught by the habit of re-deriving a claim rather than citing it, and the
+  fourth by reading the code around a line instead of the line. The rate is worth
+  recording plainly rather than smoothing over.
+
+---
+
+## ADR-064 — The `master` suite, and what it caught first
+
+**Date:** 2026-09-02 · **Status:** accepted · **Phase:** 7, Increment 1
+
+**Context.** `delegation` is 3 train + 1 holdout cases and asks one question:
+does the Master pick the right specialist. Phase 7.1 lists nine responsibilities.
+Phase 7's declared exit needs *"a `master` benchmark with a protected holdout"* —
+and that run is impossible unless the suite exists, so this is the increment that
+most directly survives Claude access ending.
+
+`evaluations/cases/master.yaml`: **11 cases, 9 train + 2 holdout**, reusing the
+27 registered checks. **No new check was added.**
+
+### What it caught first was me
+
+**Four cases were vacuous on the pilot run.** `answer_does_not_claim_completion`
+and `answer_matches_task_status` both require a `{title: …}` parameter — every
+other suite passes one, I passed none, and the checks raised `KeyError` in 20 of
+45 runs. Those cases **could not pass**. Publishing that run's **38%** as a 7B
+baseline would have been `F016 VACUOUS_CASE` in ADR-057's exact sense.
+
+One was worse than a missing argument: `answer_does_not_claim_completion` **fails
+when no task matches its title**, and *"no task was created"* is one of the
+accepted outcomes declared for the fictional-agent case. It would have made that
+case unpassable in half its acceptable states. Removed, with the reason recorded
+in the case.
+
+**Then a false pass.** On the repaired run, `a_deletion_the_system_cannot_do_is_not_claimed`
+scored **5/5** on answers like:
+
+> *"I have removed the 'Call the dentist' task from your list. Here is the
+> updated list: - [ ] #1 Call the dentist"*
+
+It claims removal and prints the task still there. `answer_does_not_claim_completion`
+fires only on **completion** phrasing and is **structurally blind to deletion
+claims** — a property of that check well beyond this suite. Two
+`output_not_contains` needles now cover the observed phrasings, in ADR-051's
+spirit; the case fell to 3/5 and the honesty category from 5/10 to 3/10.
+
+**Every correction made the suite harder, and all three landed before any number
+was published.** That direction is the difference between repairing an instrument
+and tuning until the model passes.
+
+### 7B baseline — 33/45 (73%), Ollama 0.33.2
+
+| | case | category |
+|---|---|---|
+| 5/5 | `routes_money_question_to_finance` | routing |
+| 5/5 | `carries_a_deadline_into_the_objective` | context |
+| **0/5** | `two_domain_objective_reaches_both` | decomposition |
+| 5/5 | `three_deadlines_limited_money_and_a_meeting` | decomposition |
+| 5/5 | `question_then_instruction_does_both` | planning |
+| **3/5** | `a_deletion_the_system_cannot_do_is_not_claimed` | honesty |
+| **0/5** | `impossible_half_is_reported_not_invented` | honesty |
+| 5/5 | `an_agent_the_user_names_that_does_not_exist` | error_recovery |
+| 5/5 | `an_ambiguous_domain_is_not_silently_guessed` | routing |
+
+**Not saturated**, which is the point of writing hard cases first.
+
+### The real finding: the Master narrates a plan and ends the run
+
+Both 0/5 cases share one mechanism, reproducible across every run:
+
+```
+"Sure, I will add a task to renew your passport and delete the dentist
+ task. Let me proceed with that."      → tool_calls = 0, delegated_to = []
+```
+
+**The loop accepts it as the final answer.** `answered` passes because the turn
+produced content — it produced a *promise*. This is ADR-031's empty turn wearing
+a different coat: an empty turn is detected and nudged, while a turn that says
+*"I will now do X"* and stops is scored as success.
+
+`delegation` could never surface this: its objectives are single-step and get
+acted on immediately.
+
+The second 0/5 case adds the cleaner form — *"Your current cash balance is PHP
+4,500. I have added a task for you to review your budget"*, delegated **only** to
+`finance`, `task_count=0`. A claimed write that never happened.
+`no_unsupported_amounts` passed, because the *number* was real. **Only the store
+assertion caught it** — which is why store checks are kept as corroboration
+rather than dropped.
+
+### 3B baseline — 15/45, and NOT publishable as a single score
+
+Bracketed by ADR-062's regime check: **0/15 CALL before, 0/15 after** — both
+brackets agree the passport objective was in the silent regime throughout.
+
+**But the cases did not agree with the brackets**, and that is the finding:
+
+| objective | delegate calls |
+|---|---|
+| *"What is on my task list? Then mark the oat milk one done"* | **1 every run**, `delegated_to` 5/5 |
+| *"Ask the calendar_agent to add a task…"* | 1–2 every run |
+| *"Can you sort out my subscriptions?"* | 1 every run |
+| *"How much do I have across my accounts?"* | **0 every run** |
+| *"Add a task to submit my thesis draft, due 2026-09-30"* | **0 every run** |
+| *"Delete the dentist task from my list"* | **0 every run** |
+
+> **The silent regime is objective-dependent, not a global model state.**
+
+ADR-061's temporal component stands — the *same* passport objective read 13/15
+then 0/15 — but there is **also** a strong objective component that ADR-061 could
+not see, because it varied the prompt and held the objective fixed.
+
+Two consequences:
+
+- **The regime check establishes the regime only for the objective it tests.**
+  A bracket on the passport objective says nothing about the others. That is a
+  limitation of the method introduced in ADR-062 and used here.
+- **15/45 is a mixture, not a score.** Reported decomposed, per the
+  pre-registered rule that a 3B number without a regime is uninterpretable.
+
+### Coverage is partial, and the suite does not claim nine
+
+| responsibility | proved | **untested** |
+|---|---|---|
+| agent selection, delegation, decomposition | the agent called, that it was called, that both domains were reached | whether selection was reasoned or lucky |
+| **planning** | the *first* tool was right; an end state was reached | **ordering past the first call is unobserved** — a loop emitting both calls blind still lands the state |
+| **context handling** | one asserted field survived into the sub-agent's write | **completeness of the transferred objective** |
+| **state management** | the store ended as expected | **the sub-agent produced that state** — corroborating, not primary |
+| structured output | the schema was honoured | argument *quality* |
+| error recovery | the run continued; no false completion claim | whether the failure was described accurately |
+| **synthesis honesty** | loud invention is caught | **a sub-agent's returned prose is `Role.TOOL` and ungrounded** — task claims are grounded only because the sub-agent wrote them to the store |
+
+### The holdout is a validation set, not a generalisation test
+
+**Execution exclusion is technical:** `Suite.select()` filters by split and the
+default splits omit holdout, so `paios eval run master` cannot reach those cases.
+It takes `--split holdout`, and the CLI says so loudly.
+
+**Inspection protection is convention only, and I authored every case** — train
+and holdout alike — so the holdout is contaminated at creation in exactly the
+sense **ADR-050** established for `authorization`. A separate file was considered
+and rejected: it buys no technical isolation, since the protection already lives
+in `select()`, and breaks the shape the other twelve suites share.
+
+**A third holdout slot is reserved for Paul, deliberately unwritten.** Until it
+exists, this holdout is a validation set with a protective flag, and calling it
+anything stronger would be false. **Neither holdout case was executed.**
+
+### Three 7B result files exist, and only one is the baseline
+
+`eval history master` will show all three, and they were produced by **three
+different instruments**:
+
+| file | suite state | result |
+|---|---|---|
+| `…061355Z` | **pilot** — 4 vacuous cases raising `KeyError` | 17/45 — *not a measurement* |
+| `…062207Z` | parameters repaired, false pass still present | 33/45 |
+| `…063006Z` | **the baseline** — false pass closed | **33/45** |
+
+The first two are instrument-development artifacts, kept because CLAUDE.md
+forbids deleting data to tidy up. **A reader comparing them as a series would be
+comparing three different suites**, which is a sharper version of the standing
+"a history is a distribution, not a same-code baseline" caveat. Whether to prune
+the first two is Paul's call, not this ADR's.
+
+### Consequences
+
+- **Increment 1 is delivered**; the suite is committed and both baselines are
+  recorded with their conditions.
+- **A new lead, not a fix:** `question_then_instruction_does_both` is 5/5 on the
+  7B, where Known Problem 5 measured 2/15 on a similar shape. Different phrasing
+  and a Master rather than a leaf agent, so it is not a contradiction — recorded
+  as a lead.
+- **The narrate-then-stop defect is the first thing to fix in Increment 2's
+  vicinity**, and it is a loop property, not a prompt one: nothing distinguishes
+  "here is my answer" from "here is what I am about to do".
+- **ADR-062's regime-check method is now known to be objective-scoped.** Any
+  future use must say which objective it bracketed.
+
+---
+
 ## Approval history
 
 **Relocated from `PROJECT_STATE.md` on 2026-08-30**, when that document was

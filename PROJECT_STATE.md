@@ -410,6 +410,21 @@ compare is **two same-day arms**, not a stored baseline.
    moved cases were afterwards *proved* unreachable by the change under test.
    Deciding reachability first would have saved more time than any hardware
    upgrade. A change to `complete_task`'s refusal cannot reach a `finance` case.
+8. **Verify that your manipulation actually happened, before reporting what it
+   did.** ADR-063. **An arm that changes nothing produces a beautifully clean
+   null result, and nothing about it looks wrong.**
+
+   ADR-060's arm B set `PAIOS_PATHS__AGENTS_DIR` to test a 3-agent roster. The
+   harness ignores the environment **by design** (ADR-063), so the arm ran the
+   shipped 4-agent roster and was byte-identical to arm A — and *"H1 rejected"*
+   was published from an experiment that never manipulated anything. One
+   assertion that the rendered roster held three entries would have caught it.
+
+   ADR-062 is the same rule succeeding: Gate 2 confirmed the prompt really was
+   the prompt **before** the RAW/CHAT comparison was believed.
+
+   The check is nearly free, and it belongs in the instrument rather than the
+   write-up.
 
 ---
 
@@ -603,25 +618,46 @@ compare is **two same-day arms**, not a stored baseline.
    `strip_html` is what would fix that.
 
 
-14. **Every `PAIOS_*` environment override is silently dead inside the evaluation
-   harness.** `EvalRunner._build_runtime_settings` hardcodes `paths.agents_dir`
-   to `repo_root/agents` **and** calls `load_settings(..., use_env=False)`, which
-   never merges `env_overrides()`.
+14. ~~**Every `PAIOS_*` environment override is silently dead inside the
+   evaluation harness** — a defect needing its own commit and regression test.~~
+   **WITHDRAWN 2026-09-01 as a defect — ADR-063. It is deliberate isolation.**
 
-   Found on 2026-09-01 because it had already produced a wrong published result:
-   ADR-060's arm B set `PAIOS_PATHS__AGENTS_DIR` to test a 3-agent roster, the
-   variable was ignored twice over, and the arm ran the shipped 4-agent roster.
-   **"H1 rejected" was published from an experiment that never manipulated
-   anything** — corrected in ADR-061.
+   `EvalRunner._settings_for` calls `load_settings(..., use_env=False)` under a
+   section headed `# --- isolation ---`, and `tests/conftest.py` gives the same
+   rationale: *"so a stray `PAIOS_*` variable in the developer's shell can never
+   change what a test asserts."* A harness silently reconfigurable from a shell
+   variable would be worse, not better.
 
-   **Not fixed here.** The blast radius is every env override, not just this one,
-   so it gets its own commit and its own regression test. Until then: **an
-   environment variable cannot configure an eval run.** Change the config or the
-   files instead, and treat any past result that relied on one as untested.
-15. **The 3B Master is bimodal and the mode is not controllable** — ADR-061. A
-   `delegation` score is a reading of a *mode*, not of the model, so two runs on
-   the same commit can differ completely. Any cross-day comparison must say which
-   mode it caught, and a single arm cannot establish it.
+   **The property is real and worth knowing: an environment variable cannot
+   configure an eval run.** Change the config or the files instead, and treat any
+   past result that relied on one as untested.
+
+   **What actually failed was the experiment, not the harness.** ADR-060's arm B
+   configured an instrument through a channel it deliberately ignores and never
+   checked the manipulation landed — see the new measurement rule 8.
+15. **The 3B Master's silent mode is both temporal AND objective-dependent** —
+   ADR-061, refined by ADR-064. A `delegation` score reads a *mode*, not the
+   model, so two runs on the same commit can differ completely.
+
+   **ADR-064 found the objective half.** In one session with the regime check
+   reading 0/15 silent before and after, the 3B still emitted a `delegate` call
+   on **every** run of *"What is on my task list? Then mark the oat milk one
+   done"* — and **zero** on every run of *"How much do I have across my
+   accounts?"*, *"Add a task to submit my thesis draft"* and *"Delete the dentist
+   task"*.
+
+   **Consequence for method:** a regime check establishes the regime **only for
+   the objective it tests**. ADR-062's bracket used the passport objective and
+   says nothing about the others. Any future use must name its objective.
+16. **The 7B Master narrates a plan and ends the run without acting** — ADR-064.
+   *"Sure, I will add a task to renew your passport and delete the dentist task.
+   Let me proceed with that."* → `tool_calls = 0`, `delegated_to = []`, and the
+   loop scores it `answered` because the turn produced content.
+
+   ADR-031's empty turn is detected and nudged; a turn that promises future
+   action is not. Reproducible at **0/5** on two `master` cases. **A loop
+   property, not a prompt one** — nothing distinguishes "here is my answer" from
+   "here is what I am about to do".
 
 **Closed, with the ADR that closed each.** Kept as one line because the reasoning
 — including the wrong turns — is in `docs/decisions.md`, and a closed problem
@@ -690,9 +726,21 @@ the scope; the increments are listed there.
 the silent turn is a well-formed tool call carrying the wrong `name`, discarded
 by Ollama because the name was never advertised.**
 
-**The single next task is to decide what, if anything, to do about it.** That is
-a decision, not an experiment, and the options are narrow because **the defect is
-Ollama's**:
+**Increment 1 is DONE — ADR-064.** The `master` suite exists (11 cases), with a
+7B baseline of **33/45** and a 3B block that is a **mixture, not a score**. It
+caught four vacuous cases and one false pass of mine before publishing anything,
+and found two real defects now recorded as Known Problems 15 and 16.
+
+**Next: Increment 2, persistent Master state (7.6)** — schema v3 `plans` /
+`plan_steps`, a `MasterPlan` type, `paios run master --resume`. Known Problem 16
+(narrate-then-stop) sits next to it and is a **loop** property, so it wants its
+own pre-registered experiment rather than being folded in.
+
+**Also open, and Paul's:** the ADR-062 follow-up decision below, and the reserved
+`master` holdout case.
+
+**The ADR-062 decision — a decision, not an experiment**, and the options are
+narrow because **the defect is Ollama's**:
 
 1. **Nothing.** Route `master` to the 7B, which is already the shipped config and
    is 45/45. Record and move on. **This is the honest default.**
@@ -834,6 +882,8 @@ no cloud provider) overrides everything.
 | **060** | *(negative result)* The roster did not break the 3B Master, and it was never a code regression — **two claims superseded by ADR-061** |
 | **061** | *(negative result)* The bisection is valid, and it does not reproduce — the 3B Master is bimodal |
 | **062** | The silent turn is a discarded tool call, and the tool block is malformed |
+| **063** | An instrument that ignores the environment is isolated, not broken — verify your manipulation |
+| **064** | The `master` suite, and what it caught first — including four vacuous cases of mine |
 
 ---
 
@@ -885,7 +935,10 @@ description, which is where ADR-034 concluded such a reminder belongs.
 **Re-derived 2026-08-30. Re-derive again rather than trusting these.**
 
 - **945 tests**: 929 unit (offline, sockets blocked), 16 integration (live)
-- **12 benchmark suites, 66 cases, 10 holdout** · 27 checks · 16 failure codes.
+- **13 benchmark suites, 77 cases, 12 holdout** · 27 checks · 16 failure codes.
+  `master` is the newest: 11 cases, 9 train + 2 holdout, **a third holdout slot
+  reserved for Paul and deliberately unwritten** (ADR-064, ADR-050 precedent).
+  Until he writes it, that holdout is a validation set with a protective flag.
   `research_html` is the newest: 6 cases, **no holdout** -- one authored today
   by whoever wrote the stripper would carry the same contamination.
   `research_safety` is the newest: 5 cases, **no holdout** — it is one day old and
