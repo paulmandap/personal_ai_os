@@ -102,23 +102,48 @@ tokens. **The loss is inside Ollama's chat template, upstream of this codebase.
 The adapter is clean.** Detector finding **#9**, and the first in the model layer
 rather than in a check.
 
-### The 3B Master is at 1/45, and it is NOT a code regression — ADR-060
+### The 3B Master is BIMODAL, and nothing here selects the mode — ADR-061
 
-Three pre-registered arms, 135 runs, same code and same day: **3B shipped 1/45 ·
-3B on the pre-Phase-6 3-agent roster 0/45 · 7B shipped 45/45 (its best ever).**
-The roster hypothesis was **rejected on its own pre-declared condition**.
+**This supersedes what ADR-060 said, including two claims that were wrong.**
 
-A direct probe then reproduced it with **no harness, no runtime, no agent loop**:
-under the Master's system prompt the 3B emits `content:''` and no tool call;
-under a *trivial* prompt, the same model and schema emit a **valid `delegate`
-call**; with no tools advertised it writes `delegate {"task": ...}` in prose,
-inventing argument names. **The Master's own system prompt suppresses the
-parseable call**, the 7B goes empty under the trivial prompt too, and because it
-reproduces outside the codebase it was never a repository regression.
+The pre-registered bisection ran with 7B controls at **15/15 opening and
+closing** (floor 13). On the 3B it found:
 
-**Open:** which part of `MASTER_SYSTEM_PROMPT` does it. The bisection is written
-and **unrun** (~10 GPU-minutes). Also unexplained: why the 3B held 5/5 for ten
-runs and does not now. Not claimed as known.
+| arm | CALL | arm | CALL |
+|---|---|---|---|
+| `FULL` (shipped prompt) | **13/15** | `ONLY_1` | 15/15 |
+| `FULL_UNSEEDED` | **15/15** | `ONLY_5` | **0/15** |
+| `HEAD_ONLY` | **0/15** | `STRUCT_4` | 9/15 |
+| `MINUS_1` | **1/15** | `ROSTER_3` / `ROSTER_1` | 15/15 |
+
+**The shipped Master prompt does not suppress the 3B's tool calling** — 13/15,
+and 15/15 unseeded, every one a valid delegation. Bullet 1 (*"Decide which agent
+should handle the request…"*) is **necessary and sufficient**; bullet 5's *"no
+further tool calls"* suppresses **alone** but is dominated when bullet 1 is
+present; **the roster is not the cause** — and that is the first time the roster
+was actually manipulated.
+
+**Then it stopped reproducing.** An hour later the identical payload returns
+**0/15**, and `delegation` independently reproduced **0/45**. Eliminated by
+measurement: prompt bytes (the harness's real outgoing request was intercepted
+and is **byte-identical** to the probe's), the rendered roster, the seed,
+interleaving, model load order, runner freshness, and finally the bisection's own
+code path.
+
+> **The 3B has a mode in which it delegates and a mode in which it does not, and
+> identical inputs do not determine which. Nothing in this repository selects
+> it.** The prompt contrasts hold *within the calling mode only*; the silent
+> mode is what `delegation` has been scoring.
+
+**The calling mode was seen in ONE window** — n=1 at the window level, recorded
+as an observation, not a property. **This plausibly explains the history**: 5/5
+for ten runs then 0/45 is the same bimodality across days, not a regression.
+
+**`reason` still must not move to `small`** — on better grounds: not "the 3B
+cannot delegate" but "its delegation is not reliably available".
+
+**Open, and named:** the template layer (ADR-061's closing section). Best run
+while the system sits in the failing mode, which it currently does.
 
 **A standing claim needs qualifying.** *"Adding an agent is a new `agents/*.yaml`
 and nothing else"* is true of the **registry** and false of the **Master's
@@ -136,9 +161,17 @@ and commits cite these numbers.
 ## Current Phase
 
 **Phase 7 — Local Master. Increment 0 is PARTLY DONE as of 2026-09-01.** Scope,
-exit condition and increments are at the top of this document. The instrument is
-shipped (ADR-059) and the first hypothesis is rejected (ADR-060); **the prompt
-bisection that would name the mechanism is written and unrun.** Start there.
+exit condition and increments are at the top of this document.
+
+The instrument is shipped (ADR-059) and the bisection has now **run** (ADR-061).
+It was valid on its own pre-declared terms and **does not reproduce**: the 3B
+turns out to be bimodal, and nothing in this repository selects the mode. **No
+mechanism is named, deliberately** — the pre-registered inconclusive protocol
+forbids a prompt-wording search, and ADR-035/053/054 are three recorded failures
+of that reflex.
+
+**Start with the template-layer experiment** (ADR-061's closing section). It is
+best run while the system sits in the failing mode.
 
 ### Phase 6 — Integrations, COMPLETE (retained for context)
 
@@ -535,6 +568,26 @@ compare is **two same-day arms**, not a stored baseline.
    `strip_html` is what would fix that.
 
 
+14. **Every `PAIOS_*` environment override is silently dead inside the evaluation
+   harness.** `EvalRunner._build_runtime_settings` hardcodes `paths.agents_dir`
+   to `repo_root/agents` **and** calls `load_settings(..., use_env=False)`, which
+   never merges `env_overrides()`.
+
+   Found on 2026-09-01 because it had already produced a wrong published result:
+   ADR-060's arm B set `PAIOS_PATHS__AGENTS_DIR` to test a 3-agent roster, the
+   variable was ignored twice over, and the arm ran the shipped 4-agent roster.
+   **"H1 rejected" was published from an experiment that never manipulated
+   anything** — corrected in ADR-061.
+
+   **Not fixed here.** The blast radius is every env override, not just this one,
+   so it gets its own commit and its own regression test. Until then: **an
+   environment variable cannot configure an eval run.** Change the config or the
+   files instead, and treat any past result that relied on one as untested.
+15. **The 3B Master is bimodal and the mode is not controllable** — ADR-061. A
+   `delegation` score is a reading of a *mode*, not of the model, so two runs on
+   the same commit can differ completely. Any cross-day comparison must say which
+   mode it caught, and a single arm cannot establish it.
+
 **Closed, with the ADR that closed each.** Kept as one line because the reasoning
 — including the wrong turns — is in `docs/decisions.md`, and a closed problem
 re-read as current is how this document went stale three times.
@@ -597,24 +650,26 @@ something else entirely (ADR-058). Cite these by name, not by number.
 2026-09-01 and are at the top of this document.** Paul's full 7.1–7.12 plan is
 the scope; the increments are listed there.
 
-**The single next task is the ADR-060 bisection.** It is written, tested and
-unrun:
+~~The single next task is the ADR-060 bisection.~~ **Run 2026-09-01 — ADR-061.**
+Valid on its own terms, and it **does not reproduce**. The 3B is bimodal and
+nothing here selects the mode. **No mechanism was named, deliberately.**
 
-```powershell
-& .\.venv\Scripts\python.exe evaluations\mechanisms\adr060_bisect_master_prompt.py
-```
+**The single next task is now the template-layer experiment.** ADR-059 localised
+the loss to inside Ollama's chat template — `content: ""` with no `tool_calls`
+key while 15–28 tokens were evaluated. Compare `/api/chat` against
+`/api/generate` with the Qwen2.5 template applied by hand, and see whether the
+silent turns contain a `<tool_call>` block the template consumes.
 
-~260 calls, ~10 GPU-minutes, nothing else may hold VRAM. It answers *which part
-of `MASTER_SYSTEM_PROMPT` stops the 3B emitting a parseable tool call* — the one
-thing standing between here and a Master worth measuring.
+**Run it while the system is in the failing mode**, which it currently is. Its
+own design and its own pre-registration, in the shape ADR-061 used:
+deterministic arm construction, thresholds and control-failure rules fixed
+before execution, one stage, no rewording.
 
-**Read the arms, never a total**, and remember `TEXT` is not recovery: a Master
-that describes a delegation has not delegated. The classifier's controls
-(`test_adr060_bisect_master_prompt.py`) pin exactly that distinction.
+`adr060_bisect_master_prompt.py` stays as it is — a working instrument, and the
+one that would detect the calling mode returning.
 
-**Do not fix anything in the same commit that finds it**, and when the fix comes
-it is a design question about the prompt *surface*, not the prompt *wording* —
-ADR-035, ADR-053 and ADR-054 are three recorded failures of that reflex.
+**Do not fix anything in the same commit that finds it**, and no prompt-wording
+search — ADR-035, ADR-053 and ADR-054 are three recorded failures of that reflex.
 
 Still true and unchanged: **training is disk-blocked** (~22 GB needed, **11.2 GB
 free**), and `docs/iterative-improvement.md`'s Phases 10–11 need none of it —
@@ -732,7 +787,8 @@ no cloud provider) overrides everything.
 | **057** | A safety number on HTML measures the extractor or the model, never both |
 | **058** | Phase 6 closes, and a phase declares its exit before it starts |
 | **059** | An empty turn must be able to say what the model actually returned |
-| **060** | *(negative result)* The roster did not break the 3B Master, and it was never a code regression |
+| **060** | *(negative result)* The roster did not break the 3B Master, and it was never a code regression — **two claims superseded by ADR-061** |
+| **061** | *(negative result)* The bisection is valid, and it does not reproduce — the 3B Master is bimodal |
 
 ---
 

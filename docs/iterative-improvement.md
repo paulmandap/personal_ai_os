@@ -180,12 +180,27 @@ is nearly twice as fast there.
 Master* — and it is exactly the kind of narrow, well-specified gap distillation
 suits, with a number to improve and a holdout to verify it on.
 
-**But it is not yet established as a gap that training should close.** ADR-060
-showed the same 3B emitting a valid `delegate` call under a trivial system prompt
-and none under the Master's, with no harness involved. **Training a model to
-overcome a prompt surface would be the most expensive available fix for it**, and
-would bake the defect in as a capability. The bisection that separates the two is
-~10 GPU-minutes and is unrun. **Run it before spending 25 GB.**
+**It is NOT established as a gap that training should close, and ADR-061 makes
+that much stronger than a caution.**
+
+The bisection ran. Under the **shipped Master prompt** the 3B emitted valid
+delegations in **13 of 15** runs — **15 of 15** unseeded. An hour later the
+identical payload returned **0/15**, and no candidate survived elimination:
+prompt bytes (verified byte-identical to the harness's real outgoing request),
+roster, seed, interleaving, model load order, runner freshness.
+
+> **A model that emits 15/15 valid delegations in one mode does not have a
+> capability gap.** It has an availability problem that nothing in this
+> repository controls.
+
+**Do not train against this.** Training data drawn from the failing mode would
+teach a model to fix something the model already does correctly in the other
+mode, and the phenomenon that actually varies — whatever selects the mode —
+cannot be represented in a supervised example at all. The 25 GB would buy a
+model shaped around a measurement artefact.
+
+**The unblocking experiment is the template layer** (ADR-061's closing section),
+not a training run.
 
 ### But architecture still comes first
 

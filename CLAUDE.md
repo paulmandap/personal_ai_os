@@ -208,15 +208,18 @@ down because after 2026-09-07 there is no conversation to remember them.
   Skipped in Phase 5 because it would have had zero implementations and zero
   callers. Shape recorded in `docs/iterative-improvement.md`.
 - ~~**Structural fix for the 3B delegation gap** before any training.~~
-  ~~**Attempted and unresolved.**~~ **REOPENED 2026-09-01 — "try structure
-  first" was discharged against a mechanism that turns out to have been
-  misdescribed.** ADR-031's second turn was aimed at a model that "produced
-  nothing"; ADR-059 measured that all 83 such runs produced 25–79 tokens, which
-  the runtime discarded. ADR-060 then reproduced the failure **with no agent loop
-  present** — and it disappears when the Master's system prompt is swapped for a
-  trivial one. **The structure that was never tried is the Master's own
-  tool-calling prompt surface.** Do not treat this as a capability gap, and do
-  not train against it, until the ADR-060 bisection has run.
+  **CLOSED 2026-09-01 — there is no established gap to fix (ADR-061).** ADR-031's
+  second turn was aimed at a model that "produced nothing"; ADR-059 measured that
+  all 83 such runs produced 25–79 tokens the runtime discarded. The bisection then
+  found the 3B emitting **13/15 valid delegations under the shipped Master
+  prompt** — 15/15 unseeded — and, an hour later, **0/15 on a byte-identical
+  payload**, with prompt, roster, seed, interleaving, load order and runner state
+  all eliminated by measurement.
+
+  **The 3B is bimodal and nothing in this repository selects the mode.** Do not
+  treat this as a capability gap and **do not train against it** — a model that
+  delegates 15/15 in one mode has an availability problem, not a missing skill.
+  The next experiment is the template layer, not a training run.
 
 ## Money
 

@@ -4570,6 +4570,152 @@ baseline (ADR-044).
 
 ---
 
+## ADR-061 — *(negative result)* The bisection is valid, and it does not reproduce
+
+**Date:** 2026-09-01 · **Status:** accepted · **Phase:** 7
+
+**Context.** ADR-060 left one question open: which part of `MASTER_SYSTEM_PROMPT`
+stops the 3B emitting a parseable tool call. This is that experiment. It was
+pre-registered in `evaluations/mechanisms/adr060-prediction.md` — arms,
+thresholds, both control-failure rules, the decision table and an
+inconclusive-result protocol — all fixed before the first call.
+
+**It produced a clean result, and then refused to reproduce an hour later.**
+That non-reproduction is the finding, and it is worth more than the result was.
+
+### The run was valid on its own pre-declared terms
+
+7B `FULL` control **15/15** opening and **15/15** closing, against a floor of
+13/15 derived from the 55/55 historical distribution by rule of three. The
+closing control brackets the 3B block, so drift *during* it would have been
+caught rather than assumed absent.
+
+### What it measured — 3B, n=15 per arm, arms interleaved
+
+| arm | CALL | arm | CALL |
+|---|---|---|---|
+| `FULL` (shipped) | **13/15** | `ONLY_1` | 15/15 |
+| `FULL_UNSEEDED` | **15/15** | `ONLY_2` | 14/15 |
+| `HEAD_ONLY` | **0/15** | `ONLY_3` | 15/15 |
+| `TRIVIAL` | 10/15 | `ONLY_4` | 14/15 |
+| `MINUS_1` | **1/15** | `ONLY_5` | **0/15** |
+| `MINUS_2` | 15/15 | `STRUCT_4` | 9/15 |
+| `MINUS_3` | 15/15 | `ROSTER_3` | 15/15 |
+| `MINUS_4` | 12/15 | `ROSTER_1` | 15/15 |
+| `MINUS_5` | 15/15 | | |
+
+**The first line already refutes ADR-060.** `FULL` is the shipped Master prompt,
+verified byte-identical to what the runtime sends, and the 3B called the tool in
+13 of 15 runs — 15 of 15 unseeded, every one a valid delegation to a real agent.
+
+Three contrasts are internally controlled, because arms were **interleaved
+round-robin with shuffled order**: any temporal drift hits every arm equally, and
+it plainly did not — some arms read 15/15 while others read 0/15 in the same
+window.
+
+- **Bullet 1 is necessary and sufficient.** `ONLY_1` 15/15, `MINUS_1` 1/15,
+  `HEAD_ONLY` 0/15. *"Decide which agent should handle the request…"* is what
+  makes the 3B reach for the tool at all.
+- **Bullet 5 suppresses alone and is dominated in company.** `ONLY_5` 0/15 —
+  *"reply to the user directly with no further tool calls"* — yet `FULL`, which
+  contains it, is 13/15.
+- **The roster is not the cause.** `ROSTER_3` and `ROSTER_1` both 15/15. This is
+  the first time that hypothesis was actually manipulated (see erratum 2).
+
+### Then it stopped reproducing, and nothing explains it
+
+An hour later, the identical payload returns **0/15**. Each candidate eliminated
+by measurement, not argument:
+
+| candidate | how it was ruled out |
+|---|---|
+| prompt bytes | the harness's **real outgoing request was intercepted** and compared field by field with the probe's: keys, both messages, tool schema, options — **identical** |
+| the roster string | rendered `_roster()` matches the hardcoded roster exactly |
+| the seed | `FULL_UNSEEDED` worked then and fails now |
+| interleaving | repeated · interleaved · repeated again — 0/15 each |
+| model load order | force a 7B load, then the 3B — 0/15 |
+| runner state | `ollama stop`, fresh load — 0/15 |
+| my probe differing from the script | re-ran **the bisection's own `ask()`** — 0/15 |
+
+`delegation` on the 3B independently reproduced **0/45** on the same code at
+12:03. The failing mode is stable; the calling mode is what will not come back.
+
+### The finding
+
+> **The 3B has a mode in which it emits valid delegations under the shipped
+> Master prompt, and a mode in which it emits none regardless of prompt.
+> Identical inputs do not determine which. Nothing in this repository selects
+> it.**
+
+The prompt contrasts above are valid **within the calling mode only**. In the
+silent mode every arm reads 0 and no contrast exists to measure — and the silent
+mode is what `delegation` has been scoring.
+
+**Stated plainly: the calling mode was observed in one window.** That is n=1 at
+the window level, and n=1 is precisely what this ADR exists to correct. It is
+recorded as an observation, not as a property.
+
+**What it does explain.** The `delegation` history — `routes_task_work_to_task_agent`
+at 5/5 for ten consecutive runs, then 0/15 — is the same bimodality across days.
+That is consistent with ADR-060's "not a code regression", now on sounder
+footing: no repository change was ever needed to produce either reading.
+
+### Two errata against ADR-060, which is superseded rather than rewritten
+
+**1. Its probe conclusion is refuted.** ADR-060 concluded *"the Master's own
+system prompt suppresses the parseable call"* from **a single unseeded draw**.
+At a true rate near 13/15, drawing one EMPTY has roughly a 13% chance. Measured
+at n=15, the claim is false. The ADR that recorded it also contains the rule
+against inferring a mechanism from one convenient example.
+
+**2. Its "H1 rejected" was unsupported when written.**
+`EvalRunner._build_runtime_settings` hardcodes `agents_dir` and calls
+`load_settings(..., use_env=False)`, so ADR-060's arm B never manipulated the
+roster — it ran the shipped 4-agent roster and was byte-identical to arm A. The
+roster is now genuinely tested, at the prompt level, and is **not** the cause.
+Right conclusion; the reasoning underneath it has been replaced.
+
+### Decision
+
+**Record; change nothing.** No prompt edit, no behaviour change, no fix in this
+commit. Per the pre-registered inconclusive protocol: the observed pattern
+matches no row in the decision table — there is no row for `FULL` RESTORED,
+because that outcome was never anticipated — so **no mechanism is named** and no
+prompt-wording search follows. ADR-035, ADR-053 and ADR-054 are three recorded
+failures of that reflex.
+
+**`reason` still must not move to `small`.** That holds on stronger grounds than
+before: not "the 3B cannot delegate", but "the 3B's delegation is not reliably
+available, and nothing here controls it".
+
+### Consequences
+
+- **Do not train against this.** A model that already emits 15/15 valid
+  delegations in one mode does not have a capability gap. Training would be
+  aimed at a phenomenon the training data cannot represent.
+- **`delegation` scores are readings of a mode, not of a model.** Any future
+  comparison across days must say which mode it caught, and a single arm cannot
+  establish it.
+- **The interleaved, shuffled design is what saved the result.** Under the block
+  design first drafted for this experiment, this instability would have been
+  indistinguishable from an arm effect and a mechanism would have been reported.
+  The randomisation was added on review, not by instinct.
+- **A separate defect is recorded, not fixed:** every `PAIOS_*` environment
+  override is silently dead inside the evaluation harness. Wider blast radius
+  than this ADR; its own commit and regression test.
+
+### The next experiment, named and not run
+
+**The template layer.** ADR-059 localised the loss to inside Ollama's chat
+template — `content: ""` with no `tool_calls` key while 15–28 tokens were
+evaluated. Comparing `/api/chat` against `/api/generate` with the Qwen2.5
+template applied by hand would show whether the silent turns contain a
+`<tool_call>` block that the template consumes. **Best run while the system sits
+in the failing mode**, which it currently does. Its own design and its own
+pre-registration.
+
+---
+
 ## Approval history
 
 **Relocated from `PROJECT_STATE.md` on 2026-08-30**, when that document was
