@@ -242,8 +242,15 @@ class Runtime:
         # over-reporting is safe under at-least-once and under-reporting is not.
         step_id: int | None = None
         if plan_id is not None:
+            # `depth` here is the depth of the agent about to run -- the same
+            # value stamped on `delegate.start` above, so the store and the
+            # trace cannot disagree about the shape of the run (schema v4).
             step_id = self.plans.begin_step(
-                plan_id, run_id=trace.run_id, agent=name, objective=objective
+                plan_id,
+                run_id=trace.run_id,
+                agent=name,
+                objective=objective,
+                depth=depth,
             ).id
 
         agent = self.create_agent(

@@ -46,8 +46,8 @@ Paul's 7.12 checklist, scored honestly against what exists today:
 | Local Master runs through Ollama · Claude not required · sub-agents local · no cloud dependency | ✅ already true |
 | Master can delegate | ⚠️ **7B 45/45; 3B 1/45** (ADR-060) |
 | Model routing works | ⚠️ router exists (ADR-009); `large` unmapped; the Master ignores complexity |
-| **State persists** | ❌ **not built** — `paios.db` is schema v2, nothing stores a plan |
-| Agent hierarchy works | ⚠️ `max_delegation_depth: 2` exists, unexercised |
+| **State persists** | ✅ **schema v3 plans (ADR-065); v4 records delegation depth (ADR-068)** |
+| Agent hierarchy works | ⚠️ **proved OFFLINE, unexercised by the model (ADR-069)** — a real depth-2 chain runs and both guards fire on the production path; the 7B Master delegated to the coordinator **0 times in 65 runs**, and the coordinator was withdrawn |
 | Permissions propagate | ⚠️ **tool scope proved (ADR-066); authority is inherited, not narrowed — measured and pinned** |
 | Recovery works | ⚠️ turn-level only (ADR-031) |
 | Evaluation passes | ⚠️ `delegation` is 3 train + 1 holdout — not a Master benchmark |
@@ -59,8 +59,41 @@ Paul's 7.12 checklist, scored honestly against what exists today:
 | **0** | Restore the Master · *blocking* | **partly done** — ADR-059 instrument shipped, ADR-060 rejected the roster hypothesis; the prompt bisection is **unrun** |
 | **1** | The Master benchmark (7.1) — nine responsibilities, adversarial cases written first, holdout drawn at creation | not started |
 | **2** | Persistent Master state (7.6) — schema v3 `plans`/`plan_steps`, `--resume` | not started |
-| **3** | Coordination, hierarchy, permission inheritance (7.7/7.8/7.9) | not started |
+| **3** | Coordination, hierarchy, permission inheritance (7.7/7.8/7.9) | **done** — 3a ADR-066, 3b ADR-067/068/069 |
 | **4** | Local independence test (7.10) — **the exit** | not started |
+
+### Increment 3b's finding outranks Increment 3b — ADR-069
+
+**Adding a sixth agent to the Master's roster drove the 7B into the silent
+regime**, and the effect reversed when the manifest was removed:
+
+| arm | roster | time | `empty_response` | overall |
+|---|---|---|---|---|
+| A | 5 agents | 06:21 | 1/55 (1.8%) | 43/55 (78%) |
+| **B** | **6 agents** | 09:13 | **15/65 (23%)** | 34/65 (52%) |
+| **A′** | 5 agents | **09:22** | **0/65 (0%)** | 49/65 (75%) |
+| B′ traced | 6 agents | 09:37 | — | 36/65 (55%) |
+
+**A′ ran nine minutes after B and was the cleanest of all four.** Under an
+ADR-061 temporal regime the latest run should be the worst; it was the best. The
+outcome alternates with the manifest, not the clock. Prompt bytes verified per
+arm before any number was read: 4 entries / sha `bf217ddd…` vs 5 entries / sha
+`655e9e77…`.
+
+**The mechanism is ADR-062's, on the 7B for the first time.** 50 captured
+`model.empty_payload` events: **50 of 50 carry no `tool_calls` key**, `eval_count`
+**30–56**, never zero. The model generated tokens on every one of those turns and
+Ollama returned an empty message. ADR-062's *"the 7B reads the same block and is
+45/45"* is **superseded** — the 7B does it too, given a longer roster.
+
+**Consequence for practice: adding any agent is now a measured risk, not a free
+manifest drop.** See Known Problem 19.
+
+**The coordinator itself was fine — 5/5.** Invoked directly, bypassing the
+Master, `week_planner` reached both its specialists on every run. The domain-agent
+pattern, the manifest and the one-YAML-no-Python claim all hold. **What failed is
+the Master's layer**, so the agent is parked pending a fix to Known Problem 19
+rather than pending a rewrite of itself.
 
 **Health & Wellness stays deferred.** Paul's 7.8 describes the pattern on H&W;
 he confirmed on 2026-09-01 that the hierarchy is to be proved on an existing
@@ -170,9 +203,12 @@ that does not exist, discards it, and surfaces neither the call nor the text.
 **Why the name is wrong — the rendered tools block is not JSON.** It is a Go
 struct printed with `%v` (`<nil>` placeholders, `[agent objective]` as a slice)
 where the template promises a function signature, so the tool's name is
-*inferable* rather than stated. Consistent with, not proven to be, the cause —
-the 7B reads the same block and is 45/45. **This is Ollama's defect; nothing here
-renders that block.**
+*inferable* rather than stated. Consistent with, not proven to be, the cause.
+~~the 7B reads the same block and is 45/45.~~ **That clause is SUPERSEDED by
+ADR-069: the 7B does it too, given a six-agent roster — 15/65 empty turns, all
+carrying 30–56 generated tokens and no `tool_calls` key.** The 7B was not immune;
+it had a shorter roster. **This is Ollama's defect; nothing here renders that
+block.**
 
 **Establishes:** the silent turn arises **after** generation. **Does not
 establish** parser loss outright — endpoint-specific generation differences are
@@ -659,8 +695,10 @@ compare is **two same-day arms**, not a stored baseline.
    property, not a prompt one** — nothing distinguishes "here is my answer" from
    "here is what I am about to do".
 17. **`master::three_deadlines_limited_money_and_a_meeting` is a wide case.**
-   Four readings on the 7B: **2/5, 5/5, 5/5, 2/5** — the first taken before
-   ADR-065's code existed. It asks an open-ended objective (*"help me organize
+   Seven readings on the 7B: **2, 3, 5, 2, 4, 0, 2** of 5 — the first taken
+   before ADR-065's code existed. *(This entry previously recorded the series as
+   "2/5, 5/5, 5/5, 2/5"; the stored history says 2, 3, 5, 2. Corrected
+   2026-09-03 against `eval history`, not against memory.)* It asks an open-ended objective (*"help me organize
    everything"*) to reach **both** agents, the strictest demand in the suite and
    the least determined by the request.
 
@@ -685,6 +723,34 @@ compare is **two same-day arms**, not a stored baseline.
    objectives the Master rephrased, and that predicate already escalates ~10 of
    40 legitimate writes. **A separate pre-registered experiment**, which must
    measure the false-refusal cost on delegated writes before it is believed.
+
+19. **The 7B Master's reliability degrades with roster size — ADR-069, and this
+   is the most consequential open problem in Phase 7.** A sixth agent took
+   `empty_response` from **1/55 (1.8%) to 15/65 (23%)** and the suite from 78% to
+   52%. Removing the manifest restored it (**0/65 empty**, 75%) nine minutes
+   later, so it is not temporal drift.
+
+   **Mechanism, captured rather than inferred:** 50 `model.empty_payload` events,
+   **50 of 50 with no `tool_calls` key**, `eval_count` **30–56 and never zero**.
+   The model generates tokens; Ollama returns an empty message. Identical to
+   ADR-059's 3B signature, and ADR-062 identified what it is — a well-formed tool
+   call whose `name` was never advertised, parsed and discarded.
+
+   **What this changes in practice.** *"Adding an agent is a new `agents/*.yaml`
+   and nothing else"* is now false in a third way: not merely a Master prompt
+   change (ADR-062) and a conformance-test change, but a **measured behavioural
+   risk**. Any new manifest owes the A/B, and the cost is no longer hypothetical.
+
+   **Not established:** that roster *length* is the active ingredient rather than
+   this description's wording or content, and that the discarded calls carry
+   agent names on the 7B. `/api/chat` cannot show a discarded call — ADR-062
+   needed `/api/generate raw:true`. **Confirming the `name` field on the 7B is
+   the highest-value unrun experiment in Phase 7**, and `adr062_template_layer.py`
+   re-runs that comparison in one command.
+
+   **Do not attack this with prompt wording.** ADR-035, ADR-053 and ADR-054 are
+   three recorded failures of that reflex, and the defect is upstream of the
+   prompt.
 
 **Closed, with the ADR that closed each.** Kept as one line because the reasoning
 — including the wrong turns — is in `docs/decisions.md`, and a closed problem
@@ -782,8 +848,27 @@ escalates ~10 of 40 legitimate writes (ADR-050: one refused 0/10 on both models)
 **A separate pre-registered experiment**, which must measure its false-refusal
 cost before it is believed.
 
-**Next in Increment 3: 7.7 coordination and 7.8 hierarchy** — both measurable on
-the `master` suite, and neither carries a security boundary.
+**Increment 3b is DONE — ADR-067, ADR-068, ADR-069.**
+
+- **7.7 (ADR-067) is a NEGATIVE result.** `delegated_objective_contains` reads the
+  objective string `delegate.start` has carried since ADR-016 and that nothing had
+  ever read — so ADR-064's "completeness of the transferred objective" was
+  *untestable*, not untested. Measured: the 7B copies both an ISO date and a
+  proper noun into the delegated objective, **10 of 10**. Nothing was fixed
+  because nothing was broken, and both cases are now **saturated**.
+- **7.8 (ADR-069) is built, proved offline, and NOT SHIPPED.** The runtime
+  supports the depth-2 chain and both guards fire on the production path
+  (`tests/unit/test_hierarchy.py`). The coordinator works when invoked directly
+  (**5/5**). But the Master delegated to it **0 times in 65 runs**, and putting it
+  in the roster tripled the 7B's silent-turn rate — so a rule declared before the
+  run withdrew it.
+- **Schema v4 (ADR-068)** records delegation depth, so the plan store stops
+  describing a tree as a list. `resume_objective` is byte-identical, pinned.
+
+**The next experiment is named and unrun: confirm the discarded call's `name`
+field on the 7B** (Known Problem 19). `adr062_template_layer.py` re-runs that
+comparison in one command, and it is now the highest-value experiment in Phase 7 —
+it decides whether the roster ceiling is fixable here or is purely Ollama's.
 
 **Also open, and Paul's:** the ADR-062 follow-up decision below, the reserved
 `master` holdout case, and Known Problem 16 (narrate-then-stop) — a **loop**
@@ -937,6 +1022,9 @@ no cloud provider) overrides everything.
 | **064** | The `master` suite, and what it caught first — including four vacuous cases of mine |
 | **065** | A plan is what the runtime observed, not what the model said — schema v3, at-least-once |
 | **066** | Delegation carries tool scope, and it carries authority too — 7.9 split into a property and a limitation |
+| **067** | The untested property was untestable, and it turns out to hold — a missing reader, not a missing observable |
+| **068** | A flat list cannot describe a tree — schema v4 `plan_steps.depth`, and why `DEFAULT 1` is a proof |
+| **069** | *(negative result)* The hierarchy works, the Master would not use it, and the roster is why — **supersedes ADR-062's "the 7B is 45/45"** |
 
 ---
 
@@ -987,11 +1075,15 @@ description, which is where ADR-034 concluded such a reminder belongs.
 
 **Re-derived 2026-08-30. Re-derive again rather than trusting these.**
 
-- **945 tests**: 929 unit (offline, sockets blocked), 16 integration (live)
-- **13 benchmark suites, 77 cases, 12 holdout** · 27 checks · 16 failure codes.
-  `master` is the newest: 11 cases, 9 train + 2 holdout, **a third holdout slot
-  reserved for Paul and deliberately unwritten** (ADR-064, ADR-050 precedent).
-  Until he writes it, that holdout is a validation set with a protective flag.
+- **1058 tests**: 1042 unit (offline, sockets blocked), 16 integration (live)
+  *(re-derived 2026-09-03)*
+- **13 benchmark suites, 80 cases, 12 holdout** · **29 checks** · 16 failure codes.
+  `master` is the newest: **14 cases, 12 train + 2 holdout**, **a third holdout
+  slot reserved for Paul and deliberately unwritten** (ADR-064, ADR-050
+  precedent). Until he writes it, that holdout is a validation set with a
+  protective flag. Increment 3b added three train cases and withdrew a fourth
+  with the coordinator (ADR-069); the withdrawn one is parked in
+  `evaluations/mechanisms/adr069-rejected/`.
   `research_html` is the newest: 6 cases, **no holdout** -- one authored today
   by whoever wrote the stripper would carry the same contamination.
   `research_safety` is the newest: 5 cases, **no holdout** — it is one day old and
@@ -1002,7 +1094,7 @@ description, which is where ADR-034 concluded such a reminder belongs.
   `evaluations/results/` must exclude them.
 - **3 runtime dependencies** (`pydantic`, `httpx`, `pyyaml`) — unchanged by the
   transport: `httpx` was already there for local inference
-- ADRs 001–060 recorded in `docs/decisions.md`
+- ADRs 001–069 recorded in `docs/decisions.md`
 - `stash@{0}` holds ADR-039's reverted action-ledger. Paul's to keep or drop;
   ADR-039 records the code's shape either way, so dropping it loses nothing.
 - **Commit hashes are deliberately not listed** — that list went stale three

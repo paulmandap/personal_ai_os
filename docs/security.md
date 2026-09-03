@@ -288,7 +288,35 @@ Stated plainly so nobody inherits a false sense of coverage.
   legitimate writes and refused one 0/10 on both models (ADR-050). The fix is a
   separate pre-registered experiment that must measure its false-refusal cost
   before it is believed.
-- **Anything after 2 hops.** Untested; no multi-hop tool chain exists yet.
+- **Anything after 2 hops.** ~~Untested; no multi-hop tool chain exists yet.~~
+  **ADR-069 built such a chain, measured it, and withdrew it — so the clause is
+  true again, but now for a reason rather than by default.** `week_planner` was a
+  domain agent holding `delegate`, making `master -> week_planner -> specialist`
+  real: a depth-2 agent's objective is written by the **coordinator**, one further
+  remove from the user than ADR-066 measured. It is not in `agents/` today
+  (parked in `evaluations/mechanisms/adr069-rejected/`), and
+  `tests/unit/test_hierarchy.py` still exercises the shape offline.
+
+  **The analysis below is retained because the next coordinator inherits it.**
+
+  **This lengthens the recorded limitation; it does not create a new class of
+  one.** ADR-066 already established that authorization tracks the calling
+  agent's string rather than the user's, and the exploit path it named (page ->
+  sub-agent output -> Master -> objective) is the same shape with one fewer hop.
+
+  **What bounded it while it existed:** `week_planner`'s specialists were
+  `task_agent` and `finance`, both of which read only the user's own store.
+  `research` — the only agent that can see content the user did not write — was
+  not among them, so no untrusted-content channel reached the coordinator.
+
+  **What does NOT bound it is the specialist list itself.** That list lives in
+  `week_planner`'s prompt and nothing enforces it (ADR-069, claim C), so a
+  coordinator that named `research` would put fetched page text one hop above a
+  write-authorizing objective. Recorded as a consequence of leaving claim C
+  unimplemented, and as the concrete cost that a structural `delegates_to:`
+  would buy — which is the strongest argument yet for that follow-up.
+
+  Still untested: three or more hops, which the depth guard refuses outright.
 
 ## Answer-level fidelity — the last gate item, now closed
 

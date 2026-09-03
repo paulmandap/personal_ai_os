@@ -213,6 +213,196 @@ class TestTraceChecks:
         assert not outcome("delegated_to", c, value="finance").passed
 
 
+class TestDelegatedBy:
+    """Verified before the hierarchy case is allowed to report anything.
+
+    The claim this check makes is stronger than any other in the suite -- that a
+    particular SHAPE of run occurred -- so the fixtures below include the exact
+    trace `delegated_to` cannot tell apart from a hierarchy.
+    """
+
+    def _delegation(self, parent: str, child: str, depth: int):
+        return event(
+            Events.DELEGATE_START,
+            parent_agent=parent,
+            child_agent=child,
+            depth=depth,
+            objective="work",
+        )
+
+    def _hierarchy(self):
+        return ctx(
+            events=[
+                self._delegation("master", "week_planner", 1),
+                self._delegation("week_planner", "task_agent", 2),
+                self._delegation("week_planner", "finance", 2),
+            ]
+        )
+
+    def _flat(self):
+        return ctx(
+            events=[
+                self._delegation("master", "task_agent", 1),
+                self._delegation("master", "finance", 1),
+            ]
+        )
+
+    def test_a_nested_delegation_passes(self):
+        c = self._hierarchy()
+        assert outcome("delegated_by", c, parent="master", child="week_planner").passed
+        assert outcome(
+            "delegated_by", c, parent="week_planner", child="finance"
+        ).passed
+
+    def test_the_flat_run_delegated_to_cannot_tell_apart_fails_here(self):
+        """The reason this check exists, stated as a test.
+
+        Both fixtures reach `finance`, so `delegated_to=finance` passes on each.
+        Only `delegated_by` separates them -- and it must, in both directions.
+        """
+        flat, nested = self._flat(), self._hierarchy()
+        assert outcome("delegated_to", flat, value="finance").passed
+        assert outcome("delegated_to", nested, value="finance").passed
+
+        assert not outcome(
+            "delegated_by", flat, parent="week_planner", child="finance"
+        ).passed
+        assert not outcome(
+            "delegated_by", nested, parent="master", child="finance"
+        ).passed
+
+    def test_it_asserts_a_direct_route_when_the_parent_is_the_master(self):
+        """How the selective-routing case uses it: hierarchy is not mandatory."""
+        assert outcome(
+            "delegated_by", self._flat(), parent="master", child="task_agent"
+        ).passed
+
+    def test_the_pair_must_match_on_both_halves(self):
+        c = self._hierarchy()
+        assert not outcome(
+            "delegated_by", c, parent="master", child="finance"
+        ).passed
+        assert not outcome(
+            "delegated_by", c, parent="finance", child="week_planner"
+        ).passed
+
+    def test_no_delegation_at_all_fails(self):
+        assert not outcome(
+            "delegated_by", ctx(), parent="master", child="task_agent"
+        ).passed
+
+    def test_the_detail_names_every_edge_seen(self):
+        got = outcome(
+            "delegated_by", self._hierarchy(), parent="master", child="finance"
+        )
+        assert "master->week_planner" in got.detail
+        assert "week_planner->finance" in got.detail
+
+    def test_a_missing_parameter_names_itself_in_the_detail(self):
+        got = outcome("delegated_by", ctx(), parent="master")
+        assert not got.passed
+        assert "KeyError" in got.detail and "child" in got.detail
+
+
+class TestDelegatedObjectiveContains:
+    """The check verified before any case is allowed to report a number.
+
+    ADR-064's four vacuous cases all passed review and could not fail; the habit
+    that catches that is proving a new check can go BOTH ways on fixtures, and
+    that its failures are told apart from each other.
+    """
+
+    def _delegation(self, child: str, objective: str):
+        return event(
+            Events.DELEGATE_START,
+            parent_agent="master",
+            child_agent=child,
+            depth=1,
+            objective=objective,
+        )
+
+    def test_a_detail_that_survived_passes(self):
+        c = ctx(
+            events=[
+                self._delegation(
+                    "task_agent", "Add a task to renew the passport by 2026-10-15."
+                )
+            ]
+        )
+        assert outcome(
+            "delegated_objective_contains", c, agent="task_agent", value="2026-10-15"
+        ).passed
+
+    def test_a_detail_that_was_dropped_fails(self):
+        """The whole point: the delegation happened and the detail did not."""
+        c = ctx(events=[self._delegation("task_agent", "Add a passport task.")])
+        got = outcome(
+            "delegated_objective_contains", c, agent="task_agent", value="2026-10-15"
+        )
+        assert not got.passed
+        assert "looking for" in got.detail
+
+    def test_matching_is_case_insensitive(self):
+        c = ctx(events=[self._delegation("task_agent", "Book the ROBINSONS branch.")])
+        assert outcome(
+            "delegated_objective_contains", c, agent="task_agent", value="Robinsons"
+        ).passed
+
+    def test_it_reads_only_the_named_agent(self):
+        """A detail present in another agent's objective is not a pass here."""
+        c = ctx(
+            events=[
+                self._delegation("finance", "Balance as of 2026-10-15."),
+                self._delegation("task_agent", "Add a passport task."),
+            ]
+        )
+        assert not outcome(
+            "delegated_objective_contains", c, agent="task_agent", value="2026-10-15"
+        ).passed
+
+    def test_any_of_several_objectives_to_that_agent_may_carry_it(self):
+        c = ctx(
+            events=[
+                self._delegation("task_agent", "List the tasks."),
+                self._delegation("task_agent", "Add one due 2026-10-15."),
+            ]
+        )
+        assert outcome(
+            "delegated_objective_contains", c, agent="task_agent", value="2026-10-15"
+        ).passed
+
+    def test_no_delegation_at_all_fails_distinguishably(self):
+        """A routing failure must not be reported as a context failure.
+
+        Same verdict, different detail -- and the detail is what a reader uses to
+        decide whether the Master picked the wrong agent or picked the right one
+        and told it too little.
+        """
+        got = outcome(
+            "delegated_objective_contains", ctx(), agent="task_agent", value="anything"
+        )
+        assert not got.passed
+        assert "never delegated to" in got.detail
+
+    def test_a_missing_parameter_names_itself_in_the_detail(self):
+        """The vacuous-case tripwire, pinned.
+
+        `run_check` turns a raising check into a failing one, so a case with a
+        mistyped parameter reads 0/N and looks like a model defect. It is only
+        distinguishable because the detail carries the KeyError -- so that is
+        asserted here rather than assumed.
+        """
+        got = outcome("delegated_objective_contains", ctx(), value="x")
+        assert not got.passed
+        assert "KeyError" in got.detail and "agent" in got.detail
+
+    def test_it_reports_a_context_failure(self):
+        got = outcome(
+            "delegated_objective_contains", ctx(), agent="task_agent", value="x"
+        )
+        assert got.failure is Failure.CONTEXT_FAILURE
+
+
 class TestSystemVsModelCompromise:
     """ADR-037: two verdicts, because the broker now stands between them.
 

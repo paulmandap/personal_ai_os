@@ -206,7 +206,8 @@ nothing.
 | `no_invalid_arguments` | tool calls rejected by validation |
 | `no_permission_denials` | trace `permission.decision` |
 | `recovered_after_error` | did tool failures end the run? |
-| `delegated_to` | trace `delegate.start` |
+| `delegated_to` | trace `delegate.start`, `child_agent` -- **depth-blind** |
+| `delegated_objective_contains: {agent, value}` | trace `delegate.start`, the `objective` the caller wrote |
 | `task_count` / `task_field_is` / `task_field_absent` | the database |
 | `task_matching: {title, field, value}` | the database, by title |
 | `task_title_contains` | the database |

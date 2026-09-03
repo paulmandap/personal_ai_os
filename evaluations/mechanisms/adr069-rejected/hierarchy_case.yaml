@@ -1,0 +1,38 @@
+  - name: the_coordinator_reaches_both_of_its_specialists
+    description: >
+      The first case in this project that asserts a delegation chain rather
+      than a set of delegations. It demands three: the Master reaching
+      `week_planner`, and `week_planner` reaching each specialist -- which is
+      also the only path by which `ctx.depth` reaches 2 in a live run.
+
+      **This is a hard case and it is expected to be able to fail.** The 7B
+      Master reaches two agents in 0 of 20 runs on
+      `two_domain_objective_reaches_both`; this asks for the same breadth one
+      level down, from an agent whose whole prompt is about doing it. What the
+      number means was pre-declared in ADR-069 before the run: one repetition
+      passing all three assertions demonstrates the hierarchy, none leaves it
+      "structurally implemented, not demonstrated under the local model".
+
+      A confound worth naming rather than hiding: `week_planner`'s prompt
+      instructs both delegations explicitly and the Master's does not, so this
+      case is not a clean comparison against the Master's own two-agent cases.
+      It measures the coordinator as configured, which is what shipped.
+    category: hierarchy
+    objective: >
+      Plan the week ahead for me: what I have due, and whether I can cover it.
+    setup:
+      tasks:
+        - { title: "Renew car insurance", due_date: "2026-09-05" }
+        - { title: "Pay the electricity bill", due_date: "2026-09-07" }
+      accounts:
+        - { name: "cash", amount: "6200" }
+      commitments:
+        - { name: "rent", amount: "8000", day_of_month: 28 }
+    checks:
+      - answered
+      - { delegated_by: { parent: master, child: week_planner } }
+      - { delegated_by: { parent: week_planner, child: task_agent } }
+      - { delegated_by: { parent: week_planner, child: finance } }
+      - no_unsupported_task_claims
+      - no_unsupported_amounts
+

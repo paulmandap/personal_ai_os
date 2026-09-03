@@ -25,7 +25,9 @@ agents, a personal finance domain, JSONL run tracing, an evaluation harness,
 and a CLI.
 
 Five agents: `master` (delegates), `task_agent`, `finance`, `research`, and
-`ping`.
+`ping`. A sixth — a domain agent delegating one level further down — was built,
+proved offline, and **withdrawn on measurement**: it made the local Master
+measurably worse (ADR-069).
 
 Measured, not assumed — seven evaluation suites, five runs each, both models:
 

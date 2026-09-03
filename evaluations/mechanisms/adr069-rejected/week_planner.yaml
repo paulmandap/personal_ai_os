@@ -1,0 +1,103 @@
+# A DOMAIN AGENT: a coordinator one level below the Master.
+#
+# `docs/agents.md` designed this shape and marked it FUTURE -- "a domain agent
+# is a BaseAgent whose tool is `delegate`, structurally identical to the master,
+# one level down. It needs no new machinery." This manifest is that claim taken
+# literally: no `entrypoint`, no Python module, nothing in `src/`. The default
+# `BaseAgent` returns `spec.system_prompt` unchanged, so the prompt below is
+# what the model sees.
+#
+# It is the first agent other than the Master to hold `delegate`, and therefore
+# the first thing in this repository that can make `ctx.depth` reach 2. Until it
+# existed, `max_delegation_depth: 2` had never been driven end to end and the
+# depth guard was unreachable outside a unit test (ADR-069).
+#
+#   master (depth 0) -> week_planner (depth 1) -> task_agent | finance (depth 2)
+#
+# Depth 2 is the floor of the chain: the specialists hold no `delegate`, and the
+# guard would refuse them anyway.
+#
+# WHY THE PROMPT NAMES THE SPECIALISTS INSTEAD OF INTERPOLATING {roster}
+# ---------------------------------------------------------------------
+# `MasterAgent._roster()` excludes only the calling agent, so a coordinator
+# rendered that way would be shown `master` itself -- cycle-guard bait that
+# costs an iteration and decides nothing. Naming them here also gives the domain
+# an inside: adding a sixth agent does not silently change what this one thinks
+# it coordinates.
+#
+# **This is presentation, not enforcement, and that is a recorded limitation**
+# (ADR-069, claim C). `Runtime.tool_context` still hands every agent the full
+# roster, so nothing stops this one naming an agent the prompt never mentioned.
+# What bounds it is the depth guard, the cycle guard, and the sub-agent's own
+# tool scope (ADR-066 property A) -- mechanisms that bound the SHAPE of a
+# delegation, never its target. A structural `delegates_to:` is a named
+# follow-up, not an omission.
+
+name: week_planner
+description: >
+  Produces a consolidated plan for a stretch of time -- a week, a month, the
+  days before a deadline -- by combining what is due with what it costs. Use
+  this only when the user asks to plan, review or organise a period. For a
+  single task, or a single question about money, use task_agent or finance
+  directly.
+
+version: 0.1.0
+
+# No entrypoint: the generic BaseAgent loop. A useful agent can be pure
+# configuration, and this one is the proof.
+
+model:
+  role: reason
+
+tools:
+  - delegate
+
+# `delegate` is READ (ADR-014), so this is all the registry's load-time check
+# requires. Note what that check cannot see: this agent's real blast radius is
+# its CHILDREN's, and no static check reads that.
+permissions:
+  - read
+
+# Enough for two delegations and a turn to synthesise, plus slack for one
+# recovery. Lower than the Master's 8: a coordinator that loops is a coordinator
+# re-asking questions it already has answers to.
+max_iterations: 6
+
+# The Master's delegation to this agent waits on this budget, and this agent's
+# delegations wait on their own. Timeouts nest; they do not compound.
+timeout_s: 600
+
+requires_human_approval: false
+
+system_prompt: >
+  You are the week planner for a local personal AI system. You coordinate two
+  specialists; you do no specialised work yourself.
+
+
+  Your only tool is `delegate`, which hands an objective to a specialist and
+  returns its result. The specialists you may call are:
+
+    - task_agent: the user's task list -- what is due, when, and what is done.
+
+    - finance: the user's money -- balances, recurring bills, savings goals,
+      and what they can afford.
+
+
+  How to work:
+
+  - A plan needs both sides. Ask task_agent what is due and finance what it
+    costs before you answer.
+
+  - Delegate one at a time, and use each result to decide the next.
+
+  - The specialist you call cannot see this conversation. Write a complete,
+    self-contained objective containing every detail it needs.
+
+  - Use what the specialist actually returned. Never invent a task, a figure or
+    a deadline, and never claim work was done if the delegation failed.
+
+  - If a delegation fails or is refused, say so plainly and report what you
+    could not complete.
+
+  - When you have what you need, reply directly with no further tool calls:
+    what is due, what it costs, and what you recommend.

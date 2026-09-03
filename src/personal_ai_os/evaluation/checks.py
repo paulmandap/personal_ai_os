@@ -514,6 +514,66 @@ def _delegated_to(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
     return _outcome("delegated_to", wanted in children, f"delegated to {children}")
 
 
+@check("delegated_by", Failure.WRONG_TOOL)
+def _delegated_by(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
+    """Did *this* agent delegate to *that* one -- the only check that sees shape.
+
+    `delegated_to` reads `child_agent` and nothing else, so it is **depth-blind**:
+    it passes identically whether the Master called `finance` itself or a
+    coordinator called it two levels down. Every `master` case before Phase 7.8
+    ran on a flat tree, so nothing needed to tell those apart.
+
+    This reads the `parent_agent` that `delegate.start` has always carried, which
+    makes it the only way to assert that a hierarchy actually formed -- and, used
+    with `parent: master`, the only way to assert that one did NOT.
+    """
+    parent = str(p["parent"])
+    child = str(p["child"])
+    pairs = [
+        (str(e.data.get("parent_agent")), str(e.data.get("child_agent")))
+        for e in ctx.of_type(Events.DELEGATE_START)
+    ]
+    return _outcome(
+        "delegated_by",
+        (parent, child) in pairs,
+        f"delegations {[f'{a}->{b}' for a, b in pairs]}",
+    )
+
+
+@check("delegated_objective_contains", Failure.CONTEXT_FAILURE)
+def _delegated_objective_contains(ctx: RunContext, p: dict[str, Any]) -> CheckOutcome:
+    """Did a detail the user gave survive into the objective the sub-agent got?
+
+    The sub-agent cannot see the conversation, so anything it needs exists only
+    because the caller wrote it down. `delegate.start` has carried that string
+    since ADR-016 and nothing read it, which is why ADR-064 had to record
+    "completeness of the transferred objective" as untested -- the observable was
+    there, the reader was not.
+
+    A substring matcher, and it says so: a caller that paraphrases a needle fails
+    this. Cases pick digit strings and proper nouns for that reason.
+    """
+    agent = str(p["agent"])
+    needle = str(p["value"]).lower()
+    objectives = [
+        str(e.data.get("objective", ""))
+        for e in ctx.of_type(Events.DELEGATE_START)
+        if str(e.data.get("child_agent")) == agent
+    ]
+    if not objectives:
+        # Distinguished from "delegated, but dropped the detail". Collapsing the
+        # two would report a routing failure as a context failure.
+        return _outcome(
+            "delegated_objective_contains", False, f"never delegated to {agent!r}"
+        )
+    found = any(needle in objective.lower() for objective in objectives)
+    return _outcome(
+        "delegated_objective_contains",
+        found,
+        f"looking for {needle!r} in {len(objectives)} objective(s) to {agent!r}",
+    )
+
+
 # --- store-level checks ----------------------------------------------------
 #
 # These matter more than they look. For the embellishment question the issue is

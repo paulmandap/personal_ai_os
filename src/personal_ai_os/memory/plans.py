@@ -94,6 +94,11 @@ class PlanStep(BaseModel):
     status: StepStatus = StepStatus.PENDING
     output: str = ""
     error: str | None = None
+    #: Delegation depth: 1 for a top-level agent's own delegation, 2 for one
+    #: made by a sub-agent. `seq` orders the plan depth-first; `depth` is what
+    #: says whether a step is a sibling or a child of the one before it, and
+    #: without it a grandchild reads as a sibling (schema v4).
+    depth: int = 1
     created_at: str = ""
     updated_at: str = ""
 
@@ -200,12 +205,23 @@ class PlanStore:
     # --- steps -------------------------------------------------------------
 
     def begin_step(
-        self, plan_id: int, *, run_id: str, agent: str, objective: str
+        self,
+        plan_id: int,
+        *,
+        run_id: str,
+        agent: str,
+        objective: str,
+        depth: int = 1,
     ) -> PlanStep:
         """Commit the INTENT to delegate. **INV-1: call this before invoking.**
 
         The returned step is `pending`. Its row is committed when this returns,
         which is what makes "no row" mean "never started".
+
+        `depth` is the delegation depth of the agent about to run, taken from the
+        runtime rather than declared -- the same value stamped on the
+        `delegate.start` trace event. It defaults to 1 because that was the only
+        possible depth before Phase 7.8.
         """
         now = utc_iso()
         with self._store.write() as conn:
@@ -218,10 +234,10 @@ class PlanStore:
             cursor = conn.execute(
                 """
                 INSERT INTO plan_steps (plan_id, seq, run_id, agent, objective,
-                                        status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+                                        status, depth, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
                 """,
-                (plan_id, seq, run_id, agent, objective, now, now),
+                (plan_id, seq, run_id, agent, objective, depth, now, now),
             )
             step_id = int(cursor.lastrowid or 0)
         return self.get_step(step_id)

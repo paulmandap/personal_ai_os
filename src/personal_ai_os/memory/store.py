@@ -143,6 +143,28 @@ MIGRATIONS: list[tuple[int, str]] = [
         CREATE INDEX IF NOT EXISTS idx_plan_steps_plan ON plan_steps(plan_id);
         """,
     ),
+    (
+        4,
+        # How deep the delegation that produced this step was.
+        #
+        # v3 shipped before any agent but the Master held `delegate`, so every
+        # step was necessarily depth 1 and a flat `seq` list described the run
+        # exactly. Phase 7.8 puts a coordinator between the Master and the
+        # specialists, and then `seq` alone reads a grandchild as its parent's
+        # sibling -- the store would be describing a shape that did not happen.
+        #
+        # DEFAULT 1 is a PROOF, not a guess. No manifest but `master.yaml`
+        # listed `delegate` before this migration, so no pre-existing row can
+        # have been written at any other depth.
+        #
+        # `seq` still orders the whole plan depth-first, because `begin_step`
+        # commits the intent before the sub-agent runs (INV-1): a parent's row
+        # is created first and finished last. `seq` plus `depth` reconstructs
+        # the tree; neither does alone.
+        """
+        ALTER TABLE plan_steps ADD COLUMN depth INTEGER NOT NULL DEFAULT 1;
+        """,
+    ),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else 0

@@ -25,15 +25,29 @@
 #
 #   planning          nothing observes ordering past the FIRST tool call, so a
 #                     loop that emits both calls blind still lands the state
-#   context handling  a title match can pass while the objective dropped a date
 #   synthesis honesty `no_unsupported_task_claims` grounds on the store and on
 #                     USER turns; a sub-agent's returned prose is `Role.TOOL`
 #                     and ungrounded -- the blindness recorded for `research`
 #   state management  the SUB-AGENT produced that state, not the Master
 #
-# No new check is proposed. Each gap is a limit of observation depth, not a
-# missing observable, and building a check against an unmeasured hypothesis is
-# something this project has already paid for twice.
+# ADR-064 said "No new check is proposed", on the reasoning that each gap was a
+# limit of observation depth rather than a missing observable. **Two of those
+# gaps turned out to be missing READERS, and ADR-067/069 added them:**
+#
+#   context handling  CLOSED. `delegated_objective_contains` reads the objective
+#                     string `delegate.start` has carried since ADR-016. Nothing
+#                     had ever read it -- so "a title match can pass while the
+#                     objective dropped a date" was untestable, not untested.
+#   delegation shape  `delegated_to` is DEPTH-BLIND. `delegated_by` reads the
+#                     `parent_agent` on the same event, which is the only way to
+#                     assert that a hierarchy formed (or that one did not).
+#
+# The caution ADR-064 was expressing still stands and is worth restating: do not
+# add a check against an unmeasured hypothesis. Both of these read fields the
+# trace already emitted, for properties this phase set out to measure.
+#
+# Ordering past the first call remains unobserved, and no check was added for it
+# because no case here needs one.
 #
 # HARD CASES DO NOT AUTO-FAIL
 # ---------------------------
@@ -87,6 +101,62 @@ cases:
       - { delegated_to: task_agent }
       - { task_count: 1 }
       - { task_field_is: { field: due_date, value: "2026-09-30" } }
+
+  - name: the_delegated_objective_carries_two_details
+    description: >
+      The case above proves ONE field reached the store. It cannot see what the
+      Master actually wrote, and it cannot see a detail with no field to land
+      in -- so ADR-064 had to record "completeness of the transferred objective"
+      as untested. `delegated_objective_contains` reads the objective string
+      that `delegate.start` has carried since ADR-016 and nothing read.
+
+      Two needles, both of which the Master must COPY rather than paraphrase:
+      an ISO date, and a proper noun that belongs in no schema field.
+
+      Known limitation, stated rather than engineered around: this is a
+      substring matcher. A Master that writes "October 15" fails a needle it
+      arguably honoured. The needles are a digit string and a brand name for
+      exactly that reason, and a failure here is read with the detail, which
+      says whether the delegation happened at all.
+    category: context
+    objective: >
+      Add a task to renew my passport by 2026-10-15. The appointment has to be
+      at the Robinsons branch.
+    checks:
+      - answered
+      - { delegated_to: task_agent }
+      - { delegated_objective_contains: { agent: task_agent, value: "2026-10-15" } }
+      - { delegated_objective_contains: { agent: task_agent, value: "Robinsons" } }
+      - { task_count: 1 }
+
+  - name: an_amount_survives_into_the_finance_objective
+    description: >
+      The same property against the other specialist, because a check verified
+      on one agent is verified on one agent.
+
+      The amount is written without a thousands separator deliberately: "1,250"
+      would fail a Master that writes "1250", and the case would then be
+      measuring formatting rather than context transfer.
+
+      `account_balance_is` corroborates that the transferred amount was
+      USABLE, not merely present. It is a known confound: a finance-side
+      arithmetic slip (Known Problem 6) would fail this case for a reason that
+      is not context transfer. The per-check detail separates the two, and a
+      failure is reported with that detail rather than as a context failure.
+    category: context
+    objective: >
+      Record that I spent 890 pesos on a bus ticket to Baguio from my cash
+      account.
+    setup:
+      accounts:
+        - { name: "cash", amount: "5000" }
+    checks:
+      - answered
+      - { delegated_to: finance }
+      - { delegated_objective_contains: { agent: finance, value: "890" } }
+      - { delegated_objective_contains: { agent: finance, value: "Baguio" } }
+      - { account_balance_is: { name: cash, value: "4110" } }
+      - no_unsupported_amounts
 
   # --- decomposition ------------------------------------------------------
 
@@ -259,6 +329,47 @@ cases:
       - answered
       - no_unsupported_task_claims
       - no_unsupported_amounts
+
+  # --- hierarchy (Phase 7.8) ----------------------------------------------
+  #
+  # `delegated_to` is DEPTH-BLIND: it reads `child_agent` and nothing else, so
+  # it passes identically whether the Master called `finance` itself or a
+  # coordinator called it a level further down. Every case above ran on a flat
+  # tree and never needed to tell those apart. `delegated_by` reads the
+  # `parent_agent` the same event has always carried, and is the only assertion
+  # in this project that can see the SHAPE of a run.
+  #
+  # These two cases are a matched pair and are meant to be read together: one
+  # says hierarchy must be POSSIBLE, the other says it must not be MANDATORY.
+  # Either alone would reward a Master that routes everything the same way.
+
+  - name: a_single_step_objective_is_routed_directly
+    description: >
+      `delegated_to` is DEPTH-BLIND -- it reads `child_agent` and would pass
+      identically whether the Master called `task_agent` itself or something
+      else called it further down. `delegated_by` reads `parent_agent` on the
+      same event, so this asserts the EDGE rather than the mere fact of a
+      delegation: `master -> task_agent`, and no intermediary.
+
+      **Renamed when the `week_planner` coordinator was withdrawn** (ADR-069).
+      It was written as the mirror of a hierarchy case -- that one failing if
+      hierarchy was impossible, this one if hierarchy became compulsory -- and
+      it scored 5/5 in *both* the six-agent arm and the five-agent control, so
+      it never depended on the coordinator existing. What it now guards is the
+      thing the withdrawal makes most likely to recur: any future agent that
+      quietly interposes itself on ordinary single-step routing fails here, in
+      the suite, rather than only in someone's A/B table.
+
+      The due date is asserted because interposition is not the only cost a
+      routing layer can impose -- a detail dropped while being relayed is the
+      other.
+    category: routing
+    objective: "Add a task to renew my passport, due 2026-10-20."
+    checks:
+      - answered
+      - { delegated_by: { parent: master, child: task_agent } }
+      - { task_count: 1 }
+      - { task_field_is: { field: due_date, value: "2026-10-20" } }
 
   # --- holdout ------------------------------------------------------------
   #

@@ -372,3 +372,74 @@ class TestMigrationIsAdditive:
             assert [t.title for t in tasks] == ["Renew passport"]
             assert tasks[0].notes == "keep me"
             assert reopened.query("SELECT * FROM plans") == []
+
+    def test_a_v3_step_row_reads_as_depth_1_after_the_v4_migration(
+        self, tmp_path: Path
+    ):
+        """v4's `DEFAULT 1` is a proof, not a guess.
+
+        Before Phase 7.8 no manifest but `master.yaml` listed `delegate`, so no
+        step row could have been written at any depth other than 1. The default
+        therefore states a fact about every historical row rather than filling
+        an unknown -- which is why this asserts 1 and not 0.
+        """
+        db = tmp_path / "live.db"
+        with Store(db) as store:
+            plans = PlanStore(store)
+            plan = plans.open(run_id="r1", agent="master", objective="do it")
+            assert plan.id is not None
+            plans.begin_step(
+                plan.id, run_id="r1", agent="task_agent", objective="add a task"
+            )
+
+        with Store(db) as reopened:
+            assert reopened.version >= 4
+            steps = PlanStore(reopened).steps(1)
+            assert [s.depth for s in steps] == [1]
+
+    def test_depth_is_recorded_as_given(self, plans: PlanStore):
+        plan = plans.open(run_id="r", agent="master", objective="o")
+        assert plan.id is not None
+        plans.begin_step(plan.id, run_id="r", agent="week_planner", objective="a", depth=1)
+        plans.begin_step(plan.id, run_id="r", agent="finance", objective="b", depth=2)
+        assert [(s.seq, s.depth) for s in plans.steps(plan.id)] == [(1, 1), (2, 2)]
+
+
+class TestResumeTextIsUnchangedByDepth:
+    """Schema v4 must not reach the one model-facing string in this module.
+
+    `resume_objective` composes the text a resumed run is given. ADR-065 records
+    it as unmeasured by any benchmark, so changing it would be a prompt change on
+    a path no number covers. Recording depth is a store concern; these pin that
+    it stayed one.
+    """
+
+    def test_a_nested_plan_composes_the_same_text_as_a_flat_one(
+        self, plans: PlanStore
+    ):
+        nested = plans.open(run_id="r1", agent="master", objective="plan my week")
+        flat = plans.open(run_id="r2", agent="master", objective="plan my week")
+        assert nested.id is not None and flat.id is not None
+
+        for plan_id, depths in ((nested.id, (1, 2)), (flat.id, (1, 1))):
+            for agent, depth in zip(("week_planner", "finance"), depths):
+                step = plans.begin_step(
+                    plan_id, run_id="r", agent=agent, objective=f"{agent} work",
+                    depth=depth,
+                )
+                assert step.id is not None
+                plans.finish_step(step.id, ok=True, output="ok")
+
+        assert plans.resume_objective(nested.id) == plans.resume_objective(flat.id)
+
+    def test_the_resumed_text_still_carries_no_depth_vocabulary(
+        self, plans: PlanStore
+    ):
+        plan = plans.open(run_id="r", agent="master", objective="plan my week")
+        assert plan.id is not None
+        plans.begin_step(
+            plan.id, run_id="r", agent="finance", objective="check cash", depth=2
+        )
+        text = plans.resume_objective(plan.id)
+        assert "depth" not in text.lower()
+        assert "- finance: check cash" in text

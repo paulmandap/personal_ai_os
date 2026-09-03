@@ -5377,6 +5377,404 @@ change.
 
 ---
 
+## ADR-067 — The untested property was untestable, and it turns out to hold
+
+**Date:** 2026-09-03 · **Status:** accepted · **Phase:** 7, Increment 3b (7.7)
+
+**Context.** ADR-064 listed *"completeness of the transferred objective"* among
+the `master` suite's coverage gaps, in the same section that concluded **"No new
+check is proposed. Each gap is a limit of observation depth, not a missing
+observable."**
+
+Reading the enforcement path for 7.7 showed that sentence was wrong about this
+gap, and wrong in an instructive direction.
+
+### The observable existed. The reader did not.
+
+`Runtime.run_sub_agent` has stamped the delegated **objective** onto every
+`delegate.start` event since ADR-016:
+
+```python
+trace.event(Events.DELEGATE_START, parent_agent=parent, child_agent=name,
+            depth=depth, objective=objective)
+```
+
+`delegated_to` reads `child_agent` and nothing else. **No check in the project
+had ever read `objective`, `parent_agent` or `depth`.** So context transfer was
+not *shallowly* observed — it was **unobservable**, and the distinction matters:
+a limit of observation depth is a reason to accept a gap, while a missing reader
+is a reason to write ten lines.
+
+`delegated_objective_contains: {agent, value}` is those ten lines. It emits
+**F010 `CONTEXT_FAILURE`**, which was declared in `taxonomy.py` and **had no
+emitter in the entire project** — the code named this failure before anything
+could detect it.
+
+### Verified before it was believed, in both directions
+
+ADR-064's four vacuous cases are the reason this is not optional. Eight unit
+tests, and the ones that matter are the negatives:
+
+| | |
+|---|---|
+| the detail survived | passes |
+| **the delegation happened and the detail was dropped** | **fails** |
+| the detail is present in a *different* agent's objective | fails |
+| no delegation to that agent at all | fails, with a **different detail string** |
+| a required parameter is missing | fails, and **the detail names the KeyError** |
+
+The third and fourth are the same verdict with different explanations on
+purpose: a routing failure must not be reported as a context failure. The fifth
+pins the vacuous-case tripwire itself — `run_check` converts a raising check into
+a failing one, so a mistyped parameter reads 0/N and looks like a model defect.
+It is distinguishable *only* because the detail carries the exception, so that is
+asserted rather than assumed.
+
+### The result is negative, and that is the useful kind
+
+Two cases, 7B, both agents, `2026-09-03T06:21:40Z`:
+
+| case | needles | result |
+|---|---|---|
+| `the_delegated_objective_carries_two_details` | ISO date + a proper noun | **5/5** |
+| `an_amount_survives_into_the_finance_objective` | bare amount + a proper noun | **5/5** |
+
+Category `context`: **15/15**. The run details confirm the check was reading real
+objectives (*"looking for 'robinsons' in 1 objective(s) to 'task_agent'"*) rather
+than passing on an empty set.
+
+> **The 7B Master copies details into the delegated objective. The gap ADR-064
+> recorded was a gap in the instrument, not a defect in the agent.**
+
+**And that makes both cases saturated.** `CLAUDE.md`: *"100% across every suite
+means the benchmark is saturated, not that the system is finished."* Ten of ten
+means these two cases cannot currently discriminate, and 15/15 on `context` is
+**not** evidence that context transfer is robust — only that these two needles
+survive on this model. The check's failure path is proved on fixtures and has
+never fired on a live run.
+
+### What was deliberately not added
+
+An ordering check (`delegated_before`). ADR-064's caution is right even though
+its factual claim was wrong: `checks.py` says *"Add a check when a case needs
+one"*, and no case here needs ordering. **Ordering past the first tool call
+remains unobserved**, and the suite header now says so in those words rather than
+repeating the retired "no new check is proposed" sentence.
+
+### Consequences
+
+- **F010 has an emitter for the first time.**
+- `master` grows to 13 cases, 11 train + 2 holdout. Neither holdout case was
+  touched; the third slot remains Paul's.
+- **A `master` suite comment was corrected rather than left to rot.** It asserted
+  no new check was proposed, which stopped being true in this commit.
+- The 7.7 half of Increment 3 rests on a **negative result**. Nothing was fixed
+  because nothing was broken, and the cases stay in the suite as regression
+  cover — worth their runtime only while something could plausibly break them.
+
+---
+
+## ADR-068 — A flat list cannot describe a tree, and `DEFAULT 1` is a proof
+
+**Date:** 2026-09-03 · **Status:** accepted · **Phase:** 7, Increment 3b
+
+**Context.** ADR-065 recorded a plan as `plans` plus a flat, `seq`-ordered
+`plan_steps`. That described every run exactly, for a reason that was true rather
+than lucky: **no manifest but `master.yaml` held `delegate`**, so every step was
+necessarily depth 1 and a list *was* the shape.
+
+Phase 7.8 puts a coordinator between the Master and the specialists. From that
+moment `seq` alone reads a grandchild as its parent's sibling — the store
+describing a shape that did not happen, on the one path (`resume`) that composes
+model-facing text.
+
+**Decision: schema v4 adds `plan_steps.depth`, written from the runtime's own
+value** — the same integer already stamped on `delegate.start`, so the store and
+the trace cannot disagree about the shape of a run.
+
+### `DEFAULT 1` states a fact; it does not fill an unknown
+
+The obvious default is 0, and it would have been wrong. Every pre-existing step
+row was written by the Master's own delegation, because nothing else could
+delegate. **Backfilling to 1 is a proof about every historical row, derived from
+the manifests that shipped, not a guess at data that was never recorded.** A test
+asserts a v3 row reads `depth == 1` after migration, and its docstring carries
+the reasoning so the next reader does not have to reconstruct it.
+
+The migration is a bare `ALTER TABLE ... ADD COLUMN`. ADR-065 described v3 as
+additive in the stronger sense of `CREATE TABLE` only; this one adds a column
+with a constant default, rewrites no data, and is recorded as the weaker claim
+rather than presented as the stronger one.
+
+### `seq` and `depth` are a tree only together
+
+INV-1 commits a parent's intent **before** its child can run and records the
+outcome **after** it returns, so `seq` orders a plan depth-first — parent first,
+finished last. That ordering plus `depth` reconstructs the tree; neither does
+alone. A test pins the property rather than the prose: for a nested plan,
+`parent.seq < child.seq` **and** `parent.updated_at >= child.updated_at`.
+
+### The model-facing string was deliberately not touched
+
+`resume_objective` is the only part of the plan store a model ever reads, and
+ADR-065 recorded it as **covered by no benchmark**. Rendering depth there would
+be a prompt change on an unmeasured path, so v4 changes the **store** and leaves
+that string alone. Two tests pin it: a nested plan composes byte-identical text
+to a flat one, and the composed text contains no depth vocabulary.
+
+`paios plans show` *does* indent by depth — it is human-facing, and a person
+reading a run's structure is exactly who the flattening was misleading.
+
+### Consequences
+
+- **Schema v4.** `paios doctor` reports it; the live database migrated cleanly
+  and its one existing step still renders identically.
+- **Improving the resume text for nested plans is a named follow-up**, not a
+  silent inclusion. It needs a way to measure the resume path first, which
+  ADR-065 already named as unrun.
+- **A plan is still one plan.** `plan_id` threads down unchanged, so a depth-2
+  delegation appends to the top-level plan rather than opening a second one —
+  asserted, because `plans.run_id` is UNIQUE and a per-hop plan would have failed
+  loudly *or*, worse, quietly reshaped what `paios plans` means.
+
+---
+
+## ADR-069 — The hierarchy works, the Master would not use it, and the roster is why
+
+**Date:** 2026-09-03 · **Status:** accepted · **Phase:** 7, Increment 3b (7.8)
+
+**Context.** 7.8 asks for agent hierarchy. `docs/agents.md` had designed the
+shape and marked it *FUTURE*: a domain agent is a `BaseAgent` whose tool is
+`delegate`, structurally identical to the Master one level down. Nothing had ever
+executed it — `master.yaml` was the only manifest holding `delegate`, so
+`ctx.depth` had never exceeded 1 and `max_delegation_depth: 2` was a number the
+code respected and nothing tested.
+
+**Three claims, kept apart from the start**, because a deterministic script
+proving machinery works is the easiest thing in the world to mistake for evidence
+about a model:
+
+| | claim | verdict |
+|---|---|---|
+| **A** | the runtime supports nested delegation and records its depth correctly | **PROVED** — offline, no model involved |
+| **B** | the local 7B actually chose to execute a nested hierarchy | **NOT DEMONSTRATED** — 0 of 65 |
+| **C** | the coordinator is structurally restricted to its named specialists | **NOT IMPLEMENTED, deliberately** |
+
+**A was never allowed to count as evidence for B**, and the separation earned its
+keep: A holds cleanly and B failed completely.
+
+### A — proved, and the guards fire on the production path
+
+`tests/unit/test_hierarchy.py`, 12 tests through the **real** `Runtime`:
+
+- `master -> week_planner -> task_agent` runs end to end, and the leaf really
+  writes the task — a chain that "forms" while nothing happens at the bottom
+  would prove nothing;
+- `call_stack` reaches `("master","week_planner","task_agent")`, produced by
+  `run_sub_agent` rather than hand-written. Every two-element stack in the suite
+  before this was a literal;
+- depth is stamped 0/1/2 on the agents, and the leaf's own trace events carry
+  **depth 2** — ADR-016's stamping at a depth it had never reached;
+- **the depth guard fires end to end.** A depth-2 agent that *does* hold
+  `delegate` is refused, asserted against the documented message, and the test
+  asserts the refusal reached the **model's next turn** — a guard whose message
+  nothing reads is a guard the agent cannot recover from;
+- the cycle guard likewise, with the chain `master -> week_planner` named in it;
+- `plan_steps` records both hops on **one** plan with depths 1 and 2, and
+  `parent.seq < child.seq` while `parent.updated_at >= child.updated_at` — INV-1's
+  depth-first consequence, asserted as a property rather than described.
+
+**Scope kept exact:** this establishes the guard works on the production code
+path, where before it had only ever been driven through a hand-built
+`ToolContext`. It does **not** mean the shipped configuration exercises it — no
+shipped manifest gives `delegate` to a depth-2 agent, so in a real run the depth
+guard cannot fire at all.
+
+### The agent was one YAML file and no Python
+
+`docs/agents.md` claimed a domain agent "needs no new machinery". Taken
+literally: no `entrypoint`, so the generic `BaseAgent` loop; the prompt in the
+manifest's own `system_prompt`. **That claim held.**
+
+It also surfaced a blind spot: `AgentSpec.system_prompt` has existed since Phase
+1 and **no shipped agent had ever used it**, so `test_agent_registry.py`'s prompt
+isolation tests silently covered Python constants only. That fallback now reads
+the registry and stays, dormant, after the withdrawal — the next agent to use a
+manifest prompt is covered on arrival instead of slipping past.
+
+### B — not demonstrated, and not for the reason the case name suggests
+
+`week_planner` was delegated to **0 times in 65 runs**. The pre-declared criterion
+required one repetition forming the complete chain; none did. **7.8 is therefore
+not demonstrated under the local model**, and PROJECT_STATE's hierarchy row says
+*proved offline, unexercised by the model* rather than carrying a tick.
+
+The cause is not routing preference. On the hierarchy case, all five runs:
+
+```
+empty_response   tool_calls=0   iterations=2   (no output at all)
+```
+
+**The Master did not choose a different agent. It produced nothing.** The ADR-031
+nudge fired and the second turn was empty too.
+
+### The coordinator itself works — 5/5 — and that sharpens the verdict
+
+`adr069_coordinator_direct.py` starts the run **at** `week_planner`, bypassing
+the Master's routing entirely, and asks the one question the suite case cannot
+separate: given that it is invoked, does the coordinator do its job?
+
+| | |
+|---|---|
+| reached **both** specialists | **5 of 5** |
+| `tool_calls` per run | 2, every run |
+| delegation depths seen | **1 only** |
+
+So the failure is **not** in the coordinator, the manifest, its description, or
+the domain-agent pattern. It is entirely in the Master's layer: the Master would
+not call it, and merely *listing* it made the Master worse.
+
+**Two honest limits on this observation.** It runs `week_planner` at top level,
+so its specialists sit at depth 1 — **it does not exercise depth 2 and is not
+evidence for the hierarchy**; only the withdrawn suite case was. And the
+coordinator's prompt instructs both delegations explicitly where the Master's
+does not, which is a real difference between the two conditions: some of that
+5/5 is a more specific prompt, not the position in the tree. Recorded as n=5 on
+one objective, an observation and not a score.
+
+### The finding that outranks the increment: roster size drives the 7B silent
+
+Four full-suite runs, same day, same code, one file moved:
+
+| arm | roster | time | `empty_response` | 0 tool calls | overall |
+|---|---|---|---|---|---|
+| A | 5 agents | 06:21 | 1/55 (1.8%) | 24% | 43/55 (78%) |
+| B (killed at case 11) | 6 agents | ~08:0x | — | — | *no result file* |
+| **B** | **6 agents** | 09:13 | **15/65 (23%)** | **55%** | **34/65 (52%)** |
+| **A′** | 5 agents | **09:22** | **0/65 (0%)** | 15% | 49/65 (75%) |
+| B′ (traced, `--no-save`) | 6 agents | 09:37 | — | — | 36/65 (55%) |
+
+**A′ is what makes this causal.** It ran **nine minutes after** arm B and was the
+cleanest of them all. Under an ADR-061-style temporal regime the latest run
+should look like arm B; instead the outcome alternates with the manifest —
+5 clean, 6 degraded, 6 degraded, 5 clean, 6 degraded. Two cases recovered
+exactly: `question_then_instruction_does_both` 5/5 → **0/5** → **5/5**, and
+`the_delegated_objective_carries_two_details` 5/5 → **0/5** → **5/5**.
+
+**The manipulation was verified before any number was believed** (ADR-063 rule 8,
+the rule ADR-060's arm B broke). `adr069_render_master_roster.py` renders the
+Master's prompt from the live `agents/` directory: arm A/A′ **4 roster entries,
+1548 chars, sha256 `bf217ddd…`**; arm B **5 entries, 1872 chars, sha256
+`655e9e77…`**. Different bytes reached the model.
+
+### The mechanism is ADR-062's, on the 7B for the first time
+
+The traced arm captured `model.empty_payload` (the instrument ADR-059 shipped
+for exactly this) on **50** empty turns:
+
+```json
+{"done_reason": "stop", "eval_count": 31, "prompt_eval_count": 624,
+ "message": {"content": "", "role": "assistant"}}
+```
+
+| | |
+|---|---|
+| payloads with **no `tool_calls` key** | **50 of 50** |
+| `eval_count == 0` | **0 of 50** |
+| `eval_count` range | **30–56 tokens** |
+
+**The model generated 30–56 tokens on every one of those turns and Ollama
+returned an empty message.** That is byte-for-byte ADR-059's 3B signature
+(25–79 tokens, no `tool_calls` key), and ADR-062 identified what it is: a
+well-formed tool call carrying a **name that was never advertised**, parsed and
+discarded.
+
+ADR-062 said in as many words: *"the 7B reads the same block and is 45/45."*
+**That is now superseded.** The 7B does it too — it just needed a longer roster.
+And the mechanism predicts the dose-response: the tools block leaves the tool's
+name *inferable* rather than stated, so each additional agent name is one more
+candidate to appear in the `name` field instead of `delegate`.
+
+**Not established:** that the discarded calls carry agent names. `/api/chat`
+cannot show a discarded call — ADR-062 needed `/api/generate raw:true` to see
+one. What is established is that the tokens existed, and that roster size drives
+how often they are lost. Confirming the `name` field on the 7B is a named,
+unrun follow-up and it is now the highest-value experiment in Phase 7.
+
+### The decision — rejected by a rule written before the run
+
+> *Two or more regression-sensitive cases below 5/5 in arm B → the coordinator
+> does not ship as it stands, and that is recorded as a rejection rather than
+> reworded until it passes.*
+
+Two fell: `carries_a_deadline_into_the_objective` (5,5,5,5,5 → **4/5**) and
+`question_then_instruction_does_both` (→ **0/5**). **The rule fires. The
+coordinator does not ship.** Manifest and hierarchy case are parked in
+`evaluations/mechanisms/adr069-rejected/` with a README saying what must be
+re-measured before restoring them — preserved, never deleted.
+
+**Nothing was reworded to rescue it.** The obvious move — soften the
+coordinator's description so the Master ignores it — would have been treating a
+prompt as the fix for a defect that is upstream of prompts, which is ADR-035,
+ADR-053 and ADR-054 three times over.
+
+### What the estimand permits us to say
+
+Moving one manifest changes five things at once: the roster text, the number of
+routing choices, the availability of a coordinator, its semantic description, and
+the existence of a nested-delegation path. They cannot be separated by this
+design and were never meant to be — the bundle *is* the 7.8 architectural change.
+
+So the result is **the effect of introducing `week_planner` into the Master's
+roster and configuration**, never *the isolated causal effect of hierarchical
+reasoning*. In particular this does **not** establish that roster **length** is
+the active ingredient rather than this description's wording or content; it
+establishes that adding this agent did it, three times, reversibly.
+
+**The floor and wide cases decided nothing, as declared** — and they behaved
+exactly as the rule anticipated, moving *against* the trend:
+`two_domain_objective_reaches_both` read 1/5 → **4/5** (above its all-time high)
+→ 0/5. Reported as observed movement, with no claim of cause. Had it been treated
+as evidence, arm B would have looked like an improvement.
+
+### C — not implemented, and now with a concrete cost
+
+The coordinator's specialist list lives in its prompt and nothing enforces it.
+`Runtime.tool_context` hands every agent the full roster at every depth, so a
+coordinator can name any registered agent — **demonstrated** by
+`test_a_coordinator_can_reach_an_agent_its_prompt_never_named`, not merely
+described.
+
+`docs/security.md`'s *"Anything after 2 hops. Untested; no multi-hop tool chain
+exists yet"* was corrected while the chain existed: a depth-2 agent's objective is
+written by the **coordinator**, one further remove from the user than ADR-066
+measured. That lengthens ADR-066's limitation rather than creating a new class of
+one — and its concrete cost is that a coordinator naming `research` would put
+fetched page text one hop above a write-authorizing objective. That is the
+strongest argument yet for a structural `delegates_to:`, which remains a named
+follow-up.
+
+### Consequences
+
+- **7.8 is honestly scored: built, proved offline, not demonstrated live.** That
+  is more useful on 2026-09-07 than a green tick would have been.
+- **A new Known Problem: the 7B Master's reliability degrades with roster size.**
+  This outranks the coordinator. It means *adding any agent is now a measured
+  risk*, and it retroactively strengthens ADR-062's standing recommendation that
+  a new manifest owes an evaluation — the cost is not hypothetical.
+- **`delegated_by` ships**, with the case that used it renamed
+  `a_single_step_objective_is_routed_directly`. It scored 5/5 in *both* arms, so
+  it never depended on the coordinator; what it guards now is any future agent
+  that quietly interposes itself on single-step routing.
+- **Three registry conformance assertions were reverted** with the withdrawal.
+  The shipped roster stays at five, and `1042` unit tests pass.
+- **A standing claim needs a third qualification.** *"Adding an agent is a new
+  `agents/*.yaml` and nothing else"* was already qualified by ADR-062 (it is a
+  Master prompt change). It is also false of the conformance tests, which pin the
+  roster by name — and, on this evidence, it is not even behaviourally free.
+
+---
+
 ## Approval history
 
 **Relocated from `PROJECT_STATE.md` on 2026-08-30**, when that document was

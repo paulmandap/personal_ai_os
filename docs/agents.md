@@ -263,17 +263,63 @@ context=ToolContext(
 `tests/unit/test_delegate.py` covers the guards, including that a refused
 delegation never invokes the runner.
 
-## Domain agents (FUTURE — NOT IMPLEMENTED)
+## Domain agents — BUILT, PROVED OFFLINE, NOT SHIPPED (Phase 7.8, ADR-069)
 
 A *domain agent* coordinates several specialists in one subject area, so the
 master routes to a subject rather than to a capability:
 
 ```
-master  →  health_wellness  →  emotional_support | lifestyle_wellness | reflection
+master  →  week_planner  →  task_agent | finance
 ```
 
-It needs no new machinery. A domain agent is a `BaseAgent` whose tool is
-`delegate` — structurally identical to the master, one level down.
+**The mechanism works and is tested; the agent is not in `agents/`.**
+
+`tests/unit/test_hierarchy.py` drives that exact chain through the real
+`Runtime` — the call stack really reaches three, depth is stamped 0/1/2, both
+guards fire on the production closure, and `plan_steps` records the shape. Until
+that test existed, `max_delegation_depth: 2` had never been driven end to end and
+the depth guard was unreachable outside a hand-built `ToolContext`.
+
+**And the design claim held.** `week_planner.yaml` was the whole implementation:
+no `entrypoint`, so the generic `BaseAgent` loop; no module in `src/`; its prompt
+in the manifest's own `system_prompt`. A domain agent needs no new machinery.
+
+**What failed was the model, not the mechanism.** Putting a sixth agent in the
+Master's roster took the 7B's `empty_response` rate from 1/55 to 15/65 and the
+`master` suite from 78% to 52%; removing it restored both, nine minutes later.
+The Master delegated to the coordinator **zero times in 65 runs** — it produced
+nothing at all on those objectives. The manifest is parked in
+`evaluations/mechanisms/adr069-rejected/` with the numbers and the restore
+procedure.
+
+**Read ADR-069 before adding any agent**, domain agent or not. The cost of a new
+manifest is now measured.
+
+A domain agent is a `BaseAgent` whose tool is `delegate` — structurally
+identical to the master, one level down.
+
+### Its specialist list was presentation, not enforcement
+
+The manifest prompt named `task_agent` and `finance`. **Nothing enforced that.**
+`Runtime.tool_context` builds `agent_roster` from every registered agent and
+hands the same dict to every agent at every depth, so a coordinator can name any
+agent in the registry — demonstrated, not merely described, by
+`test_a_coordinator_can_reach_an_agent_its_prompt_never_named`.
+
+What bounds it is the depth guard, the cycle guard, and the sub-agent's own tool
+scope (ADR-066 property A). Those bound the **shape** of a delegation, never its
+target.
+
+This is recorded as a limitation rather than fixed. A structural `delegates_to:`
+field would be a new configuration surface *and* a new refusal string — and a
+refusal string is model-facing here, so it owes its own measurement (ADR-032/046).
+It is a named follow-up.
+
+**Why the prompt names them instead of interpolating `{roster}`:**
+`MasterAgent._roster()` excludes only the calling agent, so a coordinator
+rendered that way is shown `master` itself — cycle-guard bait that costs an
+iteration and decides nothing. Naming them also gives the domain an inside: a
+seventh agent does not silently change what this one thinks it coordinates.
 
 Two rules make it work:
 
@@ -289,4 +335,15 @@ Two rules make it work:
 The one domain designed in full is
 [`health-wellness.md`](health-wellness.md) — including memory boundaries,
 sensitivity-aware sharing, and why its safety layer is cross-cutting rather than
-an agent in the tree. Nothing in it is built.
+an agent in the tree. **Nothing in it is built, and the pattern being
+implemented here changes nothing about that.** `CLAUDE.md` forbids that domain
+until Paul asks for it; `week_planner` exists because the hierarchy had to be
+proved somewhere neutral.
+
+### Adding a domain agent to the Master's roster is a model-facing change
+
+`_roster()` interpolates every registered manifest, so a domain agent is not a
+free addition — it edits what the Master reads on every turn and owes an
+evaluation (ADR-062). ADR-069 ran that A/B for `week_planner`, and the
+conformance tests in `tests/unit/test_agent_registry.py` pin the shipped roster
+by name so a seventh agent is a deliberate act.

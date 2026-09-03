@@ -297,15 +297,20 @@ def cmd_plans(args: argparse.Namespace) -> int:
             if not steps:
                 print("  no steps recorded")
             for step in steps:
-                print(f"  {step.summary()}")
+                # Indent by delegation depth, the way `paios trace` does, so a
+                # step made BY a sub-agent does not read as a sibling of the one
+                # that called it. `seq` orders the plan depth-first; depth is
+                # what separates a child from a sibling (schema v4).
+                pad = "  " * (step.depth - 1)
+                print(f"  {pad}{step.summary()}")
                 if step.status is StepStatus.DONE and step.output:
-                    print(f"        -> {step.output.strip()[:160]}")
+                    print(f"      {pad}  -> {step.output.strip()[:160]}")
                 if step.status is StepStatus.FAILED:
-                    print(f"        -> failed: {step.error}")
+                    print(f"      {pad}  -> failed: {step.error}")
                 if step.status is StepStatus.PENDING:
                     # The honest phrasing: the store cannot tell "crashed before
                     # returning" from "succeeded but crashed before persistence".
-                    print("        -> started; outcome never recorded")
+                    print(f"      {pad}  -> started; outcome never recorded")
             print()
             return 0
 

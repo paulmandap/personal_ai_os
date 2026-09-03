@@ -245,12 +245,26 @@ class TestShippedManifests:
     # This one cannot, and these tests are what makes that a fact rather than
     # a claim.
 
-    def _shipped_prompts(self) -> dict[str, str]:
+    def _shipped_prompts(self, shipped=None) -> dict[str, str]:
         """Each shipped agent's default prompt, keyed by manifest name.
 
-        Imported explicitly rather than derived, so adding an agent breaks the
-        completeness check below and forces this test to be updated -- an
-        agent nobody added here would otherwise be silently unguarded.
+        Module constants are imported explicitly rather than derived, so adding
+        an agent breaks the completeness check below and forces this test to be
+        updated -- an agent nobody added here would otherwise be silently
+        unguarded.
+
+        **A prompt may also live in the manifest**, and until ADR-069 these
+        tests could not see one: `AgentSpec.system_prompt` has always existed
+        and no shipped agent had ever used it, so the isolation checks below
+        silently covered only Python constants. The `week_planner` coordinator
+        was the first to use it and was then withdrawn on measurement -- but the
+        blind spot it exposed is real and outlives it, so the registry fallback
+        stays. A clause pasted into a manifest is exactly as model-facing as one
+        pasted into a constant.
+
+        No shipped agent currently carries a manifest prompt, which means this
+        branch is dormant rather than dead. That is deliberate: the next agent to
+        use one is covered on arrival instead of slipping past.
         """
         from personal_ai_os.agents.builtin.finance_agent import FINANCE_SYSTEM_PROMPT
         from personal_ai_os.agents.builtin.master import MASTER_SYSTEM_PROMPT
@@ -260,18 +274,24 @@ class TestShippedManifests:
         )
         from personal_ai_os.agents.builtin.task_agent import TASK_SYSTEM_PROMPT
 
-        return {
+        prompts = {
             "finance": FINANCE_SYSTEM_PROMPT,
             "master": MASTER_SYSTEM_PROMPT,
             "ping": PING_SYSTEM_PROMPT,
             "research": RESEARCH_SYSTEM_PROMPT,
             "task_agent": TASK_SYSTEM_PROMPT,
         }
+        if shipped is not None:
+            for name in shipped.names():
+                manifest_prompt = shipped.get(name).system_prompt
+                if manifest_prompt:
+                    prompts[name] = manifest_prompt
+        return prompts
 
     def test_every_shipped_agent_has_a_prompt_under_test(self, shipped):
         """Completeness guard: a new agent must be added above, or the two
         isolation tests below would quietly stop covering the system."""
-        assert sorted(self._shipped_prompts()) == sorted(shipped.names())
+        assert sorted(self._shipped_prompts(shipped)) == sorted(shipped.names())
 
     def test_the_research_prompt_reaches_no_other_agent(self, shipped):
         """Channel 1: shared prompt text.
@@ -280,7 +300,7 @@ class TestShippedManifests:
         in `research` and nowhere else. Substantial lines only -- a shared
         short line like "How to work:" is formatting, not a clause.
         """
-        prompts = self._shipped_prompts()
+        prompts = self._shipped_prompts(shipped)
         research_lines = [
             line.strip()
             for line in prompts["research"].splitlines()
@@ -300,7 +320,7 @@ class TestShippedManifests:
         an agent whose flag says it should not have it."""
         from personal_ai_os.agents.base import CONTENT_IS_DATA
 
-        for name, prompt in self._shipped_prompts().items():
+        for name, prompt in self._shipped_prompts(shipped).items():
             assert CONTENT_IS_DATA.strip() not in prompt, name
 
     def test_untrusted_content_flags_are_pinned_per_agent(self, shipped):

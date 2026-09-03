@@ -195,9 +195,26 @@ The existing `max_delegation_depth: 2` already supports exactly this shape:
 `master → domain → specialist`. That is why the wellness coordinator collapses
 *into* the domain agent rather than sitting beneath it (ADR-017).
 
-Only `task` exists today. See [`health-wellness.md`](health-wellness.md) for the
-one domain whose design is recorded in full — including why safety is
-cross-cutting rather than a node in this tree (ADR-018).
+**As of ADR-069 that shape is exercised, and it does not ship.** `week_planner`
+was a real domain agent — one manifest, no Python — coordinating `task_agent` and
+`finance`, and `tests/unit/test_hierarchy.py` drives `ctx.depth` to 2 through the
+real runtime. The sentence above said the depth budget "already supports" this;
+until something exercised it, that was a reading of the code rather than a fact
+about the system. It is now a fact about the **runtime**.
+
+It is not yet a fact about the **model**. Adding the coordinator to the Master's
+roster tripled the 7B's silent-turn rate and cost the `master` suite 26 points,
+reversibly, so the agent was withdrawn and parked in
+`evaluations/mechanisms/adr069-rejected/`. **The tree above is what the
+architecture supports, not what currently runs.**
+
+`health_wellness` remains **unbuilt and forbidden** until Paul asks (`CLAUDE.md`).
+The hierarchy was proved on a neutral domain precisely so that prohibition did
+not have to move to test a mechanism.
+
+See [`health-wellness.md`](health-wellness.md) for the one domain whose design is
+recorded in full — including why safety is cross-cutting rather than a node in
+this tree (ADR-018).
 
 ## What is still deliberately absent
 

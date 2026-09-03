@@ -52,7 +52,29 @@ MIGRATIONS = [
 ]
 ```
 
-`paios doctor` reports the live schema version.
+`paios doctor` reports the live schema version. **The shipped schema is v4.**
+
+### v4 — `plan_steps.depth`
+
+v3 recorded a plan as a flat `seq` list, which described every run exactly,
+because before Phase 7.8 no manifest but `master.yaml` held `delegate` and every
+step was necessarily depth 1. A coordinator between the Master and the
+specialists breaks that: `seq` alone reads a grandchild as its parent's sibling.
+
+`depth` is written from the runtime's own value — the same one stamped on the
+`delegate.start` trace event — so the store and the trace cannot disagree about
+the shape of a run.
+
+**`DEFAULT 1` states a fact rather than filling an unknown.** No pre-existing row
+can have been written at another depth, so backfilling to 1 is a proof, not a
+guess. Together, `seq` (depth-first order, guaranteed by INV-1 committing a
+parent's row before its child runs) and `depth` reconstruct the tree; neither
+does alone.
+
+**`resume_objective` is deliberately unchanged by v4** and a test pins that a
+nested plan composes the same text as a flat one. It is the only model-facing
+string in the module and ADR-065 records it as covered by no benchmark, so
+rewording it is a separate, measured act.
 
 ## Threading
 
