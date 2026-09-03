@@ -48,7 +48,7 @@ Paul's 7.12 checklist, scored honestly against what exists today:
 | Model routing works | ⚠️ router exists (ADR-009); `large` unmapped; the Master ignores complexity |
 | **State persists** | ❌ **not built** — `paios.db` is schema v2, nothing stores a plan |
 | Agent hierarchy works | ⚠️ `max_delegation_depth: 2` exists, unexercised |
-| Permissions propagate | ⚠️ mechanism exists, **no adversarial test** |
+| Permissions propagate | ⚠️ **tool scope proved (ADR-066); authority is inherited, not narrowed — measured and pinned** |
 | Recovery works | ⚠️ turn-level only (ADR-031) |
 | Evaluation passes | ⚠️ `delegation` is 3 train + 1 holdout — not a Master benchmark |
 
@@ -669,6 +669,23 @@ compare is **two same-day arms**, not a stored baseline.
    do not use this suite as a canary for a change that could plausibly move only
    a few runs. ADR-065 tried, and says so.
 
+18. **Authority is inherited across a delegation boundary, not narrowed** —
+   ADR-066, and **measured** rather than merely stated. `write_is_authorized` and
+   `fetch_is_authorized` evaluate the **delegated** objective, which the Master
+   generated, though `fetch_authorization.py` says the URL must appear *"in the
+   user's CURRENT objective"* and describes that as *"a channel an attacker
+   cannot write to"*. Under delegation, that channel is the Master — which reads
+   sub-agent output, including fetched page text.
+
+   Contradictory pairs pin it: a trigger only in the Master's objective
+   authorises the action (`requires_human_approval` **False**); a trigger only in
+   the user's does not (**True**).
+
+   **Deliberately retained.** Narrowing it applies ADR-036's predicate to
+   objectives the Master rephrased, and that predicate already escalates ~10 of
+   40 legitimate writes. **A separate pre-registered experiment**, which must
+   measure the false-refusal cost on delegated writes before it is believed.
+
 **Closed, with the ADR that closed each.** Kept as one line because the reasoning
 — including the wrong turns — is in `docs/decisions.md`, and a closed problem
 re-read as current is how this document went stale three times.
@@ -747,9 +764,26 @@ what the runtime **observed**, never what a model declared. `paios plans`,
 says so; a crash leaves the plan `running` and its step `pending`, which is the
 only combination that can mean "interrupted".
 
-**Next: Increment 3 (7.7 coordination, 7.8 hierarchy, 7.9 permission
-inheritance)**, of which **7.9 is the one with a security property and no
-adversarial test** — the mechanism exists, the proof does not. Start there.
+**Increment 3a is DONE — ADR-066.** 7.9 turned out to be **two claims**, and they
+do not share a verdict:
+
+- **Property A holds and is now proved.** A delegated sub-agent cannot call a
+  tool outside its manifest (the call reaches the broker **zero** times), a
+  declared write still passes the gate, and the depth/cycle guards fire on a
+  hostile objective against their documented messages.
+- **Limitation B is true and now measured, not just described.** The
+  fetch/write predicates evaluate the **delegated** objective — written by the
+  Master — so authority is inherited rather than narrowed. Contradictory pairs
+  show the decision tracks the Master's string *and only* that string.
+
+**B is pinned, deliberately not fixed.** The fix means applying ADR-036's
+predicate to objectives the Master rephrased, and that predicate already
+escalates ~10 of 40 legitimate writes (ADR-050: one refused 0/10 on both models).
+**A separate pre-registered experiment**, which must measure its false-refusal
+cost before it is believed.
+
+**Next in Increment 3: 7.7 coordination and 7.8 hierarchy** — both measurable on
+the `master` suite, and neither carries a security boundary.
 
 **Also open, and Paul's:** the ADR-062 follow-up decision below, the reserved
 `master` holdout case, and Known Problem 16 (narrate-then-stop) — a **loop**
@@ -902,6 +936,7 @@ no cloud provider) overrides everything.
 | **063** | An instrument that ignores the environment is isolated, not broken — verify your manipulation |
 | **064** | The `master` suite, and what it caught first — including four vacuous cases of mine |
 | **065** | A plan is what the runtime observed, not what the model said — schema v3, at-least-once |
+| **066** | Delegation carries tool scope, and it carries authority too — 7.9 split into a property and a limitation |
 
 ---
 

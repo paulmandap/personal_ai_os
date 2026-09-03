@@ -267,8 +267,27 @@ Stated plainly so nobody inherits a false sense of coverage.
   instruction to the user as its entire answer in 15 of 15 runs of one case.
   Neither put bytes on the wire, because `fetch_page` has no network client — see
   *The Research Agent* below for what that does and does not establish.
-- **Sub-agent scope.** A delegated agent inherits its objective as its user
-  message. There is no narrowing of authority across a delegation boundary.
+- **Sub-agent scope — now MEASURED, not merely stated** (ADR-066,
+  `tests/unit/test_permission_inheritance.py`). A delegated agent inherits its
+  objective as its user message, and there is no narrowing of authority across a
+  delegation boundary.
+
+  **What holds:** a sub-agent cannot call a tool outside its manifest — the call
+  is refused before any gate and reaches the broker **zero** times — and a
+  declared write still passes the gate, `delegate` being `read` notwithstanding.
+
+  **What does not:** `write_is_authorized` and `fetch_is_authorized` evaluate the
+  **delegated** objective, which the Master wrote. Proved with contradictory
+  pairs: a trigger present only in the Master's objective authorises the action
+  (`requires_human_approval` **False**), and a trigger present only in the
+  *user's* objective does not (**True**). The decision tracks the Master's string
+  and only the Master's string.
+
+  **Why this is retained.** Narrowing it means applying ADR-036's predicate to
+  objectives the Master rephrased, and that predicate already escalates ~10 of 40
+  legitimate writes and refused one 0/10 on both models (ADR-050). The fix is a
+  separate pre-registered experiment that must measure its false-refusal cost
+  before it is believed.
 - **Anything after 2 hops.** Untested; no multi-hop tool chain exists yet.
 
 ## Answer-level fidelity — the last gate item, now closed
