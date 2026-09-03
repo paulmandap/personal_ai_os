@@ -23,7 +23,7 @@
 | **Phase 6 — Integrations** | **COMPLETE** (2026-09-01, ADR-058) |
 | **Phase 7 — Local Master** | **STARTED 2026-09-01** (ADR-059, ADR-060) |
 | **Phase 7 scope** | Paul's full 7.1–7.12 plan, reconciled against what Phases 1–6 already built |
-| **Phase 7 exit condition** | **DECLARED BELOW, before the work** — see *Phase 7's exit condition* |
+| **Phase 7 exit condition** | **DECLARED BELOW, before the work** — see *Phase 7's exit condition*. **Half met:** a plan now survives a restart (ADR-065); the benchmark-after-access-ends half remains |
 
 ### Phase 7's exit condition
 
@@ -658,6 +658,16 @@ compare is **two same-day arms**, not a stored baseline.
    action is not. Reproducible at **0/5** on two `master` cases. **A loop
    property, not a prompt one** — nothing distinguishes "here is my answer" from
    "here is what I am about to do".
+17. **`master::three_deadlines_limited_money_and_a_meeting` is a wide case.**
+   Four readings on the 7B: **2/5, 5/5, 5/5, 2/5** — the first taken before
+   ADR-065's code existed. It asks an open-ended objective (*"help me organize
+   everything"*) to reach **both** agents, the strictest demand in the suite and
+   the least determined by the request.
+
+   **Consequence:** it dominates any `master` total, so a ±3 move in the suite
+   score can be this one case. Read the per-case table, never the headline — and
+   do not use this suite as a canary for a change that could plausibly move only
+   a few runs. ADR-065 tried, and says so.
 
 **Closed, with the ADR that closed each.** Kept as one line because the reasoning
 — including the wrong turns — is in `docs/decisions.md`, and a closed problem
@@ -726,18 +736,25 @@ the scope; the increments are listed there.
 the silent turn is a well-formed tool call carrying the wrong `name`, discarded
 by Ollama because the name was never advertised.**
 
-**Increment 1 is DONE — ADR-064.** The `master` suite exists (11 cases), with a
-7B baseline of **33/45** and a 3B block that is a **mixture, not a score**. It
-caught four vacuous cases and one false pass of mine before publishing anything,
-and found two real defects now recorded as Known Problems 15 and 16.
+**Increment 1 is DONE — ADR-064.** The `master` suite exists (11 cases), 7B
+baseline **33/45**, 3B a **mixture not a score**. It caught four vacuous cases
+and one false pass of mine before publishing anything, and found two real defects
+(Known Problems 15 and 16).
 
-**Next: Increment 2, persistent Master state (7.6)** — schema v3 `plans` /
-`plan_steps`, a `MasterPlan` type, `paios run master --resume`. Known Problem 16
-(narrate-then-stop) sits next to it and is a **loop** property, so it wants its
-own pre-registered experiment rather than being folded in.
+**Increment 2 is DONE — ADR-065.** Schema **v3**: `plans` + `plan_steps` record
+what the runtime **observed**, never what a model declared. `paios plans`,
+`plans show`, `plans resume`, `plans abandon`. Execution is **at-least-once** and
+says so; a crash leaves the plan `running` and its step `pending`, which is the
+only combination that can mean "interrupted".
 
-**Also open, and Paul's:** the ADR-062 follow-up decision below, and the reserved
-`master` holdout case.
+**Next: Increment 3 (7.7 coordination, 7.8 hierarchy, 7.9 permission
+inheritance)**, of which **7.9 is the one with a security property and no
+adversarial test** — the mechanism exists, the proof does not. Start there.
+
+**Also open, and Paul's:** the ADR-062 follow-up decision below, the reserved
+`master` holdout case, and Known Problem 16 (narrate-then-stop) — a **loop**
+property wanting its own pre-registered experiment rather than being folded into
+other work.
 
 **The ADR-062 decision — a decision, not an experiment**, and the options are
 narrow because **the defect is Ollama's**:
@@ -884,6 +901,7 @@ no cloud provider) overrides everything.
 | **062** | The silent turn is a discarded tool call, and the tool block is malformed |
 | **063** | An instrument that ignores the environment is isolated, not broken — verify your manipulation |
 | **064** | The `master` suite, and what it caught first — including four vacuous cases of mine |
+| **065** | A plan is what the runtime observed, not what the model said — schema v3, at-least-once |
 
 ---
 

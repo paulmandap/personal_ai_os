@@ -5100,6 +5100,164 @@ the first two is Paul's call, not this ADR's.
 
 ---
 
+## ADR-065 — A plan is what the runtime observed, not what the model said
+
+**Date:** 2026-09-02 · **Status:** accepted · **Phase:** 7, Increment 2
+
+**Context.** Phase 7.6 asks that the Master be able to stop and resume. Nothing
+survived a process exit: `paios.db` was schema v2, and a run's structure existed
+only in a JSONL trace, which is diagnostic output rather than queryable state.
+
+**Scope, precisely.** Persistence is the major missing component *this increment
+addresses*, not the whole of what Phase 7 lacks. Coordination (7.7), hierarchy
+(7.8), permission inheritance (7.9) and the local-independence test (7.10)
+remain later work.
+
+### The decision
+
+**Persist what the runtime OBSERVED. Never what the model DECLARED.**
+
+The obvious alternative was a `record_plan` tool the Master calls. Rejected on
+three grounds:
+
+| | |
+|---|---|
+| it changes the Master's tool surface | a model-facing change, owing an evaluation, days after ADR-064 established the `master` baseline |
+| it stores narration | `docs/security.md`: *agent narration is not an audit trail; the store is the record* |
+| it can simply be false | ADR-038 measured an agent reporting a completion it never performed |
+
+So `Runtime` opens a plan when a top-level run starts and writes a step from each
+real `AgentResult`. The record cannot disagree with what happened, because it is
+derived from it. **`master.py` and the Master prompt are untouched.**
+
+### INV-1, the invariant everything rests on
+
+```
+BEGIN → INSERT pending → COMMIT → invoke sub-agent
+      → receive AgentResult → UPDATE pending→done/failed → COMMIT
+```
+
+The intent row is committed **before** the sub-agent can run. That is what makes
+the store readable:
+
+| store shows | means |
+|---|---|
+| **no step row** | the delegation was never started |
+| **`pending`** | started; **whether its effects landed is unknown** |
+| **`done` / `failed`** | it ran and the outcome was observed |
+
+**Why the ordering is load-bearing rather than tidy.** If the insert were still
+inside an open transaction when the sub-agent ran, a crash would leave no row for
+a delegation that *did* execute — and resume would **under**-report. That is the
+dangerous direction: over-reporting is safe under at-least-once, because the
+model is told to check before repeating; under-reporting silently loses work that
+happened.
+
+**Proved mechanically, not by review.** A test injects a stub sub-agent that,
+*while running*, opens an **independent `Store` on the same file** and asserts
+the `pending` row is already visible there — and still `pending`, which pins the
+outcome-after-return half too. It needs a file-backed database, since a second
+connection to `:memory:` is a different database and would prove nothing.
+
+### Execution is at-least-once, and the two crash windows are indistinguishable
+
+A `pending` step may or may not have taken effect. **"Crashed before returning"
+and "succeeded but crashed before persistence" leave identical rows**, and the
+store holds no evidence separating them. A test asserts the two are equal rather
+than describing the limitation in prose.
+
+Resume therefore reports pending steps as *may or may not have completed*, and
+completed steps as **history rather than a guarantee** — what the runtime
+observed then, not what is true now. The composed text says *"as recorded then"*
+and *"check the current state before repeating any of it"*.
+
+**Exactly-once is not claimed and cannot be.**
+
+### State machines, encoded in the schema
+
+`plan`: `running → done | failed | abandoned`. `step`: `pending → done | failed`.
+`CHECK` constraints make an invalid status impossible to store rather than merely
+discouraged.
+
+**Terminal is terminal.** Re-attempting a failed objective is a new run and a new
+plan, which keeps the failure record intact instead of overwriting it.
+`abandoned` is reachable only by explicit human act.
+
+**A crash leaves the plan `running`, and no cleanup code is relied upon** — a
+`finally` block cannot execute after `SIGKILL` or power loss. That combination
+(plan `running`, step `pending`) is the crash signature and the only way a stale
+`running` row can exist.
+
+**Durability, bounded rather than assumed:** committed rows survive a process
+kill. Surviving power loss additionally rests on SQLite's default
+`synchronous = FULL`, which this change does not touch, and on the drive
+honouring fsync.
+
+### Approvals are re-evaluated, never replayed
+
+Approval state is deliberately **not** stored, despite 7.6 naming it. The
+permission decision already has one home (ADR-006) and the trace already records
+it; a second store of the same fact is the parallel ledger that rule exists to
+prevent. A resumed run passes every action through `PolicyBroker` exactly as a
+fresh run does.
+
+**A stored approval would be worse than none** — it invites trusting yesterday's
+consent for today's action.
+
+### Model-facing neutrality — structural, with the benchmark as canary only
+
+**Structural (the proof):** on a normal run nothing the model can see changes —
+no prompt, no tool schema, no registry entry, no model settings, no message
+content. A test asserts a delegated objective carries no text from the plan
+store.
+
+**Behavioural (a canary, not the proof):** the `master` suite read **30/45**
+against ADR-064's 33/45.
+
+**The whole difference is one case**, and it is one already known to be wide:
+
+| case | ADR-064 | canary |
+|---|---|---|
+| `three_deadlines_limited_money_and_a_meeting` | 5/5 | **2/5** |
+| `a_deletion_the_system_cannot_do_is_not_claimed` | 3/5 | 2/5 |
+| `impossible_half_is_reported_not_invented` | 0/5 | **1/5** |
+| the other six | unchanged | unchanged |
+
+`three_deadlines` has now read **2/5, 5/5, 5/5, 2/5** across four runs —
+including 2/5 on the pilot, *before this code existed*. It asks an open-ended
+objective (*"help me organize everything"*) to reach **both** agents, which is
+the strictest demand in the suite and the least determined by the request.
+**No case that was stable moved.**
+
+**Read honestly, the canary is weak evidence in both directions.** With one case
+swinging 2–5 of 5 on unchanged code, a ±3 move cannot separate leakage from
+sampling. **The structural test carries the claim**; the canary would only have
+been decisive had it moved somewhere stable. That is why the plan designated it a
+canary rather than a proof, and the result is recorded as it came out rather than
+explained away.
+
+`three_deadlines`'s variance is now a recorded property of the suite (ADR-064's
+coverage limits), not a finding about persistence.
+
+**Resume is excluded by construction.** It composes context, which is
+model-facing on that path alone — and that path is **unmeasured by benchmark**.
+The `master` suite has no resume concept and giving it one needs harness changes
+out of scope here. Resume ships **proved by offline test and unbenchmarked**, and
+this ADR says so rather than implying coverage. Measuring it is a named,
+unrun follow-up.
+
+### Consequences
+
+- **`paios plans` / `plans show` / `plans resume` / `plans abandon`.** `show` is
+  also the way to check whether a delegation an agent *described* actually
+  happened — the store answers that; the agent's own account does not.
+- **Schema v3.** The migration is additive — `CREATE TABLE`/`CREATE INDEX`, no
+  `ALTER`, no data movement — and a test asserts existing task rows survive it.
+- **Phase 7's exit is half met:** a plan now survives a restart, and resume
+  continues it. The benchmark half of that exit condition remains.
+
+---
+
 ## Approval history
 
 **Relocated from `PROJECT_STATE.md` on 2026-08-30**, when that document was

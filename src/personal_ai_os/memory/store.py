@@ -97,6 +97,52 @@ MIGRATIONS: list[tuple[int, str]] = [
         CREATE INDEX IF NOT EXISTS idx_txn_date ON transactions(occurred_on);
         """,
     ),
+    (
+        3,
+        # Plans: what a top-level run actually DID, so it survives a restart.
+        #
+        # This records what the runtime OBSERVED, never what a model declared
+        # (ADR-065). A step row is written from a real `AgentResult`, so it
+        # cannot disagree with what happened -- unlike an agent's own account of
+        # itself, which ADR-038 measured being wrong while sounding right.
+        #
+        # The CHECK constraints encode both state machines, so an invalid status
+        # is impossible to store rather than merely discouraged:
+        #   plan  running -> done | failed | abandoned   (terminal is terminal)
+        #   step  pending -> done | failed
+        # A crash leaves a plan `running` and its step `pending`; nothing else
+        # can produce that combination, which is what makes it recoverable.
+        """
+        CREATE TABLE IF NOT EXISTS plans (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id       TEXT NOT NULL UNIQUE,
+            agent        TEXT NOT NULL,
+            objective    TEXT NOT NULL,
+            status       TEXT NOT NULL DEFAULT 'running'
+                CHECK (status IN ('running','done','failed','abandoned')),
+            created_at   TEXT NOT NULL,
+            updated_at   TEXT NOT NULL,
+            completed_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS plan_steps (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            plan_id    INTEGER NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+            seq        INTEGER NOT NULL,
+            run_id     TEXT NOT NULL,
+            agent      TEXT NOT NULL,
+            objective  TEXT NOT NULL,
+            status     TEXT NOT NULL
+                CHECK (status IN ('pending','done','failed')),
+            output     TEXT NOT NULL DEFAULT '',
+            error      TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (plan_id, seq)
+        );
+        CREATE INDEX IF NOT EXISTS idx_plans_status ON plans(status);
+        CREATE INDEX IF NOT EXISTS idx_plan_steps_plan ON plan_steps(plan_id);
+        """,
+    ),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else 0

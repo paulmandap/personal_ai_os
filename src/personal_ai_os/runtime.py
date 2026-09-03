@@ -19,6 +19,7 @@ from personal_ai_os.agents.registry import AgentRegistry
 from personal_ai_os.agents.spec import AgentSpec
 from personal_ai_os.config.loader import load_settings
 from personal_ai_os.config.schema import Settings
+from personal_ai_os.memory.plans import PlanStore
 from personal_ai_os.memory.store import Store
 from personal_ai_os.models.registry import ModelRegistry
 from personal_ai_os.models.router import ModelRouter, ModelSelection
@@ -96,6 +97,16 @@ class Runtime:
     # --- paths -------------------------------------------------------------
 
     @property
+    def plans(self) -> PlanStore:
+        """What top-level runs actually did (ADR-065).
+
+        A thin wrapper over the same `Store`, built per access like any other
+        typed view of it. Nothing the model can see comes from here on a normal
+        run -- only `plans resume` composes anything model-facing.
+        """
+        return PlanStore(self.store)
+
+    @property
     def runs_dir(self) -> Path:
         return self.settings.resolved_path(self.settings.paths.runs_dir)
 
@@ -142,6 +153,7 @@ class Runtime:
         trace: RunTrace,
         depth: int = 0,
         call_stack: tuple[str, ...] = (),
+        plan_id: int | None = None,
     ) -> BaseAgent:
         spec = self.agents.get(name)
         selection = self.select_model(spec)
@@ -164,7 +176,7 @@ class Runtime:
                 run_id=trace.run_id,
                 depth=depth,
                 call_stack=stack,
-                delegate=self._delegate_from(trace, depth, stack),
+                delegate=self._delegate_from(trace, depth, stack, plan_id),
             ),
             trace=trace,
             system_prompt=self.agents.system_prompt_for(spec),
@@ -175,13 +187,18 @@ class Runtime:
     # --- delegation --------------------------------------------------------
 
     def _delegate_from(
-        self, trace: RunTrace, depth: int, call_stack: tuple[str, ...]
+        self,
+        trace: RunTrace,
+        depth: int,
+        call_stack: tuple[str, ...],
+        plan_id: int | None = None,
     ) -> DelegateFn:
         """Build the delegate callable handed to one agent's tools.
 
-        The closure carries the trace, the current depth and the call stack, so
-        a tool cannot fabricate a shallower depth or a shorter stack to escape
-        the guards -- it only gets to choose *which* agent to call.
+        The closure carries the trace, the current depth, the call stack and the
+        plan, so a tool cannot fabricate a shallower depth, a shorter stack or a
+        different plan to escape the guards -- it only gets to choose *which*
+        agent to call.
         """
 
         def delegate(agent_name: str, objective: str) -> AgentResult:
@@ -191,6 +208,7 @@ class Runtime:
                 trace=trace,
                 depth=depth + 1,
                 call_stack=call_stack,
+                plan_id=plan_id,
             )
 
         return delegate
@@ -203,6 +221,7 @@ class Runtime:
         trace: RunTrace,
         depth: int,
         call_stack: tuple[str, ...],
+        plan_id: int | None = None,
     ) -> AgentResult:
         """Run one agent inside another's trace."""
         parent = call_stack[-1] if call_stack else ""
@@ -215,10 +234,34 @@ class Runtime:
         )
         log.info("%s -> delegating to %s (depth %d)", parent or "?", name, depth)
 
+        # INV-1, first half: the intent is COMMITTED before the sub-agent can
+        # run (ADR-065). `begin_step` returns only after its transaction closes,
+        # so "no step row" provably means "never started". Invoking inside the
+        # write transaction would break that and make resume *under*-report a
+        # delegation that did execute -- the dangerous direction, since
+        # over-reporting is safe under at-least-once and under-reporting is not.
+        step_id: int | None = None
+        if plan_id is not None:
+            step_id = self.plans.begin_step(
+                plan_id, run_id=trace.run_id, agent=name, objective=objective
+            ).id
+
         agent = self.create_agent(
-            name, trace=trace, depth=depth, call_stack=(*call_stack, name)
+            name,
+            trace=trace,
+            depth=depth,
+            call_stack=(*call_stack, name),
+            plan_id=plan_id,
         )
         result = agent.run(objective)
+
+        # INV-1, second half: the outcome is recorded only AFTER the result
+        # exists. A crash anywhere above leaves the step `pending`, which is
+        # exactly the "may or may not have happened" state resume reports.
+        if step_id is not None:
+            self.plans.finish_step(
+                step_id, ok=result.ok, output=result.output, error=result.error
+            )
 
         trace.event(
             Events.DELEGATE_END,
@@ -255,9 +298,58 @@ class Runtime:
         ) as owned:
             return self._run_traced(name, objective, owned)
 
-    def _run_traced(self, name: str, objective: str, trace: RunTrace) -> AgentResult:
-        agent = self.create_agent(name, trace=trace)
+    def resume_plan(self, plan_id: int) -> AgentResult:
+        """Continue a plan a crash left `running` (ADR-065).
+
+        **This is the one model-facing part of plan persistence, and it is
+        confined to this path.** The composed objective tells the model what was
+        already carried out -- and, separately, what was started but never
+        confirmed. Normal runs send the model nothing from the plan store.
+
+        Refuses a terminal plan: re-attempting a failed objective is a new run
+        and a new plan, which keeps the failure record intact.
+
+        Approvals are **not** replayed. Every action here passes through the
+        same permission gate as a fresh run, because a stored approval is worse
+        than none -- it invites trusting yesterday's consent for today's action.
+        """
+        plans = self.plans
+        plan = plans.get(plan_id)
+        objective = plans.resume_objective(plan_id)  # raises if not resumable
+
+        with RunTrace.create(
+            agent=plan.agent,
+            runs_dir=self.runs_dir,
+            enabled=self.settings.observability.trace_enabled,
+            redact_keys=self.settings.observability.redact_keys,
+        ) as owned:
+            return self._run_traced(plan.agent, objective, owned, plan_id=plan_id)
+
+    def _run_traced(
+        self, name: str, objective: str, trace: RunTrace, *, plan_id: int | None = None
+    ) -> AgentResult:
+        """Run a top-level agent, recording what it did (ADR-065).
+
+        A plan is opened here and closed only on a **positively observed**
+        outcome. Nothing in a `finally` -- a cleanup block cannot run after
+        SIGKILL or power loss, so an interrupted run simply leaves the plan
+        `running`. That is the crash signature and the only way a stale
+        `running` row can exist.
+
+        `plan_id` is supplied when resuming, so the resumed run appends to the
+        plan it is continuing rather than opening a second one.
+        """
+        if plan_id is None:
+            plan_id = self.plans.open(
+                run_id=trace.run_id, agent=name, objective=objective
+            ).id
+
+        agent = self.create_agent(name, trace=trace, plan_id=plan_id)
         result = agent.run(objective)
+
+        if plan_id is not None:
+            self.plans.close(plan_id, ok=result.ok)
+
         trace.event(
             "run.result",
             ok=result.ok,

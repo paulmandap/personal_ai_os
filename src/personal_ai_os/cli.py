@@ -274,6 +274,79 @@ def cmd_tasks(args: argparse.Namespace) -> int:
         runtime.close()
 
 
+# --- plans -----------------------------------------------------------------
+
+
+def cmd_plans(args: argparse.Namespace) -> int:
+    """What top-level runs actually did, and how to continue an interrupted one.
+
+    The record is built from observed `AgentResult`s, not from anything a model
+    said about itself (ADR-065) -- so this is also the way to check whether a
+    delegation an agent described actually happened.
+    """
+    from personal_ai_os.memory.plans import PlanStatus, StepStatus
+
+    runtime = Runtime.build(workspace_root=args.workspace, configure_logging=False)
+    try:
+        plans = runtime.plans
+
+        if args.plan_command == "show":
+            plan = plans.get(args.id)
+            print(f"\n{plan.summary()}\n")
+            steps = plans.steps(args.id)
+            if not steps:
+                print("  no steps recorded")
+            for step in steps:
+                print(f"  {step.summary()}")
+                if step.status is StepStatus.DONE and step.output:
+                    print(f"        -> {step.output.strip()[:160]}")
+                if step.status is StepStatus.FAILED:
+                    print(f"        -> failed: {step.error}")
+                if step.status is StepStatus.PENDING:
+                    # The honest phrasing: the store cannot tell "crashed before
+                    # returning" from "succeeded but crashed before persistence".
+                    print("        -> started; outcome never recorded")
+            print()
+            return 0
+
+        if args.plan_command == "abandon":
+            plan = plans.abandon(args.id)
+            print(f"abandoned {plan.summary()}")
+            return 0
+
+        if args.plan_command == "resume":
+            result = runtime.resume_plan(args.id)
+            print()
+            print(result.output or "(no output)")
+            print()
+            print(
+                f"  [{'ok' if result.ok else result.stop_reason.value}] "
+                f"plan={args.id} iterations={result.iterations} "
+                f"tool_calls={result.tool_calls}"
+            )
+            print(f"  trace: paios trace {result.run_id}")
+            return 0 if result.ok else 1
+
+        status = PlanStatus(args.status) if args.status else None
+        found = plans.list(status=status, limit=args.limit)
+        if not found:
+            print("no plans")
+            return 0
+        for plan in found:
+            steps = plans.steps(plan.id or 0)
+            done = sum(1 for s in steps if s.status is StepStatus.DONE)
+            pending = sum(1 for s in steps if s.status is StepStatus.PENDING)
+            extra = f", {pending} unconfirmed" if pending else ""
+            print(f"  {plan.summary()}  ({done}/{len(steps)} done{extra})")
+        print(f"\n  {len(found)} shown")
+        return 0
+    except PersonalAIOSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        runtime.close()
+
+
 # --- finance ---------------------------------------------------------------
 
 
@@ -543,6 +616,30 @@ def build_parser() -> argparse.ArgumentParser:
     done_p = tasks_sub.add_parser("done", help="mark a task complete")
     done_p.add_argument("id", type=int)
     done_p.set_defaults(func=cmd_tasks, task_command="done")
+
+    plans_p = sub.add_parser("plans", help="what runs did, and resume an interrupted one")
+    plans_p.set_defaults(func=cmd_plans, plan_command="list")
+    plans_sub = plans_p.add_subparsers(dest="plan_command")
+    plans_p.add_argument(
+        "--status", choices=["running", "done", "failed", "abandoned"]
+    )
+    plans_p.add_argument("--limit", type=int, default=50)
+
+    plans_show = plans_sub.add_parser("show", help="one plan and every step it recorded")
+    plans_show.add_argument("id", type=int)
+    plans_show.set_defaults(func=cmd_plans, plan_command="show")
+
+    plans_resume = plans_sub.add_parser(
+        "resume", help="continue a plan a crash left running"
+    )
+    plans_resume.add_argument("id", type=int)
+    plans_resume.set_defaults(func=cmd_plans, plan_command="resume")
+
+    plans_abandon = plans_sub.add_parser(
+        "abandon", help="mark a running plan abandoned; the only route to that state"
+    )
+    plans_abandon.add_argument("id", type=int)
+    plans_abandon.set_defaults(func=cmd_plans, plan_command="abandon")
 
     finance_p = sub.add_parser("finance", help="inspect the ledger, no model involved")
     finance_p.add_argument(
